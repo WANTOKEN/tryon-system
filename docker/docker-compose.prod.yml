@@ -1,0 +1,180 @@
+# AI 虚拟试衣系统 - Docker Compose 生产环境配置
+# 使用方式: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # MySQL 8.0 数据库
+  # ===========================================
+  mysql:
+    image: mysql:8.0
+    container_name: tryon-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-tryon_db}
+      MYSQL_USER: ${MYSQL_USER:-tryon}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tryon123456}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max_connections=500
+      - --innodb_buffer_pool_size=256M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - tryon-network
+
+  # ===========================================
+  # Redis 7 缓存服务
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: tryon-redis
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tryon-network
+
+  # ===========================================
+  # Django API 服务
+  # ===========================================
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: tryon-api
+    restart: always
+    environment:
+      # Django 配置
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      DEBUG: "False"
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      
+      # 数据库配置
+      DB_NAME: ${MYSQL_DATABASE:-tryon_db}
+      DB_USER: ${MYSQL_USER:-tryon}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-tryon123456}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      
+      # Redis 配置
+      REDIS_URL: redis://redis:6379/0
+      
+      # JWT 配置
+      JWT_ACCESS_TTL: 3600
+      JWT_REFRESH_TTL: 604800
+      
+      # OSS 配置
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID}
+      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET}
+      OSS_BUCKET_NAME: ${OSS_BUCKET_NAME}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:-oss-cn-shenzhen.aliyuncs.com}
+      
+      # AI 试穿配置
+      ALIYUN_API_KEY: ${ALIYUN_API_KEY}
+      ALIYUN_API_URL: ${ALIYUN_API_URL}
+      
+      # 短信配置
+      SMS_ACCESS_KEY: ${SMS_ACCESS_KEY}
+      SMS_ACCESS_SECRET: ${SMS_ACCESS_SECRET}
+      SMS_SIGN_NAME: ${SMS_SIGN_NAME}
+      SMS_TEMPLATE_CODE: ${SMS_TEMPLATE_CODE}
+      
+      # CORS
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      
+      # 加密
+      ENABLE_ENCRYPTION: ${ENABLE_ENCRYPTION:-True}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-default-encryption-key}
+      
+      TZ: Asia/Shanghai
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - api_logs:/app/logs
+      - api_static:/app/staticfiles
+      - api_media:/app/media
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - tryon-network
+
+  # ===========================================
+  # Nginx 反向代理
+  # ===========================================
+  nginx:
+    image: nginx:alpine
+    container_name: tryon-nginx
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - api_static:/var/www/static:ro
+      - api_media:/var/www/media:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - api
+    networks:
+      - tryon-network
+
+# ===========================================
+# 数据卷
+# ===========================================
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  api_logs:
+    driver: local
+  api_static:
+    driver: local
+  api_media:
+    driver: local
+  nginx_logs:
+    driver: local
+
+# ===========================================
+# 网络
+# ===========================================
+networks:
+  tryon-network:
+    driver: bridge

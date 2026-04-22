@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+
+# Node
+node_modules/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# Logs
+logs/*.log
+!logs/.gitkeep
+
+# Type checking
+.mypy_cache/
+
+# Frontend
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.cache/
+
+# Misc
+*.log
+*.pot
+*.pyc
+logs/
+!logs/.gitkeep
+media/
+staticfiles/
+backup_*.sql
+.env
+.env.*
+!.env.example
+
+# Database
+*.sqlite3
+db.sqlite3
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Docker
+*.pid

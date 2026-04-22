@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: tryon-mysql-dev
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: Root@AiTryon2026
+      MYSQL_DATABASE: tryon_system
+      TZ: Asia/Shanghai
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --bind-address=0.0.0.0
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pRoot@AiTryOn2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - tryon-dev-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: tryon-redis-dev
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tryon-dev-network
+
+volumes:
+  mysql_dev_data:
+  redis_dev_data:
+
+networks:
+  tryon-dev-network:
+    driver: bridge
