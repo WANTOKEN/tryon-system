@@ -156,7 +156,7 @@ class ClothingUploadView(APIView):
         filename = f"clothing{ext}"
 
         # 上传到 OSS (自动 MD5 去重)
-        oss_key, image_url, is_duplicate = oss_service.upload_file(
+        oss_key, image_url, is_duplicate, file_md5 = oss_service.upload_file(
             file=image,
             filename=filename,
             folder='clothing',
@@ -165,7 +165,7 @@ class ClothingUploadView(APIView):
             skip_duplicate=True
         )
         image_thumb_url = image_url  # TODO: 生成缩略图
-        file_hash = oss_key  # 使用 oss_key 作为文件标识
+        file_hash = file_md5  # 使用 MD5 作为唯一标识（相同内容 = 相同 MD5）
 
         # 创建服装记录
         clothing = Clothing.objects.create(
@@ -203,6 +203,32 @@ class ClothingDeleteView(APIView):
         clothing.save(update_fields=['is_deleted', 'deleted_at'])
 
         return ApiResponse.success(message='已删除')
+
+
+class PresetsView(APIView):
+    """获取预设模板"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        lang = get_language(request)
+
+        # 获取预设服装
+        presets = PresetClothing.objects.filter(is_active=True)
+
+        # 按分类分组
+        result = {}
+        for preset in presets:
+            cat = preset.category
+            if cat not in result:
+                result[cat] = []
+            result[cat].append({
+                'id': preset.subcategory,
+                'name': preset.get_name(lang),
+                'color': preset.color,
+                'image_url': preset.image_url,
+            })
+
+        return ApiResponse.success(result)
 
 
 class CategoriesView(APIView):

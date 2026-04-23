@@ -31,6 +31,8 @@
     "jsx-a11y/anchor-is-valid": "off",
     "jsx-a11y/click-events-have-key-events": "warn",
     "jsx-a11y/no-static-element-interactions": "warn",
+    "jsx-a11y/label-has-associated-control": ["error", { "labelComponents": ["label"], "labelAttributes": ["htmlFor"], "controlComponents": ["input", "select", "textarea"] }],
+    "react/no-danger": "warn",
     "import/no-unresolved": "off",
     "import/order": [
       "error",
@@ -47,7 +49,10 @@
         "pathGroupsExcludedImportTypes": ["react"]
       }
     ],
+    "import/extensions": "off",
+    "import/prefer-default-export": "off",
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-underscore-dangle": ["error", { "allowAfterThis": true, "allow": ["_showNotification", "_handleSaveResult", "_handleShare", "_handleUpdateWardrobeCategory", "_handleRemoveWardrobeItem", "_showUploadModal", "_totalCount", "_handleAvatarClick", "_handleWardrobeUpload"] }],
     "no-console": ["warn", { "allow": ["warn", "error"] }],
     "prefer-const": "error",
     "no-var": "error",

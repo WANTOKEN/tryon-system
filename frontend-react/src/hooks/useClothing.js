@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+
 import { api } from '../utils/request'
 import { API_ENDPOINTS } from '../config/api'
 
@@ -14,9 +15,15 @@ export function useClothing() {
     setError(null)
     try {
       const params = {}
-      if (filters.category) params.category = filters.category
-      if (filters.subcategory) params.subcategory = filters.subcategory
-      if (filters.source) params.source = filters.source
+      if (filters.category) {
+        params.category = filters.category
+      }
+      if (filters.subcategory) {
+        params.subcategory = filters.subcategory
+      }
+      if (filters.source) {
+        params.source = filters.source
+      }
 
       const response = await api.get(API_ENDPOINTS.WARDROBE.CLOTHING, params)
       if (response.success && response.data?.results) {
@@ -30,6 +37,7 @@ export function useClothing() {
           color: item.color || '#F5F4F0',
           image: item.image_thumb_url || item.image_url,
           imageFull: item.image_url,
+          image_key: item.image_key, // 存储 key，用于复用（节省流量）
           source: item.source,
         }))
         setClothing(items)
@@ -55,7 +63,6 @@ export function useClothing() {
       }
       return []
     } catch (err) {
-      console.error('Failed to fetch categories:', err)
       return []
     }
   }, [])
@@ -70,9 +77,11 @@ export function useClothing() {
       formData.append('name', name || file.name.replace(/\.[^.]+$/, ''))
       formData.append('category', category)
       formData.append('subcategory', subcategory || '')
-      if (color) formData.append('color', color)
+      if (color) {
+        formData.append('color', color)
+      }
 
-      const response = await api.upload(API_ENDPOINTS.WARDROBE.CLOTHING + 'upload/', formData)
+      const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
       if (response.success) {
         const item = response.data?.data || response.data
         const newItem = {
@@ -99,7 +108,7 @@ export function useClothing() {
   }, [])
 
   // 删除服装
-  const deleteClothing = useCallback(async (uuid) => {
+  const deleteClothing = useCallback(async uuid => {
     try {
       const response = await api.delete(API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(uuid))
       if (response.success) {
@@ -113,9 +122,10 @@ export function useClothing() {
   }, [])
 
   // 分类服装
-  const getClothingByCategory = useCallback((categoryId) => {
-    return clothing.filter(item => item.category === categoryId)
-  }, [clothing])
+  const getClothingByCategory = useCallback(
+    categoryId => clothing.filter(item => item.category === categoryId),
+    [clothing]
+  )
 
   return {
     clothing,

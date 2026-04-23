@@ -15,18 +15,18 @@ export const API_ENDPOINTS = {
   // 衣橱
   WARDROBE: {
     CLOTHING: `${API_BASE}/wardrobe/clothing/`,
-    CLOTHING_DETAIL: (uuid) => `${API_BASE}/wardrobe/clothing/${uuid}/`,
+    CLOTHING_DETAIL: uuid => `${API_BASE}/wardrobe/clothing/${uuid}/`,
     CATEGORIES: `${API_BASE}/wardrobe/categories/`,
     PRESETS: `${API_BASE}/wardrobe/presets/`,
   },
   // 试穿
   TRYON: {
     GENERATE: `${API_BASE}/tryon/generate/`,
-    STATUS: (uuid) => `${API_BASE}/tryon/records/${uuid}/status/`,
+    STATUS: uuid => `${API_BASE}/tryon/records/${uuid}/status/`,
     RECORDS: `${API_BASE}/tryon/records/`,
-    RECORD_DETAIL: (uuid) => `${API_BASE}/tryon/records/${uuid}/`,
-    SAVE: (uuid) => `${API_BASE}/tryon/records/${uuid}/save/`,
-    DELETE: (uuid) => `${API_BASE}/tryon/records/${uuid}/`,
+    RECORD_DETAIL: uuid => `${API_BASE}/tryon/records/${uuid}/`,
+    SAVE: uuid => `${API_BASE}/tryon/records/${uuid}/save/`,
+    DELETE: uuid => `${API_BASE}/tryon/records/${uuid}/`,
     CLEAR: `${API_BASE}/tryon/records/clear/`,
   },
 }

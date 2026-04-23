@@ -229,99 +229,114 @@
   color: #D4AF37;
 }
 
-/* 服装卡片 - 更精致的交互 */
+/* 服装卡片 - 触摸友好的精致设计 */
 .clothing-card {
   position: relative;
-  transition: all var(--duration-normal) var(--ease-out);
-  border: 1px solid var(--border-primary);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(220, 215, 205, 0.6);
   overflow: visible;
-  background: var(--gradient-card);
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  cursor: pointer;
 }
 
 .dark .clothing-card {
-  border-color: #333;
+  border-color: rgba(55, 55, 55, 0.5);
+  background: #1F1F1F;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
-/* 悬停光效 */
+/* 悬停光效 - 更柔和 */
 .clothing-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0%, rgba(212, 175, 55, 0.02) 50%, transparent 100%);
   opacity: 0;
-  transition: opacity var(--duration-normal) ease;
+  transition: opacity 0.3s ease;
   z-index: 0;
   pointer-events: none;
 }
 
 .clothing-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(212, 175, 55, 0.1);
+  border-color: rgba(212, 175, 55, 0.4);
+  background: #FFFEF8;
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.08);
+}
+
+.dark .clothing-card:hover {
+  background: #252520;
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.1);
 }
 
 .clothing-card:hover::before {
   opacity: 1;
 }
 
-/* 选中状态 - 更醒目 */
+/* 选中状态 - 清晰的视觉反馈 */
 .clothing-card.selected {
-  border-color: var(--accent);
+  border-color: #D4AF37;
   border-width: 2px;
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(255, 255, 250, 1) 100%);
-  box-shadow: var(--shadow-accent);
+  background: linear-gradient(135deg, #FFFEF5 0%, #FFF8E8 100%);
+  box-shadow: 0 2px 12px rgba(212, 175, 55, 0.15);
 }
 
 .dark .clothing-card.selected {
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(30, 30, 30, 1) 100%);
+  background: linear-gradient(135deg, #2A2518 0%, #252015 100%);
+  box-shadow: 0 2px 12px rgba(212, 175, 55, 0.2);
 }
 
-/* 选中标记 - 更精致 */
+/* 选中标记 - 触摸友好的勾选框 */
 .check-mark {
   position: absolute;
   top: 6px;
   left: 6px;
   width: 24px;
   height: 24px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1.5px solid var(--accent);
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid rgba(212, 175, 55, 0.5);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.5;
-  transform: scale(1);
-  transition: all var(--duration-normal) cubic-bezier(0.34, 1.56, 0.64, 1);
+  opacity: 0.7;
   z-index: 10;
   cursor: pointer;
-  box-shadow: var(--shadow-xs);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s ease;
 }
 
 .check-mark svg {
-  color: var(--accent);
+  color: #D4AF37;
   width: 14px;
   height: 14px;
+  opacity: 0.4;
+  transition: all 0.15s ease;
 }
 
 .check-mark:hover {
-  transform: scale(1.15);
-  box-shadow: 0 2px 12px rgba(212, 175, 55, 0.4);
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.25);
 }
 
 .clothing-card:hover .check-mark {
-  opacity: 0.8;
+  opacity: 1;
+}
+
+.clothing-card:hover .check-mark svg {
+  opacity: 0.6;
 }
 
 .clothing-card.selected .check-mark {
   opacity: 1;
-  transform: scale(1.05);
-  background: var(--gradient-accent);
+  background: linear-gradient(135deg, #D4AF37 0%, #C9A227 100%);
   border: none;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.4);
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.35);
 }
 
 .clothing-card.selected .check-mark svg {
+  opacity: 1;
   color: white;
 }
 
@@ -361,27 +376,57 @@
   border-color: rgba(212, 175, 55, 0.35);
 }
 
-/* 自定义服装卡片 */
+/* 自定义服装卡片 - 虚线边框标识 */
 .custom-card {
   border-style: dashed;
-  border-color: rgba(212, 175, 55, 0.3);
+  border-color: rgba(212, 175, 55, 0.35);
+  background: linear-gradient(145deg, #FFFEF8 0%, #FAF8F0 100%);
 }
 
 .custom-card:hover {
   border-style: solid;
+  border-color: rgba(212, 175, 55, 0.5);
 }
 
 .custom-card.selected {
   border-style: solid;
 }
 
-/* 衣橱服装卡片 */
+/* 衣橱服装卡片 - 绿色边框标识 */
 .wardrobe-card {
-  border: 1.5px solid rgba(76, 175, 80, 0.25);
+  border: 1.5px solid rgba(76, 175, 80, 0.2);
+  background: linear-gradient(145deg, #F8FFF8 0%, #F0FAF0 100%);
 }
 
 .wardrobe-card:hover {
-  border-color: rgba(76, 175, 80, 0.5);
+  border-color: rgba(76, 175, 80, 0.4);
+}
+
+.wardrobe-card.selected {
+  border-color: #4CAF50;
+}
+
+/* 服装卡片图片区域 - 悬停效果 */
+.clothing-card .aspect-square {
+  transition: transform 0.2s ease;
+}
+
+.clothing-card:hover .aspect-square {
+  transform: scale(1.02);
+}
+
+/* 服装卡片图片 - 加载优化 */
+.clothing-card img {
+  transition: opacity 0.3s ease;
+}
+
+/* 服装卡片删除按钮 */
+.clothing-card button[type="button"] {
+  transition: all 0.2s ease;
+}
+
+.clothing-card button[type="button"]:hover {
+  transform: scale(1.1);
 }
 
 /* 预览区域 */
@@ -669,6 +714,89 @@
   min-width: 44px;
 }
 
+/* 已选服装移除按钮 */
+.remove-selected-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: #9CA3AF;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.remove-selected-btn:hover {
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.dark .remove-selected-btn {
+  color: #6B7280;
+}
+
+.dark .remove-selected-btn:hover {
+  color: #F87171;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* 搜索输入框 */
+.search-input-wrapper {
+  position: relative;
+  margin-bottom: 0.75rem;
+}
+
+.search-input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  color: #9CA3AF;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem 0.5rem 2.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.5rem;
+  background: #F9FAFB;
+  color: #1F2937;
+  transition: all 0.2s ease;
+}
+
+.search-input::placeholder {
+  color: #9CA3AF;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #D4AF37;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
+}
+
+.dark .search-input {
+  background: #1F2937;
+  border-color: #374151;
+  color: #F3F4F6;
+}
+
+.dark .search-input::placeholder {
+  color: #6B7280;
+}
+
+.dark .search-input:focus {
+  background: #111827;
+  border-color: #D4AF37;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+}
+
 /* 空状态插画容器 */
 .empty-state-illustration {
   opacity: 0.4;
@@ -718,44 +846,49 @@
   background: rgba(212, 175, 55, 0.45);
 }
 
-/* ===== 新布局系统 ===== */
+/* ===== 新布局系统 - UX 优化版 ===== */
 
-/* 三栏布局容器 */
+/* 三栏布局容器 - 黄金比例分割 */
 .app-layout {
   display: grid;
-  grid-template-columns: 320px 1fr 340px;
+  grid-template-columns: 280px 1fr 320px;
   gap: 0;
   min-height: calc(100vh - 52px);
 }
 
-/* 左侧栏 */
+/* 左侧栏 - 服装选择区（核心功能区） */
 .sidebar-left {
-  border-right: 1px solid rgba(232, 230, 227, 0.6);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(247, 245, 240, 0.8) 100%);
-  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(232, 230, 227, 0.5);
+  background: linear-gradient(180deg, #FDFCFA 0%, #F8F6F2 100%);
   overflow-y: auto;
   height: calc(100vh - 52px);
   position: sticky;
   top: 52px;
+  display: flex;
+  flex-direction: column;
 }
 
 .dark .sidebar-left {
-  background: linear-gradient(180deg, rgba(30, 30, 30, 0.6) 0%, rgba(25, 25, 25, 0.8) 100%);
-  border-color: rgba(51, 51, 51, 0.6);
+  background: linear-gradient(180deg, #1C1C1C 0%, #1A1A1A 100%);
+  border-color: rgba(51, 51, 51, 0.5);
 }
 
-/* 中央主舞台 */
+/* 中央主舞台 - 视觉焦点区 */
 .main-stage {
   overflow-y: auto;
   height: calc(100vh - 52px);
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(180deg, #FAFAF8 0%, #F5F3EF 100%);
 }
 
-/* 右侧面板 */
+.dark .main-stage {
+  background: linear-gradient(180deg, #1E1E1E 0%, #1B1B1B 100%);
+}
+
+/* 右侧面板 - 结果展示区 */
 .sidebar-right {
-  border-left: 1px solid rgba(232, 230, 227, 0.6);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(247, 245, 240, 0.8) 100%);
-  backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(232, 230, 227, 0.5);
+  background: linear-gradient(180deg, #FDFCFA 0%, #F8F6F2 100%);
   overflow-y: auto;
   height: calc(100vh - 52px);
   position: sticky;
@@ -763,46 +896,48 @@
 }
 
 .dark .sidebar-right {
-  background: linear-gradient(180deg, rgba(30, 30, 30, 0.6) 0%, rgba(25, 25, 25, 0.8) 100%);
-  border-color: rgba(51, 51, 51, 0.6);
+  background: linear-gradient(180deg, #1C1C1C 0%, #1A1A1A 100%);
+  border-color: rgba(51, 51, 51, 0.5);
 }
 
-/* 侧栏分区标题 */
+/* 侧栏分区标题 - 更醒目 */
 .sidebar-section-title {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #999;
-  padding: 0 1rem;
-  margin-bottom: 0.5rem;
+  color: #A09890;
+  padding: 0 0.875rem;
+  margin-bottom: 0.375rem;
 }
 
-/* 侧栏分区 */
+/* 侧栏分区 - 紧凑间距 */
 .sidebar-section {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(232, 230, 227, 0.4);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(232, 230, 227, 0.3);
 }
 
 .dark .sidebar-section {
-  border-color: rgba(51, 51, 51, 0.4);
+  border-color: rgba(51, 51, 51, 0.3);
 }
 
 .sidebar-section:last-child {
   border-bottom: none;
 }
 
-/* 预览区 - 全宽沉浸式 */
+/* 预览区 - 沉浸式视觉焦点 */
 .preview-immersive {
-  background: linear-gradient(160deg, #F0EDE6 0%, #E8E4DA 30%, #EDE9E0 60%, #E5E1D8 100%);
-  border-radius: 1.25rem;
+  background: linear-gradient(160deg, #F5F2ED 0%, #EBE7E0 50%, #E8E4DC 100%);
+  border-radius: 1rem;
   position: relative;
   overflow: hidden;
   aspect-ratio: 3/4;
-  max-height: calc(100vh - 220px);
-  border: 1px solid rgba(212, 175, 55, 0.15);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06),
-  inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  max-height: calc(100vh - 200px);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.02),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .preview-immersive::before {
@@ -966,64 +1101,65 @@
   color: #D4AF37;
 }
 
-/* 分类导航 - 2×3 图标网格 */
+/* 分类导航 - 紧凑图标网格（触摸友好） */
 .cat-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.375rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.25rem;
 }
 
 .cat-grid-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.5rem 0.25rem;
-  border-radius: 0.625rem;
+  gap: 0.1875rem;
+  padding: 0.375rem 0.125rem;
+  border-radius: 0.5rem;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #6B6B6B;
+  transition: all 0.15s ease;
+  color: #7A7A7A;
   border: 1px solid transparent;
   background: transparent;
   position: relative;
+  min-height: 44px;
 }
 
 .dark .cat-grid-item {
-  color: #A0A0A0;
+  color: #909090;
 }
 
 .cat-grid-item:hover {
-  background: rgba(212, 175, 55, 0.04);
-  color: #1A1A1A;
+  background: rgba(212, 175, 55, 0.06);
+  color: #2A2A2A;
 }
 
 .dark .cat-grid-item:hover {
-  color: #E8E6E3;
+  color: #E0E0E0;
 }
 
 .cat-grid-item.active {
-  background: rgba(212, 175, 55, 0.08);
+  background: rgba(212, 175, 55, 0.1);
   color: #B8962E;
-  border-color: rgba(212, 175, 55, 0.18);
+  border-color: rgba(212, 175, 55, 0.2);
 }
 
 .cat-grid-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 0.5rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 0.375rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.03);
-  transition: all 0.2s ease;
+  background: rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease;
 }
 
 .dark .cat-grid-icon {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .cat-grid-item.active .cat-grid-icon {
-  background: rgba(212, 175, 55, 0.12);
+  background: rgba(212, 175, 55, 0.15);
 }
 
 .cat-grid-label {
@@ -1052,14 +1188,15 @@
 
 /* 形象头像 - 侧栏紧凑版 */
 .avatar-section {
-  padding: 0.875rem 1rem;
+  padding: 0.5rem 0.875rem;
 }
 
 .avatar-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.875rem;
-  padding: 0.625rem;
+  gap: 0.75rem;
+  padding: 0.75rem;
   border-radius: 1rem;
   border: 2px dashed #E8E6E3;
   background: linear-gradient(145deg, rgba(250, 250, 248, 0.8) 0%, rgba(245, 244, 240, 0.6) 100%);
@@ -1136,21 +1273,100 @@
   min-width: 0;
 }
 
-/* ===== 形象照片卡片 V2 ===== */
+/* ===== 形象照片卡片 V2 - 紧凑横向布局 ===== */
 .avatar-card-v2 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.875rem;
+}
+
+/* 右侧信息区 */
+.avatar-info-area {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
+.avatar-info-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1F2937;
+  letter-spacing: 0.05em;
+}
+
+.dark .avatar-info-title {
+  color: #F3F4F6;
+}
+
+.avatar-info-title svg {
+  color: #D4AF37;
+  flex-shrink: 0;
+}
+
+.avatar-info-tip {
+  font-size: 0.75rem;
+  color: #6B7280;
+  line-height: 1.6;
+  margin: 0;
+  padding-left: 0.125rem;
+}
+
+.dark .avatar-info-tip {
+  color: #9CA3AF;
+}
+
+/* 使用模特按钮 */
+.use-model-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #D4AF37;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(212, 175, 55, 0.05) 100%);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.use-model-btn:hover {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.1) 100%);
+  border-color: rgba(212, 175, 55, 0.5);
+  transform: translateY(-1px);
+}
+
+.use-model-btn svg {
+  flex-shrink: 0;
+}
+
+.dark .use-model-btn {
+  color: #D4AF37;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(212, 175, 55, 0.08) 100%);
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.dark .use-model-btn:hover {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(212, 175, 55, 0.15) 100%);
+}
+
 .avatar-image-area {
   position: relative;
-  width: 100%;
-  aspect-ratio: 3 / 4;
-  border-radius: 1rem;
+  width: 150px;
+  height: 280px;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
   overflow: hidden;
   background: linear-gradient(145deg, #FAFAF8 0%, #F5F4F0 100%);
-  border: 2px dashed #E8E6E3;
+  border: 1.5px dashed #E8E6E3;
   transition: all 0.3s ease;
 }
 
@@ -1177,29 +1393,50 @@
   object-fit: cover;
 }
 
-/* 操作按钮层 - 始终显示 */
-.avatar-overlay {
+/* 操作按钮栏 - 底部固定 */
+.avatar-actions-bar {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.15) 40%, transparent 100%);
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding-bottom: 0.75rem;
+  gap: 0.5rem;
+  padding: 0.5rem 0.375rem;
+  border-radius: 0 0 0.75rem 0.75rem;
 }
 
-/* 操作按钮 */
+/* 操作按钮 - 紧凑版 */
 .avatar-action-btn {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 1.625rem;
+  height: 1.625rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
+  background: rgba(255, 255, 255, 0.2);
   transition: all 0.2s ease;
   backdrop-filter: blur(4px);
+}
+
+.avatar-action-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(1.1);
+}
+
+.avatar-action-btn.preview:hover {
+  background: rgba(212, 175, 55, 0.8);
+}
+
+.avatar-action-btn.change:hover {
+  background: rgba(59, 130, 246, 0.8);
+}
+
+.avatar-action-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.8);
 }
 
 .avatar-action-btn.preview {
@@ -1234,7 +1471,7 @@
   box-shadow: 0 4px 12px rgba(229, 57, 53, 0.4);
 }
 
-/* 上传按钮（空状态） */
+/* 上传按钮（空状态） - 紧凑版 */
 .avatar-upload-btn {
   position: absolute;
   inset: 0;
@@ -1242,7 +1479,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
   color: #B8B5AE;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1257,8 +1494,8 @@
 }
 
 .upload-icon-wrapper {
-  width: 3.5rem;
-  height: 3.5rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1275,16 +1512,19 @@
 }
 
 .upload-text {
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 500;
+  white-space: nowrap;
 }
 
-/* 状态信息 */
+/* 状态信息 - 右侧信息区 */
 .avatar-status {
   display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0 0.25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .status-dot {
@@ -1317,14 +1557,241 @@
   color: #A0A0A0;
 }
 
-/* ===== 响应式：平板 ===== */
+/* ===== 响应式：平板 (768px - 1279px) ===== */
 @media (max-width: 1279px) {
   .app-layout {
-    grid-template-columns: 280px 1fr 300px;
+    grid-template-columns: 320px 1fr 300px;
+    gap: 0;
   }
 
   .header-btn-text {
     display: none;
+  }
+
+  /* 平板端侧栏优化 */
+  .sidebar-left {
+    padding: 0;
+  }
+
+  .sidebar-section {
+    padding: 0.625rem 0.875rem;
+  }
+
+  .sidebar-section-title {
+    font-size: 0.625rem;
+    padding: 0 0.875rem;
+    margin-bottom: 0.375rem;
+  }
+
+  /* 平板端分类导航 */
+  .cat-grid {
+    gap: 0.25rem;
+  }
+
+  .cat-grid-item {
+    padding: 0.375rem 0.125rem;
+    gap: 0.1875rem;
+  }
+
+  .cat-grid-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .cat-grid-label {
+    font-size: 0.5625rem;
+  }
+
+  /* 平板端服装卡片 - 触摸优化 */
+  .clothing-card {
+    padding: 0.375rem;
+  }
+
+  .clothing-card .aspect-square {
+    border-radius: 0.375rem;
+  }
+
+  /* 平板端勾选框 - 始终可见 */
+  .check-mark {
+    width: 22px;
+    height: 22px;
+    top: 4px;
+    left: 4px;
+    opacity: 1;
+  }
+
+  .check-mark svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.5;
+  }
+
+  /* 平板端头像区域 */
+  .avatar-section {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .avatar-image-area {
+    width: 120px;
+    height: 160px;
+  }
+
+  .avatar-action-btn {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  /* 平板端搜索框 */
+  .sidebar-left input[type="text"] {
+    font-size: 0.8125rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* 平板端步骤指示器 */
+  .step-indicator {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .step-dot {
+    width: 18px;
+    height: 18px;
+    font-size: 0.5625rem;
+  }
+
+  /* 平板端预览区 */
+  .preview-immersive {
+    border-radius: 1rem;
+  }
+}
+
+/* ===== 平板竖屏优化 (768px - 1023px) ===== */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .app-layout {
+    grid-template-columns: 280px 1fr 280px;
+  }
+
+  /* 服装网格保持2列 */
+  .sidebar-left .grid-cols-2 {
+    gap: 0.5rem;
+  }
+}
+
+/* ===== 桌面端大屏优化 (1440px+) ===== */
+@media (min-width: 1440px) {
+  .app-layout {
+    grid-template-columns: 320px 1fr 360px;
+    gap: 1.5rem;
+    padding: 0 1.5rem;
+  }
+
+  /* 服装卡片更大更精致 */
+  .clothing-card {
+    padding: 0.75rem;
+  }
+
+  .clothing-card .aspect-square {
+    border-radius: 0.75rem;
+  }
+
+  /* 头像区域更宽敞 */
+  .avatar-section {
+    padding: 0.75rem 1rem;
+  }
+
+  .avatar-image-area {
+    width: 160px;
+    height: 213px;
+  }
+
+  .avatar-info-area {
+    height: 213px;
+  }
+
+  /* 分类导航更大 */
+  .cat-grid-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .cat-grid-label {
+    font-size: 0.6875rem;
+  }
+
+  /* 预览区更圆润 */
+  .preview-immersive {
+    border-radius: 1.25rem;
+  }
+}
+
+/* ===== 触摸设备优化 (平板端) ===== */
+@media (hover: none) and (pointer: coarse) {
+  /* 服装卡片触摸优化 */
+  .clothing-card {
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .clothing-card:active {
+    transform: scale(0.98);
+    background-color: rgba(250, 248, 240, 1);
+  }
+
+  .clothing-card.selected:active {
+    background-color: rgba(255, 248, 235, 1);
+  }
+
+  /* 勾选框触摸优化 - 始终显示 */
+  .check-mark {
+    opacity: 1;
+    transform: scale(1);
+    width: 24px;
+    height: 24px;
+  }
+
+  .check-mark svg {
+    opacity: 0.5;
+    transform: scale(1);
+    width: 12px;
+    height: 12px;
+  }
+
+  .clothing-card.selected .check-mark svg {
+    opacity: 1;
+  }
+
+  /* 分类导航触摸优化 */
+  .cat-grid-item {
+    min-height: 44px;
+  }
+
+  .cat-grid-item:active {
+    background: rgba(212, 175, 55, 0.12);
+  }
+
+  /* 按钮触摸优化 */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* 移除悬停效果 */
+  .clothing-card:hover {
+    transform: none;
+  }
+
+  .clothing-card::before {
+    display: none;
+  }
+}
+
+/* ===== 平板横屏优化 (1024px - 1279px) ===== */
+@media (min-width: 1024px) and (max-width: 1279px) and (orientation: landscape) {
+  .app-layout {
+    grid-template-columns: 340px 1fr 320px;
+  }
+
+  .preview-immersive {
+    max-height: calc(100vh - 180px);
   }
 }
 

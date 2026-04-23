@@ -7,6 +7,13 @@
 - MD5 去重避免重复上传
 - 自动生成唯一文件路径
 
+返回值说明:
+    upload_file() 返回 (storage_key, url, is_duplicate, content_key)
+    - storage_key: OSS 存储路径，如 "wardrobe/a1b2c3d4.jpg"
+    - url: 访问 URL
+    - is_duplicate: 是否重复
+    - content_key: 内容 Key，如 "oss:a1b2c3d4..."
+
 文档: https://help.aliyun.com/zh/oss/developer-reference/getting-started-with-oss-sdk-for-python
 """
 import os
@@ -19,13 +26,16 @@ from io import BytesIO
 
 import oss2
 
-from apps.common.exceptions import OssException
-from apps.common.services.upload_config import (
-    ALLOWED_IMAGE_TYPES,
-    MAX_FILE_SIZE,
-    ALLOWED_EXTENSIONS,
-    UploadValidationError
+from apps.common.constants import (
+    StorageType,
+    FileType,
+    FileExtension,
+    FileSizeLimit,
+    ErrorMessage,
 )
+from apps.common.exceptions import OssException
+from apps.common.services.upload_config import UploadValidationError
+from apps.common.utils.content_key import ContentKey
 
 logger = logging.getLogger('oss')
 
@@ -211,27 +221,27 @@ class OSSService:
         """
         # 1. 验证文件大小
         file_size = len(content)
-        if file_size > MAX_FILE_SIZE:
+        if file_size > FileSizeLimit.MAX_FILE_SIZE:
             raise UploadValidationError(
-                f'文件大小超出限制（最大 {MAX_FILE_SIZE // 1024 // 1024}MB，当前 {file_size // 1024 // 1024}MB）'
+                f'{ErrorMessage.FILE_TOO_LARGE}（最大 {FileSizeLimit.MAX_FILE_SIZE // 1024 // 1024}MB，当前 {file_size // 1024 // 1024}MB）'
             )
         
         if file_size == 0:
-            raise UploadValidationError('文件内容为空')
+            raise UploadValidationError(ErrorMessage.FILE_EMPTY)
         
         # 2. 验证文件类型
         ext = ''
         
         # 优先从 content_type 获取扩展名
-        if content_type in ALLOWED_IMAGE_TYPES:
-            ext = ALLOWED_IMAGE_TYPES[content_type]
+        if FileType.is_supported(content_type):
+            ext = FileType.get_extension(content_type)
         else:
             # 从文件名获取扩展名
             if '.' in filename:
                 ext = os.path.splitext(filename)[1].lower()
-            if ext not in ALLOWED_EXTENSIONS:
+            if not FileExtension.is_supported(ext):
                 raise UploadValidationError(
-                    f'不支持的文件类型，仅支持图片格式：{", ".join(ALLOWED_EXTENSIONS)}'
+                    f'{ErrorMessage.FILE_TYPE_NOT_SUPPORTED}，仅支持：{", ".join(FileExtension.ALL)}'
                 )
         
         return ext
@@ -320,7 +330,7 @@ class OSSService:
             client_ip: 客户端 IP
 
         Returns:
-            (oss_key, public_url, is_duplicate) - OSS 文件路径、公网访问 URL、是否重复
+            (oss_key, public_url, is_duplicate, md5) - OSS 文件路径、公网访问 URL、是否重复、文件 MD5
 
         Raises:
             OssException: 上传失败
@@ -347,7 +357,8 @@ class OSSService:
                     logger.info(
                         f"[OSS] 命中缓存跳过上传 | tenant={tenant_id} | md5={md5} | saved={len(content)}bytes"
                     )
-                    return oss_key, public_url, True  # 返回已存在的 URL
+                    content_key = ContentKey.from_md5(md5, 'oss')
+                    return oss_key, public_url, True, content_key
 
             # 生成 OSS 路径（使用 MD5 前缀作为文件名的一部分，便于追踪）
             oss_key = self._generate_file_key(folder, filename, tenant_id, md5)
@@ -389,7 +400,8 @@ class OSSService:
                 f"[OSS] 上传成功 | key={oss_key} | size={len(content)}bytes | md5={md5}"
             )
 
-            return oss_key, public_url, False  # 新上传的文件
+            content_key = ContentKey.from_md5(md5, 'oss')
+            return oss_key, public_url, False, content_key
 
         except UploadValidationError:
             # 验证错误直接抛出，不包装

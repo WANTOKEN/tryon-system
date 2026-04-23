@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 // Complete i18n dictionary from design spec
 const translations = {
@@ -16,6 +17,10 @@ const translations = {
     change: '更换',
     delete: '删除',
     tip: '同类型仅选一件，不同类型可自由搭配',
+    avatarTip1: '正面站立照片',
+    avatarTip2: '光线均匀清晰',
+    avatarTip3: '纯色背景最佳',
+    useModel: '使用模特',
     // 通用
     all: '全部',
     search: '搜索',
@@ -106,6 +111,7 @@ const translations = {
     historyTabSaved: '收藏',
     historyHint: '试穿后记录将自动保存在这里',
     saved: '收藏',
+    reuseAvatar: '复用',
     // 步骤
     step1: '上传形象',
     step2: '选择服装',
@@ -120,6 +126,8 @@ const translations = {
     startTryOn: '开始试穿',
     regenerating: '生成中...',
     regenerate: '重新生成',
+    estimatedTime: '预计等待',
+    seconds: '秒',
     // 通知
     n_canceled: '已取消 {name}',
     n_replaced: '已替换：{old} → {name}',
@@ -199,7 +207,8 @@ const translations = {
     clickToChange: '点击更换照片',
     // 引导
     guideStep1Title: '商家登录',
-    guideStep1Desc: '首次使用需要登录商家账号，支持账号密码或手机验证码方式。登录后即可开始试穿体验。',
+    guideStep1Desc:
+      '首次使用需要登录商家账号，支持账号密码或手机验证码方式。登录后即可开始试穿体验。',
     guideStep2Title: '拍摄形象',
     guideStep2Desc: '使用前置摄像头拍摄一张正面全身照，系统将基于此照片为您生成试穿效果。',
     guideStep3Title: '选择服装',
@@ -256,29 +265,29 @@ const translations = {
     siteTitle: 'AI 虛擬試衣',
     siteSubtitle: 'VIRTUAL TRY-ON',
     myProfile: '我的形象',
-            notUploaded: '未上傳形象',
-            uploadPhoto: '上傳照片 →',
-            ready: '形象已就緒',
-            preview: '預覽',
-            change: '更換',
-            delete: '刪除',
+    notUploaded: '未上傳形象',
+    uploadPhoto: '上傳照片 →',
+    ready: '形象已就緒',
+    preview: '預覽',
+    change: '更換',
+    delete: '刪除',
     tip: '同類型僅選一件，不同類型可自由搭配',
-            // 通用
-            all: '全部',
-            search: '搜索',
-            clear: '清除',
-            loading: '載入中...',
-            searchClothing: '搜索服裝',
-            searchPlaceholder: '輸入名稱或顏色',
-            searchResult: '搜索結果',
-            // 分类
-            cat_tops: '上裝',
-            cat_bottoms: '下裝',
-            cat_dresses: '裙裝',
-            cat_outerwear: '外套',
-            cat_shoes: '鞋履',
-            cat_accessories: '配飾',
-            cat_custom_upload: '我的上傳',
+    // 通用
+    all: '全部',
+    search: '搜索',
+    clear: '清除',
+    loading: '載入中...',
+    searchClothing: '搜索服裝',
+    searchPlaceholder: '輸入名稱或顏色',
+    searchResult: '搜索結果',
+    // 分类
+    cat_tops: '上裝',
+    cat_bottoms: '下裝',
+    cat_dresses: '裙裝',
+    cat_outerwear: '外套',
+    cat_shoes: '鞋履',
+    cat_accessories: '配飾',
+    cat_custom_upload: '我的上傳',
     sub_tshirt: 'T恤',
     sub_shirt: '襯衫',
     sub_sweater: '針織衫',
@@ -349,6 +358,7 @@ const translations = {
     historyTabSaved: '收藏',
     historyHint: '試穿後記錄將自動保存在這裡',
     saved: '收藏',
+    reuseAvatar: '復用',
     step1: '上傳形象',
     step2: '選擇服裝',
     step3: 'AI 試穿',
@@ -435,7 +445,8 @@ const translations = {
     langName: '繁體中文',
     clickToChange: '點擊更換照片',
     guideStep1Title: '商家登錄',
-    guideStep1Desc: '首次使用需要登錄商家賬號，支持賬號密碼或手機驗證碼方式。登錄後即可開始試穿體驗。',
+    guideStep1Desc:
+      '首次使用需要登錄商家賬號，支持賬號密碼或手機驗證碼方式。登錄後即可開始試穿體驗。',
     guideStep2Title: '拍攝形象',
     guideStep2Desc: '使用前置攝像頭拍攝一張正面全身照，系統將基於此照片為您生成試穿效果。',
     guideStep3Title: '選擇服裝',
@@ -487,29 +498,33 @@ const translations = {
     siteTitle: 'AI Try-On',
     siteSubtitle: 'SMART FITTING ROOM',
     myProfile: 'My Profile',
-            notUploaded: 'No photo uploaded',
-            uploadPhoto: 'Upload Photo →',
-            ready: 'Photo ready',
-            preview: 'Preview',
-            change: 'Change',
-            delete: 'Delete',
+    notUploaded: 'No photo uploaded',
+    uploadPhoto: 'Upload Photo →',
+    ready: 'Photo ready',
+    preview: 'Preview',
+    change: 'Change',
+    delete: 'Delete',
     tip: 'One item per type, mix different types freely',
-            // Common
-            all: 'All',
-            search: 'Search',
-            clear: 'Clear',
-            loading: 'Loading...',
-            searchClothing: 'Search clothing',
-            searchPlaceholder: 'Enter name or color',
-            searchResult: 'Search Results',
-            // Categories
-            cat_tops: 'Tops',
-            cat_bottoms: 'Bottoms',
-            cat_dresses: 'Dresses',
-            cat_outerwear: 'Outerwear',
-            cat_shoes: 'Shoes',
-            cat_accessories: 'Accessories',
-            cat_custom_upload: 'My Uploads',
+    avatarTip1: 'Front standing photo',
+    avatarTip2: 'Even lighting clear',
+    avatarTip3: 'Solid background best',
+    useModel: 'Use Model',
+    // Common
+    all: 'All',
+    search: 'Search',
+    clear: 'Clear',
+    loading: 'Loading...',
+    searchClothing: 'Search clothing',
+    searchPlaceholder: 'Enter name or color',
+    searchResult: 'Search Results',
+    // Categories
+    cat_tops: 'Tops',
+    cat_bottoms: 'Bottoms',
+    cat_dresses: 'Dresses',
+    cat_outerwear: 'Outerwear',
+    cat_shoes: 'Shoes',
+    cat_accessories: 'Accessories',
+    cat_custom_upload: 'My Uploads',
     sub_tshirt: 'T-Shirts',
     sub_shirt: 'Shirts',
     sub_sweater: 'Sweaters',
@@ -580,6 +595,7 @@ const translations = {
     historyTabSaved: 'Saved',
     historyHint: 'Records will be saved here automatically',
     saved: 'Saved',
+    reuseAvatar: 'Reuse',
     step1: 'Upload Photo',
     step2: 'Select Clothes',
     step3: 'AI Try-On',
@@ -591,6 +607,8 @@ const translations = {
     startTryOn: 'Start Try-On',
     regenerating: 'Generating...',
     regenerate: 'Regenerate',
+    estimatedTime: 'Estimated',
+    seconds: 'seconds',
     n_canceled: 'Deselected {name}',
     n_replaced: 'Replaced: {old} → {name}',
     n_selected: 'Selected {name}',
@@ -666,13 +684,17 @@ const translations = {
     langName: 'English',
     clickToChange: 'Click to change',
     guideStep1Title: 'Merchant Login',
-    guideStep1Desc: 'Log in with your merchant account (password or SMS code) to activate try-on features.',
+    guideStep1Desc:
+      'Log in with your merchant account (password or SMS code) to activate try-on features.',
     guideStep2Title: 'Take a Photo',
-    guideStep2Desc: 'Use the front camera to take a full-body photo. AI will generate try-on effects based on this photo.',
+    guideStep2Desc:
+      'Use the front camera to take a full-body photo. AI will generate try-on effects based on this photo.',
     guideStep3Title: 'Choose Clothing',
-    guideStep3Desc: 'Browse categories and select clothing to try on. You can also take photos to add custom items.',
+    guideStep3Desc:
+      'Browse categories and select clothing to try on. You can also take photos to add custom items.',
     guideStep4Title: 'Start Try-On',
-    guideStep4Desc: 'Tap "Start Try-On" to generate virtual try-on results with AI. Save your favorites!',
+    guideStep4Desc:
+      'Tap "Start Try-On" to generate virtual try-on results with AI. Save your favorites!',
     guideSkip: 'Skip',
     guideNext: 'Next',
     guideStart: 'Get Started',
@@ -712,81 +734,87 @@ const translations = {
     fileSelectHint: 'Select an image file from your computer',
     fileCamera: 'Use Camera',
     fileCameraHint: 'Take a photo using your webcam',
-  }
-};
+  },
+}
 
 // Language metadata
 export const languages = [
   { code: 'zh-CN', name: '简体中文', flag: '🇨🇳' },
   { code: 'zh-TW', name: '繁體中文', flag: '🇹🇼' },
-  { code: 'en-US', name: 'English', flag: '🇺🇸' }
-];
+  { code: 'en-US', name: 'English', flag: '🇺🇸' },
+]
 
 // Create context
-const I18nContext = createContext(null);
+const I18nContext = createContext(null)
 
 // Provider component
 export function I18nProvider({ children, initialLang = 'zh-CN' }) {
   const [locale, setLocale] = useState(() => {
     // Check localStorage first
-    const stored = localStorage.getItem('ai-tryon-locale');
-    if (stored && translations[stored]) return stored;
-    // Then check browser language
-    const browserLang = navigator.language;
-    if (translations[browserLang]) return browserLang;
-    // Default
-    return initialLang;
-  });
-
-  const changeLocale = useCallback((newLocale) => {
-    if (translations[newLocale]) {
-      setLocale(newLocale);
-      localStorage.setItem('ai-tryon-locale', newLocale);
-      document.documentElement.lang = newLocale;
+    const stored = localStorage.getItem(STORAGE_KEYS.LOCALE)
+    if (stored && translations[stored]) {
+      return stored
     }
-  }, []);
+    // Then check browser language
+    const browserLang = navigator.language
+    if (translations[browserLang]) {
+      return browserLang
+    }
+    // Default
+    return initialLang
+  })
 
-  const t = useCallback((key, params = {}) => {
-    const dict = translations[locale] || translations['zh-CN'];
-    let text = dict[key] || translations['zh-CN'][key] || key;
-    
-    // Replace template params like {n}, {name}, {count}
-    Object.entries(params).forEach(([k, v]) => {
-      text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-    });
-    
-    return text;
-  }, [locale]);
+  const changeLocale = useCallback(newLocale => {
+    if (translations[newLocale]) {
+      setLocale(newLocale)
+      localStorage.setItem(STORAGE_KEYS.LOCALE, newLocale)
+      document.documentElement.lang = newLocale
+    }
+  }, [])
 
-  const value = {
-    locale,
-    changeLocale,
-    t,
-    currentLang: languages.find(l => l.code === locale) || languages[0],
-    languages
-  };
+  const t = useCallback(
+    (key, params = {}) => {
+      const dict = translations[locale] || translations['zh-CN']
+      let text = dict[key] || translations['zh-CN'][key] || key
 
-  return (
-    <I18nContext.Provider value={value}>
-      {children}
-    </I18nContext.Provider>
-  );
+      // Replace template params like {n}, {name}, {count}
+      Object.entries(params).forEach(([k, v]) => {
+        text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v))
+      })
+
+      return text
+    },
+    [locale]
+  )
+
+  const value = useMemo(
+    () => ({
+      locale,
+      changeLocale,
+      t,
+      currentLang: languages.find(l => l.code === locale) || languages[0],
+      languages,
+    }),
+    [locale, changeLocale, t]
+  )
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }
 
 // Hook to use i18n
 export function useI18n() {
-  const context = useContext(I18nContext);
+  const context = useContext(I18nContext)
   if (!context) {
     // Fallback for when context is not available
     return {
       locale: 'zh-CN',
       changeLocale: () => {},
-      t: (key) => key,
+      t: key => key,
       currentLang: languages[0],
-      languages
-    };
+      languages,
+    }
   }
-  return context;
+  return context
 }
 
-export default useI18n;
+export default useI18n

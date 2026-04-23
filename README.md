@@ -39,7 +39,6 @@ my_project/
 │   ├── accounts/             # 商家认证模块
 │   ├── wardrobe/             # 衣橱管理模块
 │   ├── tryon/                # 虚拟试穿模块
-│   ├── media/                # 文件上传模块
 │   └── common/               # 公共工具
 │       ├── crypto.py         # 数据加解密工具
 │       └── exceptions.py     # 自定义异常
@@ -53,23 +52,64 @@ my_project/
 │   │   └── App.jsx           # 主应用
 │   ├── public/               # 静态资源
 │   └── vite.config.js        # Vite 配置
+├── docker/                   # Docker 部署配置
+│   ├── nginx/                # Nginx 配置
+│   ├── schema.sql            # 数据库初始化脚本
+│   └── docker-compose.yml    # 容器编排
+├── doc/                      # 项目文档
 ├── media/                    # 媒体文件目录
-├── scripts/                  # 工具脚本
+├── start-dev.ps1             # Windows 开发启动脚本
+├── start-dev.sh              # macOS 开发启动脚本
 └── manage.py
 ```
 
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [开发环境准备](./doc/04-开发环境准备.md) | 从零开始搭建开发环境（Windows/macOS） |
+| [版本一致性说明](./doc/05-版本一致性说明.md) | 开发与生产环境版本对照表 |
+| [前后端联调说明](./doc/06-前后端联调说明.md) | 图片 URL 处理与预签名机制 |
+| [本地开发指南](./doc/02-本地开发指南.md) | 本地开发流程和常用命令 |
+| [系统说明](./doc/01-系统说明.md) | 系统架构和 API 接口说明 |
+| [生产部署指南](./doc/03-生产部署指南.md) | 生产环境部署步骤 |
+
 ## 快速开始
 
-### 1. 克隆项目
+### 方式一：使用启动脚本（推荐）
+
+**Windows:**
+```powershell
+.\start-dev.ps1
+```
+
+**macOS:**
+```bash
+chmod +x start-dev.sh
+./start-dev.sh
+```
+
+### 方式二：手动启动
+
+#### 1. 克隆项目
 
 ```bash
 git clone <repository-url>
 cd my_project
 ```
 
-### 2. 后端配置
+#### 2. 后端配置
 
 ```bash
+# 创建虚拟环境
+python -m venv .venv
+
+# 激活虚拟环境
+# Windows:
+.\.venv\Scripts\Activate.ps1
+# macOS:
+source .venv/bin/activate
+
 # 安装依赖
 pip install -r requirements.txt
 
@@ -77,22 +117,17 @@ pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 文件配置数据库、Redis 等信息
 
-# 创建数据库
-mysql -u root -p
-CREATE DATABASE tryon_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
 # 运行迁移
-python manage.py makemigrations
 python manage.py migrate
 
 # 创建超级管理员
 python manage.py createsuperuser
 
 # 启动后端服务
-python manage.py runserver 8888
+python manage.py runserver 0.0.0.0:8888
 ```
 
-### 3. 前端配置
+#### 3. 前端配置
 
 ```bash
 cd frontend-react
@@ -104,13 +139,7 @@ npm install
 npm run dev
 ```
 
-### 4. 启动 Celery（可选，用于异步试穿任务）
-
-```bash
-celery -A config worker -l info
-```
-
-### 5. 访问应用
+#### 4. 访问应用
 
 - 前端地址：http://localhost:5173
 - API 地址：http://localhost:8888/api/v1/
@@ -143,18 +172,23 @@ celery -A config worker -l info
 
 | 方法 | 路径 | 说明 | 认证 |
 |------|------|------|------|
-| POST | `/generate/` | 提交试穿任务 | 是 |
+| POST | `/generate/` | 提交试穿任务（支持 key 复用） | 是 |
 | GET | `/records/` | 获取试穿记录列表 | 是 |
 | GET | `/records/<uuid>/status/` | 查询试穿状态 | 是 |
 | POST | `/records/<uuid>/save/` | 收藏/取消收藏 | 是 |
 | DELETE | `/records/<uuid>/` | 删除试穿记录 | 是 |
 | POST | `/records/clear/` | 清空试穿记录 | 是 |
 
-### 文件模块 (`/api/v1/media/`)
+**试穿接口参数说明**:
 
-| 方法 | 路径 | 说明 | 认证 |
+| 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| POST | `/upload/` | 上传文件（形象照、服装图） | 是 |
+| `avatar` | File | 二选一 | 头像图片文件 |
+| `avatar_key` | String | 二选一 | 已上传头像的 key（复用） |
+| `clothing_uuids` | String | 否 | 衣橱服装 UUID，逗号分隔 |
+| `custom_clothes` | JSON | 否 | 自定义服装 |
+| `session_id` | String | 是 | 会话 ID |
+| `ai_engine` | String | 否 | AI 引擎，默认 `aliyun` |
 
 ## 环境变量
 

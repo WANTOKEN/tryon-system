@@ -170,6 +170,19 @@ class SeedDanceEngine(BaseAIEngine):
                 'error_message': '服装图片不能为空',
                 'result_url': '',
             }
+        
+        # 验证所有 URL 必须是公网可访问的在线链接
+        try:
+            self._validate_all_urls(avatar_url, clothing_urls)
+        except ValueError as e:
+            error_msg = str(e)
+            logger.error(f"[{self.name}] URL 验证失败: {error_msg}")
+            return {
+                'task_id': '',
+                'success': False,
+                'error_message': error_msg,
+                'result_url': '',
+            }
 
         try:
             # 构建图片列表
@@ -217,78 +230,70 @@ class SeedDanceEngine(BaseAIEngine):
             
             logger.info(f"[{self.name}] [{trace_id}] API 入参: {json.dumps(request_params, ensure_ascii=False, indent=2)}")
 
-            # 调用 API (同步返回结果)
-            def _call_api():
-                # response = self.client.images.generate(
-                #     model=self.model_id,
-                #     prompt=prompt,
-                #     size=biz_size,
-                #     response_format="url",  # 返回 URL 而非 base64
-                #     extra_body={
-                #         "image": images,
-                #         "watermark": watermark,
-                #         "sequential_image_generation": sequential,
-                #     }
-                # )
-                
-                # Mock 响应对象（模拟 OpenAI API 返回格式）
-                class MockImageData:
-                    url = "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0/02177684821535136e5ad32e3806a7503d1b9484cfb9294ab72bf_0.png?X-Tos-Algorithm=TOS4-HMAC-SHA256&X-Tos-Credential=AKLTYWJkZTExNjA1ZDUyNDc3YzhjNTM5OGIyNjBhNDcyOTQ%2F20260422%2Fcn-beijing%2Ftos%2Frequest&X-Tos-Date=20260422T085723Z&X-Tos-Expires=86400&X-Tos-Signature=9892fc206263ebf21730f1fb339e0be1c07108185c27d934e99a57d684bc8ad5&X-Tos-SignedHeaders=host"
-                
-                class MockResponse:
-                    data = [MockImageData()]
-                
-                return MockResponse()
-
-            response = self._execute_with_circuit_breaker(
-                '生成试穿图像',
-                _call_api
-            )
+            # Mock 模式：使用本地测试图片
+            MOCK_RESULT_URL = "https://test-9977.oss-cn-shenzhen.aliyuncs.com/results/mock_tryon_result.jpg"
             
-            # 记录返回参数
-            if response.data and len(response.data) > 0:
-                response_info = {
-                    "url": response.data[0].url,
-                    "data_count": len(response.data)
-                }
-            else:
-                response_info = {"data": None}
-            logger.info(f"[{self.name}] [{trace_id}] API 返回: {json.dumps(response_info, ensure_ascii=False, indent=2)}")
+            # # 调用 API (同步返回结果)
+            # def _call_api():
+            #     response = self.client.images.generate(
+            #         model=self.model_id,
+            #         prompt=prompt,
+            #         size=biz_size,
+            #         response_format="url",  # 返回 URL 而非 base64
+            #         extra_body={
+            #             "image": images,
+            #             "watermark": watermark,
+            #             "sequential_image_generation": sequential,
+            #         }
+            #     )
+            #     return response
 
-            # 提取结果 URL
-            if response.data and len(response.data) > 0:
-                result_url = response.data[0].url
 
-                # 生成任务 ID (用于追踪)
-                task_id = f"seed_{uuid.uuid4().hex[:16]}_{int(time.time())}"
+            # response = self._execute_with_circuit_breaker(
+            #     '生成试穿图像',
+            #     _call_api
+            # )
+            
+            # # 记录返回参数
+            # if response.data and len(response.data) > 0:
+            #     response_info = {
+            #         "url": response.data[0].url,
+            #         "data_count": len(response.data)
+            #     }
+            # else:
+            #     response_info = {"data": None}
+            # logger.info(f"[{self.name}] [{trace_id}] API 返回: {json.dumps(response_info, ensure_ascii=False, indent=2)}")
 
-                logger.info(f"[{self.name}] [{trace_id}] 任务完成: task_id={task_id}, result_url={result_url}")
+            # # 提取结果 URL
+            # if response.data and len(response.data) > 0:
+            #     result_url = response.data[0].url
 
-                # 下载并存储结果图片
-                stored_url = self._download_and_store_result(
-                    result_url=result_url,
-                    task_id=task_id,
-                    trace_id=trace_id,
-                    tenant_id=kwargs.get('tenant_id', 'default'),
-                )
+            # 使用 Mock URL
+            result_url = MOCK_RESULT_URL
+            
+            # 生成任务 ID (用于追踪)
+            task_id = f"seed_{uuid.uuid4().hex[:16]}_{int(time.time())}"
 
-                return {
-                    'task_id': task_id,
-                    'success': True,
-                    'error_message': '',
-                    'result_url': stored_url or result_url,  # 优先返回存储后的 URL
-                    'original_url': result_url,  # 保留原始 URL
-                    'processing_time': 0,  # 同步 API，无法获取耗时
-                    'trace_id': trace_id,
-                }
-            else:
-                return {
-                    'task_id': '',
-                    'success': False,
-                    'error_message': 'API 未返回结果',
-                    'result_url': '',
-                    'trace_id': trace_id,
-                }
+            logger.info(f"[{self.name}] [{trace_id}] 任务完成 (MOCK): task_id={task_id}, result_url={result_url}")
+
+            # 下载并存储结果图片
+            stored_url, stored_key = self._download_and_store_result(
+                result_url=result_url,
+                task_id=task_id,
+                trace_id=trace_id,
+                tenant_id=kwargs.get('tenant_id', 'default'),
+            )
+
+            return {
+                'task_id': task_id,
+                'success': True,
+                'error_message': '',
+                'result_url': stored_url or result_url,  # 优先返回存储后的 URL
+                'result_key': stored_key or '',  # 存储 key 供复用
+                'original_url': result_url,  # 保留原始 URL
+                'processing_time': 0,  # 同步 API，无法获取耗时
+                'trace_id': trace_id,
+            }
 
         except AIEngineException as e:
             return {
@@ -453,7 +458,7 @@ class SeedDanceEngine(BaseAIEngine):
             max_retries: 最大重试次数
         
         Returns:
-            存储后的 URL，失败返回 None
+            (存储后的 URL, 存储 key) 元组，失败返回 (None, None)
         """
         from io import BytesIO
         
@@ -474,7 +479,7 @@ class SeedDanceEngine(BaseAIEngine):
                     time.sleep(wait_time)
                 else:
                     logger.error(f"[{self.name}] [{trace_id}] 下载失败，已重试 {max_retries} 次: {e}")
-                    return None
+                    return None, None
         
         try:
             # 获取内容类型
@@ -495,22 +500,31 @@ class SeedDanceEngine(BaseAIEngine):
             file_obj = BytesIO(response.content)
             filename = f"tryon_result_{task_id}{ext}"
             
-            storage_key, stored_url, is_dup = storage.upload_file(
+            from apps.common.constants import StorageFolder
+            
+            storage_key, stored_url, is_dup, file_md5 = storage.upload_file(
                 file_obj=file_obj,
                 filename=filename,
-                folder='tryon_results',  # 结果图片存储目录
+                folder=StorageFolder.RESULTS,  # 结果图片存储目录
                 tenant_id=tenant_id,
                 content_type=content_type,
+                file_category='result',  # 标记为试穿结果图片
                 skip_duplicate=True,
             )
             
-            logger.info(f"[{self.name}] [{trace_id}] 结果图片已存储: {stored_url}")
-            
-            return stored_url
+            # 生成预签名 URL（如果是 OSS 存储）
+            if storage.is_oss and storage_key:
+                presigned_url = storage.get_signed_url(storage_key, expires=86400)  # 24小时有效
+                logger.info(f"[{self.name}] [{trace_id}] 结果图片已存储: storage_key={storage_key}, presigned_url={presigned_url}")
+                return presigned_url, storage_key
+            else:
+                # 本地存储返回完整 URL
+                logger.info(f"[{self.name}] [{trace_id}] 结果图片已存储: {stored_url}")
+                return stored_url, storage_key
             
         except Exception as e:
             logger.error(f"[{self.name}] [{trace_id}] 存储结果图片失败: {e}")
-            return None
+            return None, None
 
     def cleanup(self, task_id: str):
         """清理任务资源"""

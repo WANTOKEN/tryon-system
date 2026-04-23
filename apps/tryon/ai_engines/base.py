@@ -2,7 +2,7 @@
 AI 引擎基类
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 
 logger = logging.getLogger('ai_engines')
@@ -13,6 +13,75 @@ class BaseAIEngine(ABC):
 
     name: str = ''
     display_name: str = ''
+
+    def _validate_public_url(self, url: str, name: str = 'URL') -> None:
+        """
+        验证 URL 是否为公网可访问的在线链接
+        
+        禁止 localhost、内网地址、非 HTTP(S) 协议
+        
+        Args:
+            url: 要验证的 URL
+            name: URL 名称（用于错误信息）
+        
+        Raises:
+            ValueError: 如果 URL 不是公网可访问的
+        """
+        from urllib.parse import urlparse
+        import re
+        
+        if not url:
+            raise ValueError(f'{name} 不能为空')
+        
+        # 必须是 HTTP 或 HTTPS 协议
+        if not url.startswith('http://') and not url.startswith('https://'):
+            raise ValueError(f'{name} 必须是 HTTP(S) 协议: {url}')
+        
+        parsed = urlparse(url)
+        hostname = parsed.netloc.split(':')[0]  # 移除端口
+        
+        # 禁止的 hostname 列表
+        forbidden_hosts = [
+            'localhost',
+            '127.0.0.1',
+            '0.0.0.0',
+            '::1',
+            '[::1]',
+        ]
+        
+        # 检查是否是禁止的 host
+        if hostname.lower() in forbidden_hosts:
+            raise ValueError(
+                f'{name} 不能使用本地地址 (localhost)，必须是公网可访问的在线链接: {url}'
+            )
+        
+        # 检查内网 IP 段 (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
+        private_ip_patterns = [
+            r'^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$',           # 10.0.0.0/8
+            r'^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$', # 172.16.0.0/12
+            r'^192\.168\.\d{1,3}\.\d{1,3}$',              # 192.168.0.0/16
+        ]
+        
+        for pattern in private_ip_patterns:
+            if re.match(pattern, hostname):
+                raise ValueError(
+                    f'{name} 不能使用内网地址，必须是公网可访问的在线链接: {url}'
+                )
+
+    def _validate_all_urls(self, avatar_url: str, clothing_urls: List[str]) -> None:
+        """
+        验证所有传入的 URL 是否为公网可访问的在线链接
+        
+        Args:
+            avatar_url: 人物照片 URL
+            clothing_urls: 服装照片 URL 列表
+        
+        Raises:
+            ValueError: 如果任何 URL 不是公网可访问的
+        """
+        self._validate_public_url(avatar_url, '人物照片 URL')
+        for i, clothing_url in enumerate(clothing_urls):
+            self._validate_public_url(clothing_url, f'服装照片 URL[{i+1}]')
 
     @abstractmethod
     def submit_task(

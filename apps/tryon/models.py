@@ -15,8 +15,6 @@ class TryOnRecord(models.Model):
         FAILED = 'failed', '失败'
 
     class AIEngine(models.TextChoices):
-        ALIYUN = 'aliyun', '阿里云'
-        TENCENT = 'tencent', '腾讯云'
         SEEDDANCE = 'seeddance', 'SeedDance'
 
     id = models.BigAutoField(primary_key=True)
@@ -26,12 +24,15 @@ class TryOnRecord(models.Model):
 
     # 图片
     avatar_url = models.URLField(max_length=500)
-    result_url = models.URLField(max_length=500, default='')
+    avatar_key = models.CharField(max_length=255, default='', blank=True)  # OSS key，用于复用
+    result_url = models.URLField(max_length=500, default='')  # 存储后的结果图 URL（本地或 OSS）
+    result_key = models.CharField(max_length=255, default='', blank=True)  # 结果图存储 key
+    result_original_url = models.URLField(max_length=1000, default='', blank=True)  # AI 原始返回的 URL（如火山引擎 TOS）
     result_thumb_url = models.URLField(max_length=500, default='')
 
     # 状态
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    ai_engine = models.CharField(max_length=20, choices=AIEngine.choices, default=AIEngine.ALIYUN)
+    ai_engine = models.CharField(max_length=20, choices=AIEngine.choices, default=AIEngine.SEEDDANCE)
     task_id = models.CharField(max_length=100, default='')
 
     # 处理信息
@@ -83,6 +84,7 @@ class TryOnClothing(models.Model):
     clothing_name = models.CharField(max_length=100)
     clothing_color = models.CharField(max_length=30, default='#000000')
     clothing_image = models.URLField(max_length=500, default='')
+    clothing_key = models.CharField(max_length=255, default='', blank=True)  # 存储 key 供复用
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

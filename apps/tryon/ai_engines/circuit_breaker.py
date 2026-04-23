@@ -137,11 +137,9 @@ class CircuitBreaker:
         }
 
 
-# 引擎备用映射
+# 引擎备用映射（仅保留 seeddance）
 FALLBACK_ENGINE_MAP = {
-    'aliyun': 'tencent',
-    'tencent': 'aliyun',
-    'seeddance': 'aliyun',
+    'seeddance': 'mock',
 }
 
 

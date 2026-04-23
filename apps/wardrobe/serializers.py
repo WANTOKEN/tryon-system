@@ -3,7 +3,9 @@
 """
 from rest_framework import serializers
 from .models import Clothing, PresetClothing
-from apps.common.utils.url_utils import get_full_url
+from apps.common.utils.url_utils import get_full_url, get_key_from_url
+from apps.common.utils.content_key import ContentKey
+from apps.common.constants import ContentKeyPrefix
 
 
 class ClothingSerializer(serializers.ModelSerializer):
@@ -11,21 +13,43 @@ class ClothingSerializer(serializers.ModelSerializer):
     
     image_url = serializers.SerializerMethodField()
     image_thumb_url = serializers.SerializerMethodField()
+    image_key = serializers.SerializerMethodField()  # OSS key，供前端复用
 
     class Meta:
         model = Clothing
         fields = [
             'uuid', 'category', 'subcategory', 'name', 'color',
-            'image_url', 'image_thumb_url', 'source', 'sort_order'
+            'image_url', 'image_thumb_url', 'image_key', 'source', 'sort_order'
         ]
     
     def get_image_url(self, obj):
-        """获取完整的图片 URL"""
+        """获取完整的图片 URL（预签名）"""
         return get_full_url(obj.image_url)
     
     def get_image_thumb_url(self, obj):
-        """获取完整的缩略图 URL"""
+        """获取完整的缩略图 URL（预签名）"""
         return get_full_url(obj.image_thumb_url)
+    
+    def get_image_key(self, obj):
+        """
+        获取图片的唯一 key，供前端复用
+        
+        返回 ContentKey 格式: {storage_type}:{md5}
+        - 相同内容 = 相同 MD5 = 相同 key
+        - 带存储类型前缀，确保精确解析
+        """
+        # 优先使用 file_hash (MD5)
+        if obj.file_hash:
+            storage_type = ContentKeyPrefix.OSS if 'oss' in obj.image_url.lower() else ContentKeyPrefix.LOCAL
+            return ContentKey.from_md5(obj.file_hash, storage_type)
+        
+        # 回退：从 URL 提取存储路径并生成 ContentKey
+        storage_key = get_key_from_url(obj.image_url)
+        if storage_key:
+            storage_type = ContentKeyPrefix.OSS if 'oss' in obj.image_url.lower() else ContentKeyPrefix.LOCAL
+            return ContentKey.from_md5(storage_key, storage_type)
+        
+        return None
 
 
 class ClothingDetailSerializer(ClothingSerializer):

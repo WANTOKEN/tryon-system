@@ -17,16 +17,6 @@ __all__ = [
 ]
 
 # 延迟导入真实引擎（避免循环导入）
-def get_aliyun_engine():
-    """获取阿里云引擎类"""
-    from .aliyun import AliyunEngine
-    return AliyunEngine
-
-def get_tencent_engine():
-    """获取腾讯云引擎类"""
-    from .tencent import TencentEngine
-    return TencentEngine
-
 def get_seeddance_engine():
     """获取 SeedDance 引擎类"""
     from .seeddance import SeedDanceEngine

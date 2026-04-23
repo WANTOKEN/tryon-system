@@ -30,13 +30,15 @@ class TryOnRecordSerializer(serializers.ModelSerializer):
     """试穿记录序列化器"""
     clothing = TryOnClothingSerializer(source='clothing_items', many=True, read_only=True)
     avatar_url = serializers.SerializerMethodField()
+    avatar_key = serializers.CharField(read_only=True)  # 返回 key 供前端复用
     result_url = serializers.SerializerMethodField()
+    result_key = serializers.CharField(read_only=True)  # 返回 key 供前端复用
     result_thumb_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TryOnRecord
         fields = [
-            'uuid', 'session_id', 'avatar_url', 'result_url', 'result_thumb_url',
+            'uuid', 'session_id', 'avatar_url', 'avatar_key', 'result_url', 'result_key', 'result_thumb_url',
             'status', 'ai_engine', 'is_saved', 'clothing',
             'processing_time', 'created_at'
         ]
@@ -53,13 +55,18 @@ class TryOnRecordSerializer(serializers.ModelSerializer):
 
 class TryOnGenerateSerializer(serializers.Serializer):
     """提交试穿任务序列化器"""
-    avatar = serializers.ImageField(required=True)
+    # 头像：支持文件上传或 key 复用（二选一）
+    avatar = serializers.ImageField(required=False)
+    avatar_key = serializers.CharField(required=False, allow_blank=True)  # 复用已上传头像的 key
+    
+    # 服装：支持 UUID 复用或自定义上传
     clothing_uuids = serializers.CharField(required=False, allow_blank=True)  # 逗号分隔，可选
     custom_clothes = serializers.CharField(required=False, allow_blank=True)  # JSON 字符串
+    
     session_id = serializers.CharField(required=True)
     ai_engine = serializers.ChoiceField(
         choices=TryOnRecord.AIEngine.choices,
-        default=TryOnRecord.AIEngine.ALIYUN
+        default=TryOnRecord.AIEngine.SEEDDANCE
     )
 
     def validate_avatar(self, value):
@@ -72,14 +79,35 @@ class TryOnGenerateSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        """验证：必须有 clothing_uuids 或 custom_clothes"""
+        """验证：avatar 和 avatar_key 二选一，必须有服装"""
         import json
+        
+        # 验证头像：avatar 或 avatar_key 必须有一个
+        avatar = data.get('avatar')
+        avatar_key = data.get('avatar_key', '')
+        
+        if not avatar and not avatar_key:
+            raise serializers.ValidationError('请上传头像图片或提供 avatar_key')
+        
+        if avatar and avatar_key:
+            raise serializers.ValidationError('avatar 和 avatar_key 只能提供一个')
         
         clothing_uuids = data.get('clothing_uuids', '')
         custom_clothes_raw = data.get('custom_clothes', '')
         
-        # 解析 clothing_uuids
-        uuids = [uuid.strip() for uuid in clothing_uuids.split(',') if uuid.strip()] if clothing_uuids else []
+        # 解析 clothing_uuids（支持 JSON 数组或逗号分隔字符串）
+        uuids = []
+        if clothing_uuids:
+            try:
+                # 尝试 JSON 解析
+                parsed = json.loads(clothing_uuids)
+                if isinstance(parsed, list):
+                    uuids = [str(item).strip() for item in parsed if item]
+                else:
+                    uuids = [uuid.strip() for uuid in str(parsed).split(',') if uuid.strip()]
+            except json.JSONDecodeError:
+                # 回退到逗号分隔
+                uuids = [uuid.strip() for uuid in clothing_uuids.split(',') if uuid.strip()]
         
         # 解析 custom_clothes (JSON 字符串 -> 列表)
         custom_clothes = []

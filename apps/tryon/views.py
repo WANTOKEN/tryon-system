@@ -1,7 +1,6 @@
 """
 试穿视图
 """
-import os
 import base64
 from io import BytesIO
 from django.conf import settings
@@ -16,6 +15,8 @@ from apps.common.utils.response import ApiResponse
 from apps.common.utils.pagination import CustomPageNumberPagination
 from apps.common.utils.cache_utils import QuotaCache
 from apps.common.exceptions import QuotaExceededException, ResourceNotFoundException
+from apps.common.constants import RecordPrefix, ErrorMessage
+from apps.common.utils.content_key import ContentKey
 from apps.accounts.models import Merchant
 from apps.tryon.serializers import get_full_url
 from apps.wardrobe.models import Clothing
@@ -74,22 +75,85 @@ class TryOnGenerateView(APIView):
         serializer = TryOnGenerateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        avatar = serializer.validated_data['avatar']
+        avatar = serializer.validated_data.get('avatar')
+        avatar_key = serializer.validated_data.get('avatar_key', '')
         clothing_uuids = serializer.validated_data.get('clothing_uuids', [])
         custom_clothes = serializer.validated_data.get('custom_clothes', [])
         session_id = serializer.validated_data['session_id']
-        ai_engine_name = serializer.validated_data.get('ai_engine', 'aliyun')
+        ai_engine_name = serializer.validated_data.get('ai_engine', 'seeddance')
 
         # 检查配额
         merchant = request.user
         if merchant.quota_remaining <= 0:
             raise QuotaExceededException()
 
+        # 处理头像：支持 key 复用（通用，支持 OSS 和本地）
+        avatar_url = None
+        avatar_storage_key = ''
+        
+        if avatar_key:
+            # 通过 Key 复用已上传的头像
+            from apps.common.utils.url_utils import get_url_by_key
+            
+            if RecordPrefix.is_tryon_uuid(avatar_key):
+                # 历史记录 UUID
+                try:
+                    history_record = TryOnRecord.objects.get(
+                        uuid=avatar_key,
+                        merchant_id=merchant.id,
+                        is_deleted=False
+                    )
+                    avatar_url = history_record.avatar_url
+                    avatar_storage_key = history_record.avatar_key
+                except TryOnRecord.DoesNotExist:
+                    raise ResourceNotFoundException(ErrorMessage.HISTORY_NOT_FOUND)
+            elif ContentKey.is_valid(avatar_key):
+                # 内容 Key: "local:xxx" 或 "oss:xxx"
+                avatar_url = ContentKey.resolve_or_raise(
+                    avatar_key, 
+                    tenant_id=str(merchant.uuid),
+                    resource_name='头像'
+                )
+                avatar_storage_key = avatar_key
+            else:
+                # 存储路径: "wardrobe/xxx.jpg"
+                avatar_url = get_url_by_key(avatar_key)
+                avatar_storage_key = avatar_key
+        
+        # 分离数据库服装 UUID 和 key 形式的服装标识
+        db_clothing_uuids = []
+        key_clothing_urls = []  # 通过 key 复用的服装 URL
+        
+        print(f"[TryOn] 收到的 clothing_uuids: {clothing_uuids}")
+        
+        for uuid_or_key in clothing_uuids:
+            if uuid_or_key.startswith('key:'):
+                # key: 形式，通过 ContentKey 复用
+                content_key = uuid_or_key[4:]  # 去掉 "key:" 前缀
+                print(f"[TryOn] 检测到 key 形式的服装: content_key={content_key}")
+                if ContentKey.is_valid(content_key):
+                    url = ContentKey.resolve_or_raise(
+                        content_key,
+                        tenant_id=str(merchant.uuid),
+                        resource_name='服装'
+                    )
+                    key_clothing_urls.append(url)
+                    print(f"[TryOn] 通过 key 复用服装成功: key={content_key}, url={url}")
+                else:
+                    # 无效的 key，跳过
+                    print(f"[TryOn] 无效的 content_key，跳过: {content_key}")
+            else:
+                # 普通 UUID
+                db_clothing_uuids.append(uuid_or_key)
+        
+        print(f"[TryOn] 数据库服装 UUIDs: {db_clothing_uuids}")
+        print(f"[TryOn] 通过 key 复用的服装 URLs: {key_clothing_urls}")
+        
         # 获取数据库中的服装
         db_clothes = []
-        if clothing_uuids:
+        if db_clothing_uuids:
             db_clothes = list(Clothing.objects.filter(
-                uuid__in=clothing_uuids,
+                uuid__in=db_clothing_uuids,
                 merchant_id=merchant.id,
                 is_active=True,
                 is_deleted=False
@@ -100,6 +164,8 @@ class TryOnGenerateView(APIView):
         
         # 添加数据库服装 (已上传到 OSS 的 URL)
         clothing_urls = [c.image_url for c in db_clothes]
+        # 添加通过 key 复用的服装 URL
+        clothing_urls.extend(key_clothing_urls)
 
         # 处理自定义服装
         for idx, custom in enumerate(custom_clothes):
@@ -144,8 +210,11 @@ class TryOnGenerateView(APIView):
             clothes_images = list(clothing_urls)  # 复制 URL 列表
             clothes_images.extend([cf['file'] for cf in clothing_files])  # 添加文件对象
             
+            # 处理头像参数：key 复用时传 URL，新上传时传文件
+            avatar_param = avatar_url if avatar_key else avatar
+            
             result = service.create_task(
-                avatar_image=avatar,
+                avatar_image=avatar_param,
                 clothes_images=clothes_images,
                 tenant_id=str(merchant.uuid),
             )
@@ -159,9 +228,10 @@ class TryOnGenerateView(APIView):
                 merchant_id=merchant.id,
                 session_id=session_id,
                 avatar_url=result['avatar_url'],
+                avatar_key=result.get('avatar_key', avatar_storage_key),
                 ai_engine=ai_engine_name,
                 ip_address=get_client_ip(request),
-                device_info=request.META.get('HTTP_USER_AGENT', ''),
+                device_info=request.META.get('HTTP_USER_AGENT', '')[:200],
                 task_id=result.get('task_id', ''),
                 status=TryOnRecord.Status.PROCESSING,
             )
@@ -224,14 +294,16 @@ class TryOnGenerateView(APIView):
                 })
 
         # 清理旧记录（同一会话最多保留 20 条）
-        # self._cleanup_old_records(merchant, session_id)
+        self._cleanup_old_records(merchant, session_id)
 
         return ApiResponse.success({
             'record_uuid': record.uuid,
             'task_id': record.task_id,
             'status': record.status,
-            'estimated_time': 30,
-            'sse_url': f'/api/v1/tryon/records/{record.uuid}/sse/'
+            'estimated_time': 50,  # AI 生成预计 40-60 秒
+            'sse_url': f'/api/v1/tryon/records/{record.uuid}/sse/',
+            'avatar_key': result.get('avatar_key'),  # 头像 key（供前端复用）
+            'clothes_keys': result.get('clothes_keys', []),  # 服装 key 列表（供前端复用）
         })
 
     def _cleanup_old_records(self, merchant, session_id):
@@ -253,6 +325,61 @@ class TryOnStatusView(APIView):
     """查询试穿状态"""
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def _get_user_friendly_error(error_message: str) -> str:
+        """
+        将技术性错误转换为用户友好的错误信息
+        
+        Args:
+            error_message: 原始错误信息
+            
+        Returns:
+            用户友好的错误信息
+        """
+        if not error_message:
+            return '处理失败，请稍后重试'
+        
+        # 错误信息映射表
+        error_mappings = {
+            # URL 相关错误
+            'localhost': '图片地址无效，请重新上传图片',
+            '本地地址': '图片地址无效，请重新上传图片',
+            '内网地址': '图片地址无效，请重新上传图片',
+            '公网可访问': '图片地址无效，请重新上传图片',
+            'HTTP(S) 协议': '图片地址格式错误，请重新上传',
+            
+            # 任务相关错误
+            '无效的任务 ID': '任务处理失败，请重试',
+            '任务不存在': '任务已过期或不存在',
+            
+            # 配置相关错误
+            '配置不完整': '服务暂时不可用，请稍后重试',
+            '已熔断': '服务繁忙，请稍后重试',
+            
+            # API 相关错误
+            'API 未返回结果': 'AI 服务响应异常，请重试',
+            '生成试穿图像失败': 'AI 生成失败，请重试',
+            
+            # 通用错误
+            '下载失败': '图片下载失败，请重试',
+            '存储': '图片存储失败，请重试',
+        }
+        
+        # 检查是否包含关键技术关键词
+        error_lower = error_message.lower()
+        for keyword, friendly_msg in error_mappings.items():
+            if keyword.lower() in error_lower:
+                return friendly_msg
+        
+        # 如果错误信息包含技术细节（如 URL、路径等），返回通用错误
+        if 'http://' in error_message or 'https://' in error_message:
+            return '图片处理失败，请重新上传'
+        if '/' in error_message and '.' in error_message:
+            return '处理失败，请稍后重试'
+        
+        # 返回原错误信息（如果已经是用户友好的）
+        return error_message
+
     def get(self, request, uuid):
         try:
             record = TryOnRecord.objects.get(uuid=uuid, merchant_id=request.user.id)
@@ -261,14 +388,27 @@ class TryOnStatusView(APIView):
 
         # 如果已完成或失败，直接返回
         if record.status in [TryOnRecord.Status.COMPLETED, TryOnRecord.Status.FAILED]:
+            print(f"[TryOnStatus] 已完成记录: result_url={record.result_url}")
             return ApiResponse.success({
                 'record_uuid': record.uuid,
                 'status': record.status,
                 'progress': 100 if record.status == TryOnRecord.Status.COMPLETED else 0,
                 'result_url': get_full_url(record.result_url),
                 'result_thumb_url': get_full_url(record.result_thumb_url),
-                'error_message': record.error_message,
+                'error_message': self._get_user_friendly_error(record.error_message),
                 'processing_time': float(record.processing_time) if record.processing_time else None
+            })
+
+        # 如果 task_id 为空，说明任务提交时就失败了，直接返回失败状态
+        if not record.task_id:
+            return ApiResponse.success({
+                'record_uuid': record.uuid,
+                'status': TryOnRecord.Status.FAILED,
+                'progress': 0,
+                'result_url': None,
+                'result_thumb_url': None,
+                'error_message': self._get_user_friendly_error(record.error_message),
+                'processing_time': None
             })
 
         # 使用 TryOnService 查询状态
@@ -278,6 +418,7 @@ class TryOnStatusView(APIView):
         # 更新记录状态
         if result['status'] == 'completed':
             record.status = TryOnRecord.Status.COMPLETED
+            print(f"[TryOnStatus] 更新 result_url: {result.get('result_url')}")
             record.result_url = result['result_url']
             record.processing_time = result.get('processing_time')
 
@@ -292,7 +433,9 @@ class TryOnStatusView(APIView):
 
         elif result['status'] == 'failed':
             record.status = TryOnRecord.Status.FAILED
-            record.error_message = result.get('error_message', '处理失败')
+            # 只有当数据库中没有错误信息时，才使用引擎返回的错误信息
+            if not record.error_message:
+                record.error_message = result.get('error_message', '处理失败')
 
         record.save()
 
@@ -302,7 +445,7 @@ class TryOnStatusView(APIView):
             'progress': result.get('progress', 0),
             'result_url': get_full_url(record.result_url) if record.status == TryOnRecord.Status.COMPLETED else None,
             'result_thumb_url': get_full_url(record.result_thumb_url) if record.status == TryOnRecord.Status.COMPLETED else None,
-            'error_message': record.error_message,
+            'error_message': self._get_user_friendly_error(record.error_message),
             'processing_time': float(record.processing_time) if record.processing_time else None
         })
 

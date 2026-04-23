@@ -33,7 +33,6 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.wardrobe',
     'apps.tryon',
-    'apps.media',
     'apps.common',
 ]
 

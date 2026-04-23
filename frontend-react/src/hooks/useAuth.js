@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+
 import { api, TokenManager } from '../utils/request'
 import { API_ENDPOINTS } from '../config/api'
 
@@ -26,7 +27,7 @@ export function useAuth() {
           })
         }
       } catch (error) {
-        console.error('Auth check failed:', error)
+        // 静默处理错误
       } finally {
         setLoading(false)
       }
@@ -70,8 +71,8 @@ export function useAuth() {
   }, [])
 
   // 更新配额
-  const updateQuota = useCallback((used) => {
-    setQuota((prev) => ({
+  const updateQuota = useCallback(used => {
+    setQuota(prev => ({
       ...prev,
       used,
       remaining: prev.total - used,

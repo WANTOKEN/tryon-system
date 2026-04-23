@@ -1,9 +1,16 @@
+# AI 虚拟试衣系统 - 基础服务 (MySQL + Redis)
+# 独立运行，不依赖项目配置
+# 使用方式: docker-compose up -d
+
 version: '3.8'
 
 services:
+  # ===========================================
+  # MySQL 8.0 数据库
+  # ===========================================
   mysql:
     image: mysql:8.0
-    container_name: tryon-mysql-dev
+    container_name: tryon-mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: Root@AiTryon2026
@@ -12,32 +19,33 @@ services:
     ports:
       - "3308:3306"
     volumes:
-      - mysql_dev_data:/var/lib/mysql
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - mysql_data:/var/lib/mysql
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
-      - --bind-address=0.0.0.0
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pRoot@AiTryOn2026"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pRoot@AiTryon2026"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
     networks:
-      - tryon-dev-network
+      - tryon-network
 
+  # ===========================================
+  # Redis 7 缓存服务
+  # ===========================================
   redis:
     image: redis:7-alpine
-    container_name: tryon-redis-dev
+    container_name: tryon-redis
     restart: always
     environment:
       TZ: Asia/Shanghai
     ports:
       - "6379:6379"
     volumes:
-      - redis_dev_data:/data
+      - redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -45,12 +53,20 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tryon-dev-network
+      - tryon-network
 
+# ===========================================
+# 数据卷
+# ===========================================
 volumes:
-  mysql_dev_data:
-  redis_dev_data:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
 
+# ===========================================
+# 网络
+# ===========================================
 networks:
-  tryon-dev-network:
+  tryon-network:
     driver: bridge

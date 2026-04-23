@@ -1,28 +1,26 @@
 /**
  * HTTP 请求封装
  */
+import { STORAGE_KEYS } from '../constants/storageKeys'
 
 // Token 管理
 export const TokenManager = {
-  ACCESS_KEY: 'tryon_access_token',
-  REFRESH_KEY: 'tryon_refresh_token',
-
   setTokens(access, refresh) {
-    localStorage.setItem(this.ACCESS_KEY, access)
-    localStorage.setItem(this.REFRESH_KEY, refresh)
+    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, access)
+    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refresh)
   },
 
   getAccessToken() {
-    return localStorage.getItem(this.ACCESS_KEY)
+    return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
   },
 
   getRefreshToken() {
-    return localStorage.getItem(this.REFRESH_KEY)
+    return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN)
   },
 
   clearTokens() {
-    localStorage.removeItem(this.ACCESS_KEY)
-    localStorage.removeItem(this.REFRESH_KEY)
+    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN)
+    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
   },
 
   isAuthenticated() {
@@ -64,26 +62,137 @@ export function isEncryptionEnabled() {
 const ENCRYPTION_KEY = 'TryOn@2024!Secret'
 
 export function encryptData(data) {
-  if (!dataEncryptionEnabled) return data
+  if (!dataEncryptionEnabled) {
+    return data
+  }
   const jsonStr = JSON.stringify(data)
   let encrypted = ''
-  for (let i = 0; i < jsonStr.length; i++) {
-    encrypted += String.fromCharCode(jsonStr.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length))
+  for (let i = 0; i < jsonStr.length; i += 1) {
+    // eslint-disable-next-line no-bitwise
+    encrypted += String.fromCharCode(
+      // eslint-disable-next-line no-bitwise
+      jsonStr.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length)
+    )
   }
   return btoa(encrypted)
 }
 
 export function decryptData(encrypted) {
-  if (!dataEncryptionEnabled) return encrypted
+  if (!dataEncryptionEnabled) {
+    return encrypted
+  }
   try {
     const decoded = atob(encrypted)
     let decrypted = ''
-    for (let i = 0; i < decoded.length; i++) {
-      decrypted += String.fromCharCode(decoded.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length))
+    for (let i = 0; i < decoded.length; i += 1) {
+      // eslint-disable-next-line no-bitwise
+      decrypted += String.fromCharCode(
+        // eslint-disable-next-line no-bitwise
+        decoded.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length)
+      )
     }
     return JSON.parse(decrypted)
   } catch {
     return encrypted
+  }
+}
+
+// 从 Django ErrorDetail 字符串中提取错误信息
+// 格式: "ErrorDetail(string='验证码错误', code='invalid')"
+function parseErrorDetail(str) {
+  if (typeof str !== 'string') {
+    return str
+  }
+  const match = str.match(/string='([^']+)'/)
+  return match ? match[1] : str
+}
+
+// 提取错误信息
+function extractError(data) {
+  if (!data) {
+    return '请求失败'
+  }
+
+  // 直接的错误字符串
+  if (typeof data === 'string') {
+    return parseErrorDetail(data)
+  }
+
+  // 后端统一响应格式: { code, message, error_code, data }
+  // 优先使用 message 字段
+  if (data.message) {
+    return parseErrorDetail(data.message)
+  }
+
+  // 兼容其他格式
+  if (data.error) {
+    if (typeof data.error === 'string') {
+      return parseErrorDetail(data.error)
+    }
+    if (data.error.message) {
+      return parseErrorDetail(data.error.message)
+    }
+  }
+
+  if (data.detail) {
+    return parseErrorDetail(data.detail)
+  }
+
+  // 处理 non_field_errors 数组
+  if (
+    data.non_field_errors &&
+    Array.isArray(data.non_field_errors) &&
+    data.non_field_errors.length > 0
+  ) {
+    return parseErrorDetail(data.non_field_errors[0])
+  }
+
+  // 处理其他字段错误（如 {'phone': ['该手机号不存在']}）
+  const fieldErrors = Object.entries(data)
+    .filter(([key]) => !['success', 'error_code', 'code', 'data', 'message'].includes(key))
+    .filter(([, value]) => Array.isArray(value) && value.length > 0)
+    .map(([, errors]) => parseErrorDetail(errors[0]))
+
+  if (fieldErrors.length > 0) {
+    return fieldErrors[0]
+  }
+
+  return '请求失败'
+}
+
+function handleResponse(response, data) {
+  if (response.ok) {
+    return { success: true, data }
+  }
+  return {
+    success: false,
+    error: extractError(data),
+    status: response.status,
+  }
+}
+
+// 刷新 Token（定义在 request 之前）
+async function refreshToken() {
+  const refresh = TokenManager.getRefreshToken()
+  if (!refresh) {
+    return false
+  }
+
+  try {
+    const response = await fetch('/api/v1/auth/refresh/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      TokenManager.setTokens(data.access, refresh)
+      return true
+    }
+    return false
+  } catch {
+    return false
   }
 }
 
@@ -133,8 +242,6 @@ async function request(url, options = {}) {
         data = decryptData(data.encrypted)
       }
     } else {
-      const text = await response.text().catch(() => '')
-      console.warn(`[API] Non-JSON response from ${url} (${response.status}):`, text.slice(0, 200))
       data = { detail: `服务器返回非预期格式 (HTTP ${response.status})` }
     }
 
@@ -155,103 +262,22 @@ async function request(url, options = {}) {
           retryData = { detail: `服务器返回非预期格式 (HTTP ${retryResponse.status})` }
         }
         return handleResponse(retryResponse, retryData)
-      } else {
-        TokenManager.clearTokens()
-        localStorage.removeItem('tryon_user_info')
-        window.dispatchEvent(new Event('auth:logout'))
       }
+      TokenManager.clearTokens()
+      localStorage.removeItem(STORAGE_KEYS.USER_INFO)
+      window.dispatchEvent(new Event('auth:logout'))
     }
 
     return handleResponse(response, data)
   } catch (error) {
-    console.error('Request error:', error)
     return { success: false, error: error.message || '网络请求失败' }
-  }
-}
-
-// 从 Django ErrorDetail 字符串中提取错误信息
-// 格式: "ErrorDetail(string='验证码错误', code='invalid')"
-function parseErrorDetail(str) {
-  if (typeof str !== 'string') return str
-  const match = str.match(/string='([^']+)'/)
-  return match ? match[1] : str
-}
-
-// 提取错误信息
-function extractError(data) {
-  if (!data) return '请求失败'
-  
-  // 直接的错误字符串
-  if (typeof data === 'string') return parseErrorDetail(data)
-  
-  // 后端统一响应格式: { code, message, error_code, data }
-  // 优先使用 message 字段
-  if (data.message) return parseErrorDetail(data.message)
-
-  // 兼容其他格式
-  if (data.error) {
-    if (typeof data.error === 'string') return parseErrorDetail(data.error)
-    if (data.error.message) return parseErrorDetail(data.error.message)
-  }
-
-  if (data.detail) return parseErrorDetail(data.detail)
-
-  // 处理 non_field_errors 数组
-  if (data.non_field_errors && Array.isArray(data.non_field_errors) && data.non_field_errors.length > 0) {
-    return parseErrorDetail(data.non_field_errors[0])
-  }
-
-  // 处理其他字段错误（如 {'phone': ['该手机号不存在']}）
-  const fieldErrors = Object.entries(data)
-    .filter(([key]) => !['success', 'error_code', 'code', 'data', 'message'].includes(key))
-    .filter(([, value]) => Array.isArray(value) && value.length > 0)
-    .map(([, errors]) => parseErrorDetail(errors[0]))
-  
-  if (fieldErrors.length > 0) return fieldErrors[0]
-  
-  return '请求失败'
-}
-
-function handleResponse(response, data) {
-  if (response.ok) {
-    return { success: true, data }
-  }
-  return {
-    success: false,
-    error: extractError(data),
-    status: response.status,
-  }
-}
-
-// 刷新 Token
-async function refreshToken() {
-  const refresh = TokenManager.getRefreshToken()
-  if (!refresh) return false
-
-  try {
-    const response = await fetch('/api/v1/auth/refresh/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh }),
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      TokenManager.setTokens(data.access, refresh)
-      return true
-    }
-    return false
-  } catch {
-    return false
   }
 }
 
 // 便捷方法
 export const api = {
   get: (url, params) => {
-    const queryString = params
-      ? '?' + new URLSearchParams(params).toString()
-      : ''
+    const queryString = params ? `?${new URLSearchParams(params).toString()}` : ''
     return request(url + queryString)
   },
 
@@ -269,8 +295,12 @@ export const api = {
 
 // 获取完整的媒体文件 URL
 export function getMediaUrl(path) {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  if (!path) {
+    return ''
+  }
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
   const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
-  return baseUrl + path
+  return `${baseUrl}${path}`
 }

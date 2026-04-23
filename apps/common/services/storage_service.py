@@ -10,6 +10,13 @@
 - OSS_BUCKET_NAME: OSS Bucket 名称
 - OSS_ENDPOINT: OSS 端点
 - OSS_DOMAIN: 自定义域名 (可选)
+
+返回值说明:
+    upload_file() 返回 (storage_key, url, is_duplicate, content_key)
+    - storage_key: 存储路径，如 "wardrobe/a1b2c3d4.jpg"
+    - url: 访问 URL
+    - is_duplicate: 是否重复
+    - content_key: 内容 Key，如 "local:a1b2c3d4..." 或 "oss:a1b2c3d4..."
 """
 import os
 import hashlib
@@ -17,12 +24,15 @@ import logging
 from typing import Optional, Tuple, BinaryIO, Dict, Any
 from io import BytesIO
 
-from apps.common.services.upload_config import (
-    ALLOWED_IMAGE_TYPES,
-    MAX_FILE_SIZE,
-    ALLOWED_EXTENSIONS,
-    UploadValidationError
+from apps.common.constants import (
+    StorageType,
+    StorageFolder,
+    FileType,
+    FileSizeLimit,
+    ErrorMessage,
 )
+from apps.common.services.upload_config import UploadValidationError
+from apps.common.utils.content_key import ContentKey
 
 logger = logging.getLogger('storage')
 
@@ -73,26 +83,27 @@ class LocalStorageService:
         """
         # 1. 验证文件大小
         file_size = len(content)
-        if file_size > MAX_FILE_SIZE:
+        if file_size > FileSizeLimit.MAX_FILE_SIZE:
             raise UploadValidationError(
-                f'文件大小超出限制（最大 {MAX_FILE_SIZE // 1024 // 1024}MB，当前 {file_size // 1024 // 1024}MB）'
+                f'{ErrorMessage.FILE_TOO_LARGE}（最大 {FileSizeLimit.MAX_FILE_SIZE // 1024 // 1024}MB，当前 {file_size // 1024 // 1024}MB）'
             )
         
         if file_size == 0:
-            raise UploadValidationError('文件内容为空')
+            raise UploadValidationError(ErrorMessage.FILE_EMPTY)
         
         # 2. 验证文件类型
         ext = ''
         
         # 优先从 content_type 获取扩展名
-        if content_type in ALLOWED_IMAGE_TYPES:
-            ext = ALLOWED_IMAGE_TYPES[content_type]
+        if FileType.is_supported(content_type):
+            ext = FileType.get_extension(content_type)
         else:
             # 从文件名获取扩展名
             ext = self._get_ext_from_filename(filename)
-            if ext not in ALLOWED_EXTENSIONS:
+            from apps.common.constants import FileExtension
+            if not FileExtension.is_supported(ext):
                 raise UploadValidationError(
-                    f'不支持的文件类型，仅支持图片格式：{", ".join(ALLOWED_EXTENSIONS)}'
+                    f'{ErrorMessage.FILE_TYPE_NOT_SUPPORTED}，仅支持：{", ".join(FileExtension.ALL)}'
                 )
         
         return ext
@@ -237,7 +248,8 @@ class LocalStorageService:
         if skip_duplicate and tenant_id:
             cached = self._check_duplicate(md5, tenant_id)
             if cached:
-                return cached[0], cached[1], True  # is_duplicate=True
+                content_key = ContentKey.from_md5(md5, 'local')
+                return cached[0], cached[1], True, content_key
 
         # 生成存储路径
         relative_path = self._generate_filename(folder, md5, ext)
@@ -272,7 +284,8 @@ class LocalStorageService:
             )
 
         logger.info(f"[LocalStorage] 文件已保存: {relative_path}, MD5={md5}")
-        return relative_path, url, False
+        content_key = ContentKey.from_md5(md5, 'local')
+        return relative_path, url, False, content_key
 
     def upload_from_base64(
         self,
@@ -319,7 +332,8 @@ class LocalStorageService:
         content = base64.b64decode(base64_data)
 
         # 验证上传文件（类型、大小）
-        ext = self._validate_upload(content, 'image' + ALLOWED_IMAGE_TYPES.get(content_type, '.png'), content_type)
+        default_ext = FileType.get_extension(content_type)
+        ext = self._validate_upload(content, 'image' + default_ext, content_type)
 
         # 计算 MD5
         md5 = calculate_md5(content)
@@ -328,7 +342,8 @@ class LocalStorageService:
         if skip_duplicate and tenant_id:
             cached = self._check_duplicate(md5, tenant_id)
             if cached:
-                return cached[0], cached[1], True  # is_duplicate=True
+                content_key = ContentKey.from_md5(md5, 'local')
+                return cached[0], cached[1], True, content_key
 
         # 生成存储路径
         relative_path = self._generate_filename(folder, md5, ext)
@@ -363,7 +378,8 @@ class LocalStorageService:
             )
 
         logger.info(f"[LocalStorage] Base64 文件已保存: {relative_path}, MD5={md5}")
-        return relative_path, url, False
+        content_key = ContentKey.from_md5(md5, 'local')
+        return relative_path, url, False, content_key
     
     def get_url(self, relative_path: str) -> str:
         """获取文件 URL"""
@@ -374,7 +390,7 @@ class LocalStorageService:
         return self.get_url(relative_path)
     
     def get_signed_url_from_url(self, url: str, expires: int = 3600) -> str:
-        """本地存储返回完整 URL"""
+        """本地存储返回完整 URL（供 AI 引擎访问）"""
         if not url:
             return url
         
@@ -383,7 +399,8 @@ class LocalStorageService:
             return url
         
         # 相对路径，拼接完整 URL
-        base_url = os.getenv('BASE_URL', 'http://127.0.0.1:8000')
+        # 使用 BACKEND_URL 配置（与 get_full_url 保持一致）
+        base_url = os.getenv('BACKEND_URL', 'http://localhost:8888')
         return f"{base_url.rstrip('/')}{url}"
 
 

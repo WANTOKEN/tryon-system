@@ -181,14 +181,21 @@ export const subcategoryMap = {
   ],
 }
 
-// 分类图标 SVG path
+// 分类图标 SVG path - 服装专用图标
 export const categoryIcons = {
-  tops: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>',
-  bottoms: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2L8 6h8l-4-4zM8 6v12a2 2 0 002 2h4a2 2 0 002-2V6"/>',
-  dresses: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a3 3 0 100 6 3 3 0 000-6zM9 9l-2 13h10l-2-13"/>',
-  outerwear: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4h4v16H4V4zm12 0h4v16h-4V4zM8 8h8m-8 4h8m-8 4h8"/>',
-  shoes: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 15c0-2 1-3 3-3h10c2 0 3 1 3 3v2a1 1 0 01-1 1H5a1 1 0 01-1-1v-2z"/>',
-  accessories: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>',
+  // 上衣 - T恤图标
+  tops: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l4-2h8l4 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M8 4v4m8-4v4M8 8c0 2 2 4 4 4s4-2 4-4"/>',
+  // 下装 - 裤子图标
+  bottoms: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 4h12v2H6V4zM6 6v14a2 2 0 002 2h2V10m4 12h2a2 2 0 002-2V6M10 22V10m0 0h4"/>',
+  // 连衣裙 - 裙子图标
+  dresses: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a3 3 0 100 6 3 3 0 000-6zM8 8l-3 14h14l-3-14H8z"/>',
+  // 外套 - 开衫/夹克图标
+  outerwear: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l3-2h10l3 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M7 4v6m10-6v6M4 6l3 3m13-3l-3 3M12 9v11"/>',
+  // 鞋子 - 简洁鞋型
+  shoes: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16c0-1 0-2 2-2h14c2 0 2 1 2 2v1a1 1 0 01-1 1H4a1 1 0 01-1-1v-1zM5 14l3-6h8l3 6"/>',
+  // 配饰 - 配饰图标（包/帽子）
+  accessories: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2zM8 8V6a4 4 0 018 0v2"/>',
+  // 自定义上传
   custom_upload: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
 }
 
@@ -205,7 +212,9 @@ export const categories = [
 // 获取某分类下的所有服装数量
 export function getCategoryCount(category) {
   const subs = clothingData[category]
-  if (!subs) return 0
+  if (!subs) {
+    return 0
+  }
   return Object.values(subs).reduce((sum, items) => sum + items.length, 0)
 }
 
