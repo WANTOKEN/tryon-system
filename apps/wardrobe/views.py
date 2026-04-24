@@ -155,14 +155,17 @@ class ClothingUploadView(APIView):
         ext = os.path.splitext(image.name)[1]
         filename = f"clothing{ext}"
 
-        # 上传到 OSS (自动 MD5 去重)
+        # 上传到 OSS (自动 MD5 去重，自动记录到 FileUploadRecord)
         oss_key, image_url, is_duplicate, file_md5 = oss_service.upload_file(
-            file=image,
+            file_obj=image,
             filename=filename,
             folder='clothing',
-            user_id=str(request.user.uuid),
+            tenant_id=str(request.user.uuid),
             content_type=image.content_type or 'image/jpeg',
-            skip_duplicate=True
+            file_category='clothing',
+            skip_duplicate=True,
+            ref_type='Clothing',
+            source='merchant_upload'
         )
         image_thumb_url = image_url  # TODO: 生成缩略图
         file_hash = file_md5  # 使用 MD5 作为唯一标识（相同内容 = 相同 MD5）

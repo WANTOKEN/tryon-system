@@ -28,20 +28,26 @@ class TryOnClothingSerializer(serializers.ModelSerializer):
 
 class TryOnRecordSerializer(serializers.ModelSerializer):
     """试穿记录序列化器"""
-    clothing = TryOnClothingSerializer(source='clothing_items', many=True, read_only=True)
+    clothing = serializers.SerializerMethodField()  # 手动查询关联服装
     avatar_url = serializers.SerializerMethodField()
     avatar_key = serializers.CharField(read_only=True)  # 返回 key 供前端复用
     result_url = serializers.SerializerMethodField()
     result_key = serializers.CharField(read_only=True)  # 返回 key 供前端复用
     result_thumb_url = serializers.SerializerMethodField()
+    status_text = serializers.CharField(source='get_status_display', read_only=True)
 
     class Meta:
         model = TryOnRecord
         fields = [
-            'uuid', 'session_id', 'avatar_url', 'avatar_key', 'result_url', 'result_key', 'result_thumb_url',
-            'status', 'ai_engine', 'is_saved', 'clothing',
-            'processing_time', 'created_at'
+            'id', 'uuid', 'merchant_id', 'session_id', 'avatar_url', 'avatar_key', 'result_url', 'result_key', 'result_thumb_url',
+            'status', 'status_text', 'ai_engine', 'is_saved', 'clothing',
+            'processing_time', 'error_message', 'ip_address', 'device_info', 'created_at'
         ]
+
+    def get_clothing(self, obj):
+        """手动查询关联的服装数据"""
+        clothing_items = TryOnClothing.objects.filter(record_id=obj.id)
+        return TryOnClothingSerializer(clothing_items, many=True).data
 
     def get_avatar_url(self, obj):
         return get_full_url(obj.avatar_url)

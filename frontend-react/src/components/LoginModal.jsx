@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useI18n } from '../hooks/useI18n'
 
 export default function LoginModal({
   isOpen,
@@ -8,6 +9,7 @@ export default function LoginModal({
   onSendSms,
   loading = false,
 }) {
+  const { t } = useI18n()
   const [tab, setTab] = useState('password') // 'password' | 'sms'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -81,7 +83,7 @@ export default function LoginModal({
         }}
         role='button'
         tabIndex={-1}
-        aria-label='关闭对话框'
+        aria-label={t('loginClose')}
       />
       <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-white shadow-2xl'>
         {/* Header */}
@@ -101,8 +103,8 @@ export default function LoginModal({
               />
             </svg>
           </div>
-          <h2 className='text-lg font-semibold text-white'>商家登录</h2>
-          <p className='mt-1 text-xs text-gray-400'>登录后即可使用 AI 试穿功能</p>
+          <h2 className='text-lg font-semibold text-white'>{t('loginTitle')}</h2>
+          <p className='mt-1 text-xs text-gray-400'>{t('loginSubtitle')}</p>
         </div>
 
         {/* Tab 切换 */}
@@ -117,7 +119,7 @@ export default function LoginModal({
               }`}
               onClick={() => setTab('password')}
             >
-              账号密码
+              {t('loginTabPassword')}
             </button>
             <button
               type='button'
@@ -128,7 +130,7 @@ export default function LoginModal({
               }`}
               onClick={() => setTab('sms')}
             >
-              手机验证码
+              {t('loginTabSms')}
             </button>
           </div>
 
@@ -140,7 +142,7 @@ export default function LoginModal({
                   htmlFor='login-username'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  账号
+                  {t('loginUsernameLabel')}
                 </label>
                 <input
                   id='login-username'
@@ -148,7 +150,7 @@ export default function LoginModal({
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder='用户名/手机号'
+                  placeholder={t('loginUsernamePlaceholder')}
                 />
               </div>
               <div>
@@ -156,7 +158,7 @@ export default function LoginModal({
                   htmlFor='login-password'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  密码
+                  {t('loginPasswordLabel')}
                 </label>
                 <input
                   id='login-password'
@@ -164,7 +166,7 @@ export default function LoginModal({
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder='输入密码'
+                  placeholder={t('loginPasswordPlaceholder')}
                 />
               </div>
               <button
@@ -189,10 +191,10 @@ export default function LoginModal({
                         d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
                       />
                     </svg>
-                    登录中...
+                    {t('loginLoading')}
                   </>
                 ) : (
-                  '登录'
+                  t('loginBtn')
                 )}
               </button>
             </form>
@@ -206,7 +208,7 @@ export default function LoginModal({
                   htmlFor='login-phone'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  手机号
+                  {t('loginPhoneLabel')}
                 </label>
                 <input
                   id='login-phone'
@@ -214,7 +216,7 @@ export default function LoginModal({
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder='输入手机号'
+                  placeholder={t('loginPhonePlaceholder')}
                 />
               </div>
               <div>
@@ -222,7 +224,7 @@ export default function LoginModal({
                   htmlFor='login-sms-code'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  验证码
+                  {t('loginSmsLabel')}
                 </label>
                 <div className='flex gap-2'>
                   <input
@@ -232,7 +234,7 @@ export default function LoginModal({
                     onChange={e => setSmsCode(e.target.value)}
                     maxLength={6}
                     className='flex-1 rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                    placeholder='输入验证码'
+                    placeholder={t('loginSmsPlaceholder')}
                   />
                   <button
                     type='button'
@@ -240,7 +242,7 @@ export default function LoginModal({
                     disabled={countdown > 0 || !phone.trim()}
                     className='whitespace-nowrap rounded-xl border border-champagne/30 px-4 py-2.5 text-sm font-medium text-champagne transition-colors hover:bg-champagne/5 disabled:cursor-not-allowed disabled:opacity-50'
                   >
-                    {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                    {countdown > 0 ? t('loginSendSmsCountdown', { n: countdown }) : t('loginSendSms')}
                   </button>
                 </div>
               </div>
@@ -266,10 +268,10 @@ export default function LoginModal({
                         d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
                       />
                     </svg>
-                    登录中...
+                    {t('loginLoading')}
                   </>
                 ) : (
-                  '登录'
+                  t('loginBtn')
                 )}
               </button>
             </form>
@@ -281,7 +283,7 @@ export default function LoginModal({
             onClick={onClose}
             className='mt-3 w-full py-2 text-sm text-grayMuted transition-colors hover:text-charcoal'
           >
-            取消
+            {t('loginCancel')}
           </button>
         </div>
       </div>

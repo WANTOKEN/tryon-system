@@ -626,6 +626,101 @@ class StorageService:
             from django.conf import settings
             base_url = os.getenv('BASE_URL', 'http://127.0.0.1:8000')
             return f"{base_url.rstrip('/')}{record.access_url}"
+    
+    def delete_file(self, storage_key: str, storage_type: str = None) -> bool:
+        """
+        删除文件（根据存储类型调用对应的后端）
+        
+        Args:
+            storage_key: 存储路径
+            storage_type: 存储类型，默认使用当前配置的类型
+            
+        Returns:
+            是否成功
+        """
+        if not storage_type:
+            storage_type = self._storage_type
+        
+        if storage_type == 'oss':
+            from apps.common.services.oss_service import oss_service
+            return oss_service.delete_file(storage_key)
+        else:
+            # 本地存储删除
+            try:
+                filepath = os.path.join(self.media_root, storage_key)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    logger.info(f"[LocalStorage] 文件删除成功: {storage_key}")
+                    return True
+                else:
+                    logger.warning(f"[LocalStorage] 文件不存在: {storage_key}")
+                    return False
+            except Exception as e:
+                logger.error(f"[LocalStorage] 删除失败: {storage_key}, error={e}")
+                return False
+    
+    def delete_files(self, files: list) -> dict:
+        """
+        批量删除文件（根据存储类型分组处理）
+        
+        Args:
+            files: 文件列表，每个元素为 {'storage_key': str, 'storage_type': str}
+            
+        Returns:
+            {'deleted': int, 'failed': int, 'details': list}
+        """
+        if not files:
+            return {'deleted': 0, 'failed': 0, 'details': []}
+        
+        # 按存储类型分组
+        local_files = [f for f in files if f.get('storage_type', 'local') == 'local']
+        oss_files = [f for f in files if f.get('storage_type') == 'oss']
+        
+        deleted = 0
+        failed = 0
+        details = []
+        
+        # 删除本地文件
+        for f in local_files:
+            storage_key = f['storage_key']
+            if self._delete_local_file(storage_key):
+                deleted += 1
+                details.append({'key': storage_key, 'type': 'local', 'success': True})
+            else:
+                failed += 1
+                details.append({'key': storage_key, 'type': 'local', 'success': False})
+        
+        # 批量删除 OSS 文件
+        if oss_files:
+            from apps.common.services.oss_service import oss_service
+            oss_keys = [f['storage_key'] for f in oss_files]
+            result = oss_service.delete_files(oss_keys)
+            deleted += result['deleted']
+            failed += result['failed']
+            
+            # 记录详情
+            for i, f in enumerate(oss_files):
+                # 简化：假设前 result['deleted'] 个成功
+                success = i < result['deleted']
+                details.append({'key': f['storage_key'], 'type': 'oss', 'success': success})
+        
+        logger.info(f"[Storage] 批量删除完成: deleted={deleted}, failed={failed}")
+        return {'deleted': deleted, 'failed': failed, 'details': details}
+    
+    def _delete_local_file(self, storage_key: str) -> bool:
+        """删除本地文件"""
+        try:
+            filepath = os.path.join(self.media_root, storage_key)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                logger.info(f"[LocalStorage] 文件删除成功: {storage_key}")
+                return True
+            else:
+                logger.warning(f"[LocalStorage] 文件不存在: {storage_key}")
+                return True  # 文件不存在也算成功
+        except Exception as e:
+            logger.error(f"[LocalStorage] 删除失败: {storage_key}, error={e}")
+            return False
 
 
 # 全局单例

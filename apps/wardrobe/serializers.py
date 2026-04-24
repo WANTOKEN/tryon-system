@@ -53,10 +53,17 @@ class ClothingSerializer(serializers.ModelSerializer):
 
 
 class ClothingDetailSerializer(ClothingSerializer):
-    """服装详情序列化器"""
+    """服装详情序列化器 - 用于 Admin 管理"""
+    id = serializers.IntegerField(read_only=True)
+    category_text = serializers.CharField(source='get_category_display', read_only=True)
+    source_text = serializers.CharField(source='get_source_display', read_only=True)
 
     class Meta(ClothingSerializer.Meta):
-        fields = ClothingSerializer.Meta.fields + ['is_active', 'created_at']
+        fields = [
+            'id', 'uuid', 'merchant_id', 'category', 'category_text', 'subcategory',
+            'name', 'color', 'image_url', 'image_thumb_url', 'image_key',
+            'sort_order', 'is_active', 'source', 'source_text', 'created_at', 'updated_at'
+        ]
 
 
 class ClothingUploadSerializer(serializers.Serializer):

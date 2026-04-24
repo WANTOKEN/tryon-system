@@ -14,13 +14,14 @@ class MerchantSerializer(serializers.ModelSerializer):
     phone = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     quota_remaining = serializers.IntegerField(read_only=True)
+    status_text = serializers.CharField(source='get_status_display', read_only=True)
 
     class Meta:
         model = Merchant
         fields = [
             'id', 'uuid', 'username', 'phone', 'store_name', 'store_address',
-            'avatar_url', 'quota_total', 'quota_used', 'quota_remaining',
-            'status', 'last_login_at', 'created_at'
+            'avatar_url', 'quota_total', 'quota_used', 'quota_remaining', 'quota_reset_at',
+            'status', 'status_text', 'last_login_at', 'last_login_ip', 'is_active', 'created_at'
         ]
 
     def get_phone(self, obj):

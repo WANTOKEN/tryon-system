@@ -1,3 +1,5 @@
+import CachedImage from './CachedImage'
+
 export default function ClothingGrid({ clothing, selected, onToggleSelect }) {
   if (clothing.length === 0) {
     return (
@@ -35,11 +37,11 @@ export default function ClothingGrid({ clothing, selected, onToggleSelect }) {
             {/* Image */}
             <div className='aspect-square bg-grayLight/50 dark:bg-gray-700/50'>
               {item.image || item.image_url ? (
-                <img
+                <CachedImage
                   src={item.image || item.image_url}
                   alt={item.name}
                   className='h-full w-full object-cover'
-                  loading='lazy'
+                  lazy
                 />
               ) : (
                 <div className='flex h-full w-full items-center justify-center text-grayMuted'>

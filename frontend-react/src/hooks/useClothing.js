@@ -26,9 +26,15 @@ export function useClothing() {
       }
 
       const response = await api.get(API_ENDPOINTS.WARDROBE.CLOTHING, params)
-      if (response.success && response.data?.results) {
+      // 支持多种响应格式:
+      // 1. { results: [...] } - DRF 标准格式
+      // 2. { items: [...] } - 自定义格式
+      // 3. { data: { items: [...] } } - 嵌套格式（后端返回 { success, data: { items } }）
+      const results =
+        response.data?.results || response.data?.items || response.data?.data?.items || []
+      if (response.success) {
         // 转换数据格式供前端使用
-        const items = response.data.results.map(item => ({
+        const items = results.map(item => ({
           id: item.uuid,
           uuid: item.uuid,
           name: item.name,

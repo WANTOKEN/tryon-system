@@ -289,6 +289,8 @@ def _migrate_local_url_to_oss(url: str) -> Optional[str]:
             filename=filename,
             folder=os.path.dirname(storage_key) or 'migrated',
             content_type=content_type,
+            file_category='other',
+            source='migration'
         )
         
         if oss_url:

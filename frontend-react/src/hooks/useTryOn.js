@@ -51,7 +51,7 @@ export function useTryOn(onComplete, onError, sessionId) {
         }))
         setHistory(processedResults)
       }
-    } catch (error) {
+    } catch {
       setHistory([]) // 错误时设置空数组
     } finally {
       setLoading(false)
@@ -99,7 +99,7 @@ export function useTryOn(onComplete, onError, sessionId) {
               setTimeout(poll, 2000)
             }
           }
-        } catch (error) {
+        } catch {
           // 继续轮询
           setTimeout(poll, 3000)
         }
@@ -123,6 +123,9 @@ export function useTryOn(onComplete, onError, sessionId) {
       setProgress(0)
 
       try {
+        // 过滤掉上传中的服装
+        const validItems = clothingItems.filter(item => !item.isUploading)
+        
         // 分离数据库服装和自定义服装
         const dbClothingUuids = []
         const customClothes = [] // 需要传 Base64 的自定义服装
@@ -132,19 +135,16 @@ export function useTryOn(onComplete, onError, sessionId) {
         const customItemsToCheck = []
         const customItemsIndexMap = new Map()
 
-        console.log('[useTryOn] clothingItems:', clothingItems)
-        
-        clothingItems.forEach((item, index) => {
-          console.log(`[useTryOn] 处理服装 ${index}:`, {
-            uuid: item.uuid,
-            isCustom: item.isCustom,
-            isWardrobe: item.isWardrobe,
-            hasImage: !!(item.image || item.imageFull),
-            id: item.id,
-          })
+        validItems.forEach(item => {
+          // 优先使用云端返回的 image_key（自定义/衣橱上传后云端返回）
+          if (item.image_key) {
+            dbClothingUuids.push(`key:${item.image_key}`)
+            return
+          }
           
           // 判断是否是数据库服装（有真实 uuid，且不是临时生成的 ID）
-          const isDbClothing = item.uuid &&
+          const isDbClothing =
+            item.uuid &&
             !item.uuid.startsWith('custom_') &&
             !item.uuid.startsWith('wardrobe_') &&
             !item.isCustom
@@ -152,25 +152,16 @@ export function useTryOn(onComplete, onError, sessionId) {
           if (isDbClothing) {
             // 数据库服装：通过 uuid 复用，不传输图片数据（节省流量）
             dbClothingUuids.push(item.uuid)
-            console.log(`[useTryOn] 服装 ${index} -> 数据库服装, uuid=${item.uuid}`)
-          } else if (item.isCustom) {
-            // 自定义服装：检查是否有缓存的 image_key
+          } else if (item.isCustom || item.isWardrobe) {
+            // 自定义/衣橱服装：检查是否有缓存的 image_key
             const base64Image = item.image || item.imageFull
             if (base64Image) {
               customItemsToCheck.push(base64Image)
               customItemsIndexMap.set(customItemsToCheck.length - 1, {
                 item,
                 base64Image,
-                originalIndex: index,
               })
-              console.log(`[useTryOn] 服装 ${index} -> 自定义服装（待检查缓存）`)
-            } else {
-              console.log(`[useTryOn] 服装 ${index} -> 自定义服装但无图片数据，跳过`)
             }
-          } else if (item.isWardrobe && item.uuid) {
-            // 衣橱服装：通过 uuid 复用（后端根据 uuid 查找图片）
-            dbClothingUuids.push(item.uuid)
-            console.log(`[useTryOn] 服装 ${index} -> 衣橱服装, uuid=${item.uuid}`)
           } else if (
             item.id &&
             !String(item.id).startsWith('custom_') &&
@@ -178,7 +169,6 @@ export function useTryOn(onComplete, onError, sessionId) {
           ) {
             // 兼容只有 id 的情况
             dbClothingUuids.push(item.id)
-            console.log(`[useTryOn] 服装 ${index} -> 通过 id 复用, id=${item.id}`)
           } else if (item.image || item.imageFull) {
             // 其他情况：有图片数据，作为自定义服装处理
             const base64Image = item.image || item.imageFull
@@ -186,17 +176,8 @@ export function useTryOn(onComplete, onError, sessionId) {
             customItemsIndexMap.set(customItemsToCheck.length - 1, {
               item,
               base64Image,
-              originalIndex: index,
             })
-            console.log(`[useTryOn] 服装 ${index} -> 其他自定义服装（待检查缓存）`)
-          } else {
-            console.log(`[useTryOn] 服装 ${index} -> 无法分类，跳过`)
           }
-        })
-        
-        console.log('[useTryOn] 分类结果:', {
-          dbClothingUuids,
-          customItemsToCheck: customItemsToCheck.length,
         })
 
         // 批量检查缓存
@@ -213,7 +194,6 @@ export function useTryOn(onComplete, onError, sessionId) {
             // 注意：后端需要支持 clothing_key 参数，这里暂时用 uuid 传递
             // 实际上 image_key 是内容寻址的，可以直接作为标识符
             dbClothingUuids.push(`key:${cachedKey}`)
-            console.log('[useTryOn] 使用缓存的 image_key:', cachedKey)
           } else {
             // 无缓存：需要传 Base64
             customClothes.push({
@@ -235,7 +215,7 @@ export function useTryOn(onComplete, onError, sessionId) {
         const currentSessionId = sessionId || `session_${Date.now()}`
 
         const formData = new FormData()
-        
+
         // 头像处理：优先使用 avatar_key 复用，否则上传文件
         if (avatarKeyToReuse) {
           // 通过 key 复用已上传的头像
@@ -247,7 +227,7 @@ export function useTryOn(onComplete, onError, sessionId) {
           // 既没有文件也没有 key，报错
           throw new Error('请提供头像文件或头像 key')
         }
-        
+
         formData.append('clothing_uuids', dbClothingUuids.join(','))
         formData.append('session_id', currentSessionId)
 
@@ -267,7 +247,11 @@ export function useTryOn(onComplete, onError, sessionId) {
           }
 
           // 缓存自定义服装的 image_key（后端返回的 clothes_keys）
-          if (data.clothes_keys && data.clothes_keys.length > 0 && customClothesWithBase64.length > 0) {
+          if (
+            data.clothes_keys &&
+            data.clothes_keys.length > 0 &&
+            customClothesWithBase64.length > 0
+          ) {
             const cacheItems = []
             // clothes_keys 的顺序与 customClothes 的顺序对应
             customClothesWithBase64.forEach(({ base64Image, customIndex }) => {
@@ -277,9 +261,7 @@ export function useTryOn(onComplete, onError, sessionId) {
               }
             })
             if (cacheItems.length > 0) {
-              cacheImageKeys(cacheItems).then(() => {
-                console.log('[useTryOn] 已缓存', cacheItems.length, '个自定义服装的 image_key')
-              })
+              cacheImageKeys(cacheItems)
             }
           }
 
@@ -289,7 +271,7 @@ export function useTryOn(onComplete, onError, sessionId) {
             const estimated = data.estimated_time || 30
             setEstimatedTime(estimated)
             setRemainingTime(estimated)
-            
+
             // 启动倒计时
             const countdownInterval = setInterval(() => {
               setRemainingTime(prev => {
@@ -300,14 +282,19 @@ export function useTryOn(onComplete, onError, sessionId) {
                 return prev - 1
               })
             }, 1000)
-            
+
             pollStatus(data.record_uuid)
           } else {
             // 模拟处理过程（如果没有返回 record_uuid）
             simulateProgress()
           }
 
-          return { success: true, recordUuid: data.record_uuid, avatarKey: data.avatar_key, estimatedTime: data.estimated_time }
+          return {
+            success: true,
+            recordUuid: data.record_uuid,
+            avatarKey: data.avatar_key,
+            estimatedTime: data.estimated_time,
+          }
         }
 
         setStatus('failed')
@@ -315,7 +302,7 @@ export function useTryOn(onComplete, onError, sessionId) {
           onError(response.error || response.message)
         }
         return { success: false, error: response.error || response.message }
-      } catch (error) {
+      } catch {
         // 模拟处理过程作为后备
         simulateProgress()
 

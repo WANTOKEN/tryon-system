@@ -10,6 +10,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/', include('apps.api_root')),
+    path('api/admin/', include('apps.admin_api.urls')),  # 管理后台 API
 ]
 
 # 开发环境媒体文件服务

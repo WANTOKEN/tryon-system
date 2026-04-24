@@ -186,17 +186,23 @@ export const categoryIcons = {
   // 上衣 - T恤图标
   tops: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l4-2h8l4 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M8 4v4m8-4v4M8 8c0 2 2 4 4 4s4-2 4-4"/>',
   // 下装 - 裤子图标
-  bottoms: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 4h12v2H6V4zM6 6v14a2 2 0 002 2h2V10m4 12h2a2 2 0 002-2V6M10 22V10m0 0h4"/>',
+  bottoms:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 4h12v2H6V4zM6 6v14a2 2 0 002 2h2V10m4 12h2a2 2 0 002-2V6M10 22V10m0 0h4"/>',
   // 连衣裙 - 裙子图标
-  dresses: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a3 3 0 100 6 3 3 0 000-6zM8 8l-3 14h14l-3-14H8z"/>',
+  dresses:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a3 3 0 100 6 3 3 0 000-6zM8 8l-3 14h14l-3-14H8z"/>',
   // 外套 - 开衫/夹克图标
-  outerwear: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l3-2h10l3 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M7 4v6m10-6v6M4 6l3 3m13-3l-3 3M12 9v11"/>',
+  outerwear:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l3-2h10l3 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M7 4v6m10-6v6M4 6l3 3m13-3l-3 3M12 9v11"/>',
   // 鞋子 - 简洁鞋型
-  shoes: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16c0-1 0-2 2-2h14c2 0 2 1 2 2v1a1 1 0 01-1 1H4a1 1 0 01-1-1v-1zM5 14l3-6h8l3 6"/>',
+  shoes:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16c0-1 0-2 2-2h14c2 0 2 1 2 2v1a1 1 0 01-1 1H4a1 1 0 01-1-1v-1zM5 14l3-6h8l3 6"/>',
   // 配饰 - 配饰图标（包/帽子）
-  accessories: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2zM8 8V6a4 4 0 018 0v2"/>',
+  accessories:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2zM8 8V6a4 4 0 018 0v2"/>',
   // 自定义上传
-  custom_upload: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
+  custom_upload:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
 }
 
 // 分类列表

@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useI18n } from '../hooks/useI18n'
 
 export default function LoginPage({ onLogin }) {
+  const { t } = useI18n()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)

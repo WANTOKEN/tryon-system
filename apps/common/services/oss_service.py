@@ -363,9 +363,13 @@ class OSSService:
             # 生成 OSS 路径（使用 MD5 前缀作为文件名的一部分，便于追踪）
             oss_key = self._generate_file_key(folder, filename, tenant_id, md5)
 
-            # 设置 headers
+            # 设置 headers（包含缓存控制）
             headers = {
                 'x-oss-meta-md5': md5,  # 存储 MD5 到元数据
+                # 浏览器缓存：1 年（图片内容不变，可长期缓存）
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                # 过期时间（兼容旧浏览器）
+                'Expires': 'Thu, 31 Dec 2026 23:59:59 GMT',
             }
             if content_type:
                 headers['Content-Type'] = content_type

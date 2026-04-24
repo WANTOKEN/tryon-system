@@ -7,6 +7,10 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
+# 使用 PyMySQL 作为 MySQL 驱动
+import pymysql
+pymysql.install_as_MySQLdb()
+
 load_dotenv()
 
 # 基础路径
@@ -34,6 +38,7 @@ INSTALLED_APPS = [
     'apps.wardrobe',
     'apps.tryon',
     'apps.common',
+    'apps.admin_api',  # 管理后台 API
 ]
 
 MIDDLEWARE = [

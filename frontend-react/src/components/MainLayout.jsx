@@ -3,6 +3,8 @@ import { useState, useRef, useCallback } from 'react'
 import { useI18n } from '../hooks/useI18n'
 import { categoryIcons, categories as defaultCategories } from '../data/clothingData'
 
+import CachedImage from './CachedImage'
+
 export default function MainLayout({
   avatarPreview,
   onAvatarChange,
@@ -159,16 +161,22 @@ export default function MainLayout({
   // 切换选中（同类型只允许一件）
   const handleToggle = useCallback(
     item => {
+      // 防御性检查：确保 item 存在且有必要属性
+      if (!item || (item.id === undefined && item.uuid === undefined)) {
+        console.warn('handleToggle: 无效的服装项', item)
+        return
+      }
+      const itemId = item.id || item.uuid
       const existing = selected.find(s => s.category === item.category)
       if (existing && existing.id !== item.id && existing.uuid !== item.uuid) {
         // 替换
         onRemoveSelected(existing.id || existing.uuid)
       }
-      if (isSelected(item.id || item.uuid)) {
-        onRemoveSelected(item.id || item.uuid)
+      if (isSelected(itemId)) {
+        onRemoveSelected(itemId)
       } else {
         onToggleSelect({
-          id: item.id || item.uuid,
+          id: itemId,
           uuid: item.uuid,
           color: item.color,
           name: item.name,
@@ -350,6 +358,7 @@ export default function MainLayout({
       const { isCustom } = item
       const { isWardrobe } = item
       const itemHasImage = !!(item.image || item.imageFull)
+      const isUploading = item.isUploading === true
       return (
         <div
           key={item.id || item.uuid}
@@ -362,14 +371,14 @@ export default function MainLayout({
             className='relative mb-1.5 flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-gray-50'
             style={{ backgroundColor: item.color }}
             onClick={() => {
-              if (itemHasImage) {
+              if (itemHasImage && !isUploading) {
                 onOpenPreviewModal(item.imageFull || item.image, item.name)
               }
             }}
             onKeyDown={e => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
-                if (itemHasImage) {
+                if (itemHasImage && !isUploading) {
                   onOpenPreviewModal(item.imageFull || item.image, item.name)
                 }
               }
@@ -378,8 +387,13 @@ export default function MainLayout({
             tabIndex={0}
             title={t('clickPreview')}
           >
-            {hasImage ? (
-              <img src={item.image} alt={item.name} className='h-full w-full object-cover' />
+            {itemHasImage ? (
+              <CachedImage
+                src={item.imageFull || item.image}
+                thumbUrl={item.image}
+                alt={item.name}
+                className='h-full w-full object-cover'
+              />
             ) : (
               <>
                 <div
@@ -391,9 +405,35 @@ export default function MainLayout({
                   fill='currentColor'
                   viewBox='0 0 24 24'
                   aria-hidden='true'
+                  // eslint-disable-next-line react/no-danger
                   dangerouslySetInnerHTML={{ __html: iconPath }}
                 />
               </>
+            )}
+            {/* 上传中遮罩 */}
+            {isUploading && (
+              <div className='absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 bg-gray-500/60 backdrop-blur-sm'>
+                <svg
+                  className='h-6 w-6 animate-spin text-white'
+                  fill='none'
+                  viewBox='0 0 24 24'
+                >
+                  <circle
+                    className='opacity-25'
+                    cx='12'
+                    cy='12'
+                    r='10'
+                    stroke='currentColor'
+                    strokeWidth='4'
+                  />
+                  <path
+                    className='opacity-75'
+                    fill='currentColor'
+                    d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.162 5.826 3 7.918l2-2.627z'
+                  />
+                </svg>
+                <span className='text-[10px] font-medium text-white'>{t('uploading') || '上传中...'}</span>
+              </div>
             )}
             {/* 勾选框 */}
             <div
@@ -404,12 +444,24 @@ export default function MainLayout({
               tabIndex={0}
               onClick={e => {
                 e.stopPropagation()
-                handleToggle(item)
+                e.preventDefault()
+                if (!isUploading) {
+                  handleToggle(item)
+                }
               }}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   e.stopPropagation()
+                  if (!isUploading) {
+                    handleToggle(item)
+                  }
+                }
+              }}
+              onTouchEnd={e => {
+                e.stopPropagation()
+                e.preventDefault()
+                if (!isUploading) {
                   handleToggle(item)
                 }
               }}
@@ -423,7 +475,7 @@ export default function MainLayout({
                 />
               </svg>
             </div>
-            {isCustom && (
+            {isCustom && !isUploading && (
               <button
                 type='button'
                 className='absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 transition-colors hover:bg-error/80'
@@ -497,7 +549,11 @@ export default function MainLayout({
             >
               {avatarPreview ? (
                 <>
-                  <img src={avatarPreview} alt={t('aria_user_photo')} className='avatar-img' />
+                  <CachedImage
+                    src={avatarPreview}
+                    alt={t('aria_user_photo')}
+                    className='avatar-img'
+                  />
                   {/* 底部操作按钮栏 */}
                   <div className='avatar-actions-bar'>
                     <button
@@ -676,6 +732,7 @@ export default function MainLayout({
                       fill='none'
                       stroke='currentColor'
                       viewBox='0 0 24 24'
+                      // eslint-disable-next-line react/no-danger
                       dangerouslySetInnerHTML={{
                         __html: categoryIcons[cat.id] || categoryIcons.custom_upload,
                       }}
@@ -888,7 +945,7 @@ export default function MainLayout({
                   tabIndex={0}
                   title={t('clickPreview')}
                 >
-                  <img
+                  <CachedImage
                     src={resultUrl}
                     alt={t('aria_tryon_preview')}
                     className='h-full w-full object-cover'
@@ -1093,7 +1150,9 @@ export default function MainLayout({
                 const customItem = [...(customClothing || []), ...(wardrobeClothing || [])].find(
                   c => c.id === item.id
                 )
-                const itemHasImage = customItem && customItem.image
+                // 优先使用 customItem 的图片，其次使用 item 本身的图片
+                const displayImage = customItem?.image || customItem?.imageFull || item.image || item.imageFull
+                const itemHasImage = !!displayImage
                 return (
                   <div key={item.id} className='selected-item-compact'>
                     <div
@@ -1101,14 +1160,14 @@ export default function MainLayout({
                       style={{ backgroundColor: item.color }}
                       onClick={() => {
                         if (itemHasImage) {
-                          onOpenPreviewModal(customItem.imageFull || customItem.image, item.name)
+                          onOpenPreviewModal(customItem?.imageFull || customItem?.image || item.imageFull || item.image, item.name)
                         }
                       }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault()
                           if (itemHasImage) {
-                            onOpenPreviewModal(customItem.imageFull || customItem.image, item.name)
+                            onOpenPreviewModal(customItem?.imageFull || customItem?.image || item.imageFull || item.image, item.name)
                           }
                         }
                       }}
@@ -1117,8 +1176,8 @@ export default function MainLayout({
                       title={t('clickPreview')}
                     >
                       {itemHasImage && (
-                        <img
-                          src={customItem.image}
+                        <CachedImage
+                          src={displayImage}
                           alt={item.name}
                           className='h-full w-full rounded-lg object-cover'
                         />
@@ -1252,11 +1311,11 @@ export default function MainLayout({
                       title={t('clickPreview')}
                     >
                       {imgSrc && (
-                        <img
+                        <CachedImage
                           src={imgSrc}
                           alt={names}
                           className='h-full w-full object-cover'
-                          loading='lazy'
+                          lazy
                         />
                       )}
                       <button

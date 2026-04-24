@@ -68,7 +68,6 @@ export function encryptData(data) {
   const jsonStr = JSON.stringify(data)
   let encrypted = ''
   for (let i = 0; i < jsonStr.length; i += 1) {
-    // eslint-disable-next-line no-bitwise
     encrypted += String.fromCharCode(
       // eslint-disable-next-line no-bitwise
       jsonStr.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length)
@@ -85,7 +84,6 @@ export function decryptData(encrypted) {
     const decoded = atob(encrypted)
     let decrypted = ''
     for (let i = 0; i < decoded.length; i += 1) {
-      // eslint-disable-next-line no-bitwise
       decrypted += String.fromCharCode(
         // eslint-disable-next-line no-bitwise
         decoded.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length)

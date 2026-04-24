@@ -169,6 +169,18 @@ class FileUploadRecord(TimeStampedModel):
         default='',
         verbose_name='客户端 IP'
     )
+    
+    # ========== 软删除 ==========
+    is_deleted = models.BooleanField(
+        default=False,
+        verbose_name='是否已删除',
+        help_text='软删除标记，不会真正删除文件'
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='删除时间'
+    )
 
     class Meta:
         db_table = 'common_file_upload_record'
