@@ -3,7 +3,7 @@ import React from 'react';
 import { ConfigProvider, App as AntApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useAuthStore, initAuth } from './stores/authStore';
-import { MENU_PERMISSIONS } from './types';
+import { MENU_PERMISSIONS, PERMISSIONS } from './types';
 
 import AdminLayout from './layouts/AdminLayout';
 import LoginPage from './pages/LoginPage';
@@ -15,6 +15,8 @@ import FilesPage from './pages/FilesPage';
 import SettingsPage from './pages/SettingsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import OperationLogsPage from './pages/OperationLogsPage';
+import SystemMonitorPage from './pages/SystemMonitorPage';
+import ModelPhotosPage from './pages/ModelPhotosPage';
 
 // 初始化认证状态
 initAuth();
@@ -187,6 +189,15 @@ function App() {
                   </PermissionRoute>
                 } 
               />
+              {/* 模特照片管理 */}
+              <Route 
+                path="model-photos" 
+                element={
+                  <PermissionRoute requiredPermissions={MENU_PERMISSIONS['/clothing']}>
+                    <ModelPhotosPage />
+                  </PermissionRoute>
+                } 
+              />
               {/* 文件管理 */}
               <Route 
                 path="files" 
@@ -211,6 +222,15 @@ function App() {
                 element={
                   <PermissionRoute requiredPermissions={MENU_PERMISSIONS['/operation-logs']}>
                     <OperationLogsPage />
+                  </PermissionRoute>
+                } 
+              />
+              {/* 系统监控 - 仅超管 */}
+              <Route 
+                path="system-monitor" 
+                element={
+                  <PermissionRoute requiredPermissions={[PERMISSIONS.SUPER_ADMIN]}>
+                    <SystemMonitorPage />
                   </PermissionRoute>
                 } 
               />

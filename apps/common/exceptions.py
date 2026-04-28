@@ -111,6 +111,15 @@ class OssException(SystemException):
         super().__init__(message, 'OSS_ERROR', status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class StorageException(SystemException):
+    """存储服务异常（本地存储或 OSS）"""
+    PUBLIC_MESSAGE = '文件服务暂时不可用，请稍后再试'
+    PUBLIC_ERROR_CODE = 'STORAGE_ERROR'
+    
+    def __init__(self, message: str = '存储服务异常'):
+        super().__init__(message, 'STORAGE_ERROR', status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class DatabaseException(SystemException):
     """数据库异常"""
     PUBLIC_MESSAGE = '数据服务暂时不可用，请稍后再试'

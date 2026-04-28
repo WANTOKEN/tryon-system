@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FileUploadRecord
+from .models import FileUploadRecord, ModelPhoto
 
 
 class FileUploadRecordSerializer(serializers.ModelSerializer):
@@ -61,3 +61,44 @@ class FileBatchActionSerializer(serializers.Serializer):
         required=True,
         help_text='操作类型: soft_delete=软删除, restore=恢复, hard_delete=永久删除'
     )
+
+
+class ModelPhotoSerializer(serializers.ModelSerializer):
+    """模特照片序列化器"""
+    image_url = serializers.SerializerMethodField()
+    image_thumb_url = serializers.SerializerMethodField()
+
+    def get_image_url(self, obj):
+        """获取签名 URL"""
+        from apps.common.services.storage_service import storage_service
+        # 从 image_key 解析存储类型和 MD5
+        if obj.image_key:
+            # 尝试通过 image_key 获取 URL
+            try:
+                from apps.common.utils.content_key import ContentKey
+                content_key = ContentKey.parse(obj.image_key)
+                if content_key:
+                    return storage_service.get_url_by_key(content_key.md5, storage_type=content_key.storage_type)
+            except Exception:
+                pass
+        # 回退到直接生成签名 URL
+        return storage_service.get_signed_url_from_url(obj.image_url)
+
+    def get_image_thumb_url(self, obj):
+        """获取缩略图签名 URL"""
+        from apps.common.services.storage_service import storage_service
+        return storage_service.get_signed_url_from_url(obj.image_thumb_url)
+
+    class Meta:
+        model = ModelPhoto
+        fields = [
+            'id',
+            'image_url',
+            'image_thumb_url',
+            'image_key',
+            'sort_order',
+            'is_active',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['image_key', 'sort_order', 'is_active', 'created_at', 'updated_at']

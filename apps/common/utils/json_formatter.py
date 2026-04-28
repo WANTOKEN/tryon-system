@@ -60,9 +60,9 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         # 定义字段顺序 (精简版)
         self.field_order = [
             'timestamp',
-            'level', 
-            'location',
+            'level',
             'message',
+            'location',
         ]
         # 需要移除的冗余字段
         self.exclude_fields = [

@@ -191,9 +191,9 @@ class FileSizeLimit:
     MAX_FILE_SIZE = 30 * 1024 * 1024
     
     # 分类限制
-    MAX_IMAGE_SIZE = 10 * 1024 * 1024      # 10MB - 普通图片
-    MAX_AVATAR_SIZE = 10 * 1024 * 1024     # 10MB - 头像
-    MAX_CLOTHING_SIZE = 10 * 1024 * 1024   # 10MB - 服装
+    MAX_IMAGE_SIZE = 30 * 1024 * 1024      # 30MB - 普通图片
+    MAX_AVATAR_SIZE = 30 * 1024 * 1024     # 30MB - 头像
+    MAX_CLOTHING_SIZE = 30 * 1024 * 1024   # 30MB - 服装
     
     # 预签名 URL 有效期
     PRESIGNED_URL_EXPIRES = 86400          # 24小时

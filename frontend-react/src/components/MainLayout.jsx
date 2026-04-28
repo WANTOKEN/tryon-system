@@ -9,6 +9,7 @@ export default function MainLayout({
   avatarPreview,
   onAvatarChange,
   onSetAvatarPreview,
+  onModelSelect,
   selected,
   onToggleSelect,
   selectedClothing,
@@ -29,21 +30,22 @@ export default function MainLayout({
   hasResult,
   customClothing,
   wardrobeClothing,
-  // 从后端获取的服装数据
   clothing = [],
   categories,
   clothingLoading,
-  // Toast 提示
   showToast,
-  // 删除自定义服装
   onRemoveCustomClothing,
-  // 预计等待时间
   remainingTime = 0,
+  progress = 0,
+  modelPhotos = [],
+  modelPhotosLoading = false,
+  fetchModelPhotos,
 }) {
   const { t } = useI18n()
   const [currentCategory, setCurrentCategory] = useState('tops')
   const [currentSubcategory, setCurrentSubcategory] = useState('')
   const [historyFilter, setHistoryFilter] = useState('all')
+  const [showModelModal, setShowModelModal] = useState(false)
   const fileInputRef = useRef(null)
 
   // 使用后端分类或默认分类
@@ -150,7 +152,17 @@ export default function MainLayout({
   }
   const wardrobeClothes = getWardrobeClothes()
 
-  const allClothes = [...categoryClothes, ...wardrobeClothes, ...customClothes]
+  const allClothes = (() => {
+    const seen = new Set()
+    return [...categoryClothes, ...wardrobeClothes, ...customClothes].filter(item => {
+      const key = item.id || item.uuid
+      if (key && !seen.has(key)) {
+        seen.add(key)
+        return true
+      }
+      return false
+    })
+  })()
 
   // 判断是否选中
   const isSelected = useCallback(
@@ -413,11 +425,7 @@ export default function MainLayout({
             {/* 上传中遮罩 */}
             {isUploading && (
               <div className='absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 bg-gray-500/60 backdrop-blur-sm'>
-                <svg
-                  className='h-6 w-6 animate-spin text-white'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                >
+                <svg className='h-6 w-6 animate-spin text-white' fill='none' viewBox='0 0 24 24'>
                   <circle
                     className='opacity-25'
                     cx='12'
@@ -432,7 +440,9 @@ export default function MainLayout({
                     d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.162 5.826 3 7.918l2-2.627z'
                   />
                 </svg>
-                <span className='text-[10px] font-medium text-white'>{t('uploading') || '上传中...'}</span>
+                <span className='text-[10px] font-medium text-white'>
+                  {t('uploading') || '上传中...'}
+                </span>
               </div>
             )}
             {/* 勾选框 */}
@@ -678,9 +688,7 @@ export default function MainLayout({
                 type='button'
                 className='use-model-btn'
                 onClick={() => {
-                  // 使用预设模特图片
-                  const modelImage = '/images/model.png'
-                  onSetAvatarPreview?.(modelImage)
+                  setShowModelModal(true)
                 }}
               >
                 <svg className='h-3.5 w-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
@@ -1009,12 +1017,28 @@ export default function MainLayout({
               role='alert'
               aria-live='assertive'
             >
-              <div className='text-center'>
+              <div className='w-64 text-center'>
+                {/* 进度条 */}
+                <div className='mb-4'>
+                  <div className='h-2 w-full overflow-hidden rounded-full bg-gray-200'>
+                    <div
+                      className='bg-primary h-full rounded-full transition-all duration-500 ease-out'
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <p className='mt-2 text-sm text-gray-500'>
+                    {progress < 100 ? `${progress}%` : t('generatingComplete')}
+                  </p>
+                </div>
+
+                {/* 加载动画 */}
                 <div
                   className='loading-ring mx-auto mb-4 h-12 w-12 animate-spin rounded-full'
                   aria-hidden='true'
                 />
-                <p className='mb-1 font-medium text-charcoal'>{t('regenerating')}</p>
+                <p className='mb-1 font-medium text-charcoal'>
+                  {progress < 100 ? t('regenerating') : t('completeAndSaving')}
+                </p>
                 {remainingTime > 0 ? (
                   <p className='text-accessible text-sm'>
                     {t('estimatedTime') || '预计等待'}: {remainingTime} {t('seconds') || '秒'}
@@ -1151,7 +1175,14 @@ export default function MainLayout({
                   c => c.id === item.id
                 )
                 // 优先使用 customItem 的图片，其次使用 item 本身的图片
-                const displayImage = customItem?.image || customItem?.imageFull || item.image || item.imageFull
+                // 兼容 image_url 和 image 两种字段名
+                const displayImage =
+                  customItem?.image ||
+                  customItem?.imageFull ||
+                  item.image_url ||
+                  item.image_thumb_url ||
+                  item.image ||
+                  item.imageFull
                 const itemHasImage = !!displayImage
                 return (
                   <div key={item.id} className='selected-item-compact'>
@@ -1160,14 +1191,28 @@ export default function MainLayout({
                       style={{ backgroundColor: item.color }}
                       onClick={() => {
                         if (itemHasImage) {
-                          onOpenPreviewModal(customItem?.imageFull || customItem?.image || item.imageFull || item.image, item.name)
+                          onOpenPreviewModal(
+                            customItem?.imageFull ||
+                              customItem?.image ||
+                              item.image_url ||
+                              item.imageFull ||
+                              item.image,
+                            item.name
+                          )
                         }
                       }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault()
                           if (itemHasImage) {
-                            onOpenPreviewModal(customItem?.imageFull || customItem?.image || item.imageFull || item.image, item.name)
+                            onOpenPreviewModal(
+                              customItem?.imageFull ||
+                                customItem?.image ||
+                                item.image_url ||
+                                item.imageFull ||
+                                item.image,
+                              item.name
+                            )
                           }
                         }
                       }}
@@ -1179,7 +1224,7 @@ export default function MainLayout({
                         <CachedImage
                           src={displayImage}
                           alt={item.name}
-                          className='h-full w-full rounded-lg object-cover'
+                          className='h-full w-full object-cover'
                         />
                       )}
                     </div>
@@ -1405,6 +1450,89 @@ export default function MainLayout({
           )}
         </div>
       </aside>
+
+      {/* 模特选择模态框 */}
+      {showModelModal && (
+        <div className='fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4'>
+          <div className='bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in'>
+            {/* 模态框头部 */}
+            <div className='flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700'>
+              <h3 className='text-lg font-semibold text-charcoal dark:text-white'>
+                {t('useModel') || '使用模特'}
+              </h3>
+              <button
+                type='button'
+                onClick={() => setShowModelModal(false)}
+                className='rounded-lg p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700'
+                aria-label='关闭'
+              >
+                <svg className='h-5 w-5 text-grayMedium' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M6 18L18 6M6 6l12 12'
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* 模态框内容 */}
+            <div className='flex-1 overflow-y-auto px-6 py-4 pb-2'>
+              {modelPhotosLoading ? (
+                <div className='flex items-center justify-center py-12'>
+                  <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-champagne'></div>
+                </div>
+              ) : modelPhotos.length === 0 ? (
+                <div className='text-center py-12 text-grayMuted'>
+                  <svg className='h-12 w-12 mx-auto mb-4 text-gray300' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth='1.5'
+                      d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
+                    />
+                  </svg>
+                  <p>{t('noModelPhotos') || '暂无模特照片'}</p>
+                </div>
+              ) : (
+                <div className='grid grid-cols-2 sm:grid-cols-3 gap-4'>
+                  {modelPhotos.map((model) => (
+                    <div
+                      key={model.id}
+                      className='group border border-grayLight dark:border-gray-700 rounded-xl overflow-hidden cursor-pointer hover:border-champagne hover:shadow-lg transition-all duration-200'
+                      onClick={() => {
+                        onSetAvatarPreview?.(model.image_url)
+                        onModelSelect?.(model.image_url, model.image_key)
+                        setShowModelModal(false)
+                      }}
+                    >
+                      <div className='aspect-[2/3] overflow-hidden'>
+                        <img
+                          src={model.image_url}
+                          alt={model.name}
+                          className='w-full h-full object-cover group-hover:scale-105 transition-transform duration-200'
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 模态框底部 */}
+            <div className='px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3'>
+              <button
+                type='button'
+                onClick={() => setShowModelModal(false)}
+                className='rounded-xl border border-grayLight dark:border-gray-600 px-6 py-2 text-sm font-medium text-charcoal dark:text-grayLight transition-colors hover:bg-gray-50 dark:hover:bg-gray-700'
+              >
+                {t('cancel') || '取消'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

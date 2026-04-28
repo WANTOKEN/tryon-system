@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect } from 'react'
+/* eslint-disable no-console */
+import { useState, useCallback, useEffect, useRef } from 'react'
 
-import { I18nProvider } from './hooks/useI18n'
+import { I18nProvider, useI18n } from './hooks/useI18n'
 import { useTryOn } from './hooks/useTryOn'
 import { useClothing } from './hooks/useClothing'
 import { api, TokenManager, setSessionId } from './utils/request'
@@ -11,10 +12,191 @@ import Toast from './components/Toast'
 import LoginModal from './components/LoginModal'
 import GlobalLoading from './components/GlobalLoading'
 import CachedImage from './components/CachedImage'
-import { STORAGE_KEYS } from './constants/storageKeys'
+import { STORAGE_KEYS, CURRENT_CACHE_VERSION } from './constants/storageKeys'
 import { safeStorage } from './utils/safeStorage'
 
-export default function App() {
+const compressImage = (file, maxSizeMB = 5, maxWidth = 1920, maxHeight = 1920) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let { width } = img
+        let { height } = img
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = (height * maxWidth) / width
+            width = maxWidth
+          } else {
+            width = (width * maxHeight) / height
+            height = maxHeight
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+
+        const targetSize = maxSizeMB * 1024 * 1024
+        const fileSize = file.size
+
+        let initialQuality = 0.9
+        if (fileSize > targetSize * 2) {
+          initialQuality = 0.7
+        } else if (fileSize > targetSize * 1.5) {
+          initialQuality = 0.8
+        }
+
+        const compressWithQuality = quality =>
+          new Promise(res => {
+            canvas.toBlob(
+              blob => {
+                if (blob) {
+                  if (blob.size <= targetSize || quality <= 0.1) {
+                    if (blob.size > file.size) {
+                      res(file)
+                    } else {
+                      const compressedFile = new File([blob], file.name, {
+                        type: 'image/jpeg',
+                        lastModified: Date.now(),
+                      })
+                      res(compressedFile)
+                    }
+                  } else {
+                    const newQuality = Math.max(0.1, quality - 0.15)
+                    compressWithQuality(newQuality).then(res)
+                  }
+                } else {
+                  res(file)
+                }
+              },
+              'image/jpeg',
+              quality
+            )
+          })
+
+        compressWithQuality(initialQuality).then(resolve)
+      }
+      img.onerror = () => reject(new Error('图片加载失败'))
+      img.src = e.target.result
+    }
+    reader.onerror = () => reject(new Error('文件读取失败'))
+    reader.readAsDataURL(file)
+  })
+
+const truncateFileName = (fileName, maxLength = 30) => {
+  if (!fileName || fileName.length <= maxLength) {
+    return fileName
+  }
+  const extIndex = fileName.lastIndexOf('.')
+  if (extIndex === -1 || extIndex === 0) {
+    return `${fileName.substring(0, maxLength - 3)}...`
+  }
+  const extension = fileName.substring(extIndex)
+  const nameWithoutExt = fileName.substring(0, extIndex)
+  const truncatedName = `${nameWithoutExt.substring(0, maxLength - extension.length - 3)}...`
+  return truncatedName + extension
+}
+
+const extractDominantColor = (file, timeout = 500) =>
+  new Promise(resolve => {
+    const timer = setTimeout(() => resolve('#F5F4F0'), timeout)
+
+    const reader = new FileReader()
+    reader.onload = e => {
+      const img = new Image()
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          const size = 20
+          canvas.width = size
+          canvas.height = size
+          ctx.drawImage(img, 0, 0, size, size)
+
+          const { data } = ctx.getImageData(0, 0, size, size)
+          const colorCounts = {}
+          let maxCount = 0
+          let dominantColor = '#F5F4F0'
+
+          /* eslint-disable no-continue, no-bitwise */
+          for (let i = 0; i < data.length; i += 16) {
+            const r = data[i]
+            const g = data[i + 1]
+            const b = data[i + 2]
+            const a = data[i + 3]
+
+            if (a < 200) {
+              continue
+            }
+
+            const brightness = (r + g + b) / 3
+            if (brightness > 245 || brightness < 10) {
+              continue
+            }
+
+            const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5)
+            colorCounts[key] = (colorCounts[key] || 0) + 1
+
+            if (colorCounts[key] > maxCount) {
+              maxCount = colorCounts[key]
+              const rHex = Math.min(255, r).toString(16).padStart(2, '0')
+              const gHex = Math.min(255, g).toString(16).padStart(2, '0')
+              const bHex = Math.min(255, b).toString(16).padStart(2, '0')
+              dominantColor = `#${rHex}${gHex}${bHex}`
+            }
+          }
+          /* eslint-enable no-continue, no-bitwise */
+
+          clearTimeout(timer)
+          resolve(dominantColor)
+        } catch {
+          clearTimeout(timer)
+          resolve('#F5F4F0')
+        }
+      }
+      img.onerror = () => {
+        clearTimeout(timer)
+        resolve('#F5F4F0')
+      }
+      img.src = e.target.result
+    }
+    reader.onerror = () => {
+      clearTimeout(timer)
+      resolve('#F5F4F0')
+    }
+    reader.readAsDataURL(file)
+  })
+
+function AdminContactItem({ icon, label, value, maskedValue }) {
+  const [revealed, setRevealed] = useState(false)
+
+  return (
+    <div className='flex items-center gap-3 rounded-xl border border-grayLight p-3'>
+      <div className='flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-champagne/20'>
+        {icon}
+      </div>
+      <div className='min-w-0 flex-1'>
+        <p className='text-xs text-grayMuted'>{label}</p>
+        <p className='text-sm font-medium text-charcoal'>{revealed ? value : maskedValue}</p>
+      </div>
+      <button
+        type='button'
+        onClick={() => setRevealed(!revealed)}
+        className='flex-shrink-0 text-xs text-champagne hover:underline'
+      >
+        {revealed ? '隐藏' : '查看'}
+      </button>
+    </div>
+  )
+}
+
+function AppContent() {
+  const { t } = useI18n()
   const [appLoading, setAppLoading] = useState(true)
   const [theme] = useState('light')
   const [toast, setToast] = useState(null)
@@ -26,7 +208,6 @@ export default function App() {
   const [selected, setSelected] = useState([])
   const [customClothing, setCustomClothing] = useState([])
   const [wardrobeClothing, setWardrobeClothing] = useState([])
-  // tryOnHistory 由 useTryOn hook 提供
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showStoreModal, setShowStoreModal] = useState(false)
@@ -38,12 +219,10 @@ export default function App() {
   const [previewModalData, setPreviewModalData] = useState({ src: '', name: '' })
   const [showCameraModal, setShowCameraModal] = useState(false)
   const [cameraCallback, setCameraCallback] = useState(null)
-  // 衣橱上传状态
   const [wardrobeUploadCategory, setWardrobeUploadCategory] = useState('tops')
   const [wardrobeUploadSubcategory, setWardrobeUploadSubcategory] = useState('')
   const [wardrobeUploadSubcategoryCustom, setWardrobeUploadSubcategoryCustom] = useState('')
   const [wardrobeUploadName, setWardrobeUploadName] = useState('')
-  // 自定义上传分类
   const [customUploadCategory, setCustomUploadCategory] = useState('tops')
   const [customUploadSubcategory, setCustomUploadSubcategory] = useState('')
   const [customUploadSubcategoryCustom, setCustomUploadSubcategoryCustom] = useState('')
@@ -51,8 +230,56 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userInfo, setUserInfo] = useState(null)
   const [loginLoading, setLoginLoading] = useState(false)
+  const [showAdminContactModal, setShowAdminContactModal] = useState(false)
+  const [adminContactInfo, setAdminContactInfo] = useState(null)
+  const [adminContactLoading, setAdminContactLoading] = useState(false)
 
-  // 从 userInfo 更新配额
+  // 防止 StrictMode 下重复初始化
+  const initRef = useRef(false)
+
+  const fetchAdminContact = useCallback(async () => {
+    setAdminContactLoading(true)
+    try {
+      const response = await api.get(API_ENDPOINTS.AUTH.ADMIN_CONTACT, { requiresAuth: false })
+      if (response.success) {
+        setAdminContactInfo(response.data?.data || response.data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch admin contact:', error)
+    } finally {
+      setAdminContactLoading(false)
+    }
+  }, [])
+
+  const handleShowAdminContact = useCallback(async () => {
+    if (!adminContactInfo) {
+      await fetchAdminContact()
+    }
+    setShowAdminContactModal(true)
+  }, [adminContactInfo, fetchAdminContact])
+
+  const maskPhone = useCallback(phone => {
+    if (!phone || phone.length < 7) {
+      return phone
+    }
+    return `${phone.slice(0, 3)}****${phone.slice(-4)}`
+  }, [])
+
+  const maskWechat = useCallback(wechat => {
+    if (!wechat || wechat.length < 4) {
+      return wechat
+    }
+    return `${wechat.slice(0, 2)}***${wechat.slice(-2)}`
+  }, [])
+
+  const maskEmail = useCallback(email => {
+    if (!email || !email.includes('@')) {
+      return email
+    }
+    const [name, domain] = email.split('@')
+    return `${name.slice(0, 2)}***@${domain}`
+  }, [])
+
   useEffect(() => {
     if (userInfo && userInfo.quota_total !== undefined) {
       setQuota({
@@ -63,32 +290,27 @@ export default function App() {
     }
   }, [userInfo])
 
-  // 当前顾客标识（持久化到 localStorage，刷新不丢失）
   const [sessionCustomer, setSessionCustomer] = useState(() => {
-    // 优先从缓存恢复
     const cached = localStorage.getItem(STORAGE_KEYS.SESSION_CUSTOMER)
     if (cached) {
-      setSessionId(cached) // 同步到 request.js
+      setSessionId(cached)
       return cached
     }
-    // 没有缓存则生成新的
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
     const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
     const newCustomer = `Customer_${dateStr}_${timeStr}`
     localStorage.setItem(STORAGE_KEYS.SESSION_CUSTOMER, newCustomer)
-    setSessionId(newCustomer) // 同步到 request.js
+    setSessionId(newCustomer)
     return newCustomer
   })
 
-  // 同步 sessionCustomer 到 request.js
   useEffect(() => {
     if (sessionCustomer) {
       setSessionId(sessionCustomer)
     }
   }, [sessionCustomer])
 
-  // 监听登出事件（token 过期时触发）
   useEffect(() => {
     const handleLogout = () => {
       setIsLoggedIn(false)
@@ -104,7 +326,6 @@ export default function App() {
     setTimeout(() => setToast(null), 3000)
   }, [])
 
-  // 刷新用户信息（含配额）
   const refreshUserInfo = useCallback(async () => {
     try {
       const response = await api.get(API_ENDPOINTS.AUTH.ME)
@@ -114,27 +335,24 @@ export default function App() {
         localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userData))
       }
     } catch (error) {
-      // 静默处理错误
+      // 忽略刷新用户信息失败
     }
   }, [])
 
-  // 试穿完成回调
   const handleTryOnComplete = useCallback(
     ({ resultUrl: _url }) => {
-              showToast(t('n_genSuccess'), 'success')
+      showToast(t('n_genSuccess'), 'success')
       setHasResult(true)
-      // 刷新用户信息获取最新配额
       refreshUserInfo()
     },
-    [showToast, refreshUserInfo]
+    [showToast, refreshUserInfo, t]
   )
 
-  // 试穿失败回调
   const handleTryOnError = useCallback(
     error => {
-              showToast(error || t('n_tryOnFail'), 'error')
+      showToast(error || t('n_tryOnFail'), 'error')
     },
-    [showToast]
+    [showToast, t]
   )
 
   const {
@@ -142,20 +360,22 @@ export default function App() {
     progress,
     resultUrl,
     history: tryOnHistory,
-    avatarKey: _avatarKey, // 暴露供未来使用（如复用头像）
-    remainingTime, // 剩余等待时间（秒）
+    avatarKey: _avatarKey,
+    remainingTime,
+    modelPhotos,
+    modelPhotosLoading,
     submitTask,
     fetchHistory,
+    fetchModelPhotos,
     clearResult,
     startGenerating,
     cancelGenerating,
-  } = useTryOn(
-    handleTryOnComplete,
-    handleTryOnError,
-    sessionCustomer // 传入 Customer 标识作为 session_id
-  )
+  } = useTryOn({
+    sessionId: sessionCustomer,
+    onComplete: handleTryOnComplete,
+    onError: handleTryOnError
+  })
 
-  // 服装管理
   const {
     clothing,
     categories,
@@ -166,14 +386,29 @@ export default function App() {
     deleteClothing,
   } = useClothing()
 
-  // 初始化登录状态（检查是否有已保存的 Token）
   useEffect(() => {
+    // 防止 StrictMode 下重复初始化
+    if (initRef.current) {
+      return
+    }
+    initRef.current = true
+
     const initApp = async () => {
       const startTime = Date.now()
       const MIN_LOADING_TIME = 2000
 
+      // 检查缓存版本，版本不匹配时清除旧缓存
+      const cachedVersion = localStorage.getItem(STORAGE_KEYS.CACHE_VERSION)
+      if (cachedVersion !== CURRENT_CACHE_VERSION) {
+        console.log('[Cache] 版本不匹配，清除旧缓存')
+        safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
+        safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
+        safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
+        safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
+        localStorage.setItem(STORAGE_KEYS.CACHE_VERSION, CURRENT_CACHE_VERSION)
+      }
+
       if (TokenManager.isAuthenticated()) {
-        // 先从缓存恢复用户信息（快速显示）
         const cachedUserInfo = localStorage.getItem(STORAGE_KEYS.USER_INFO)
         if (cachedUserInfo) {
           try {
@@ -181,82 +416,83 @@ export default function App() {
             setUserInfo(parsed)
             setIsLoggedIn(true)
           } catch (e) {
-            // 缓存解析失败，忽略
+            // 忽略解析错误
           }
         }
 
         try {
-          // 验证 Token 并获取最新用户信息
           const response = await api.get(API_ENDPOINTS.AUTH.ME)
           if (response.success) {
             const userData = response.data?.data || response.data
             setIsLoggedIn(true)
             setUserInfo(userData)
-            // 更新缓存
             localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userData))
           } else {
-            // Token 无效，清除
             TokenManager.clearTokens()
             localStorage.removeItem(STORAGE_KEYS.USER_INFO)
             setIsLoggedIn(false)
             setUserInfo(null)
           }
         } catch (error) {
-          // 网络错误时保留缓存状态，不清除 Token
-          // 如果没有缓存用户信息但 Token 存在，标记为已登录但不显示用户详情
           if (!cachedUserInfo) {
             setIsLoggedIn(true)
-                    setUserInfo({ store_name: t('settingsLoggedIn') })
+            setUserInfo({ store_name: t('settingsLoggedIn') })
           }
         }
       }
 
-      // 从安全存储恢复头像预览（支持 IndexedDB + localStorage）
       const cachedAvatar = await safeStorage.getItem(STORAGE_KEYS.AVATAR_PREVIEW)
       if (cachedAvatar) {
         setAvatarPreview(cachedAvatar)
       }
 
-      // 从安全存储恢复自定义服装
       const cachedCustomClothing = await safeStorage.getItem(STORAGE_KEYS.CUSTOM_CLOTHING)
       if (cachedCustomClothing) {
         try {
-          const parsed = typeof cachedCustomClothing === 'string' 
-            ? JSON.parse(cachedCustomClothing) 
-            : cachedCustomClothing
+          const parsed =
+            typeof cachedCustomClothing === 'string'
+              ? JSON.parse(cachedCustomClothing)
+              : cachedCustomClothing
           setCustomClothing(parsed)
         } catch (e) {
-          // 缓存解析失败，忽略
+          // 忽略解析错误
         }
       }
 
-      // 从安全存储恢复衣橱服装
       const cachedWardrobeClothing = await safeStorage.getItem(STORAGE_KEYS.WARDROBE_CLOTHING)
       if (cachedWardrobeClothing) {
         try {
-          const parsed = typeof cachedWardrobeClothing === 'string' 
-            ? JSON.parse(cachedWardrobeClothing) 
-            : cachedWardrobeClothing
+          const parsed =
+            typeof cachedWardrobeClothing === 'string'
+              ? JSON.parse(cachedWardrobeClothing)
+              : cachedWardrobeClothing
           setWardrobeClothing(parsed)
         } catch (e) {
-          // 缓存解析失败，忽略
+          // 忽略解析错误
         }
       }
 
-      // 从安全存储恢复已选服装
       const cachedSelected = await safeStorage.getItem(STORAGE_KEYS.SELECTED_CLOTHING)
       if (cachedSelected) {
         try {
-          const parsed = typeof cachedSelected === 'string' 
-            ? JSON.parse(cachedSelected) 
-            : cachedSelected
-          setSelected(parsed)
+          const parsed =
+            typeof cachedSelected === 'string' ? JSON.parse(cachedSelected) : cachedSelected
+          console.log('[Cache] 读取已选服装缓存:', parsed)
+          // 检查是否有图片 URL
+          if (parsed.length > 0 && !parsed[0].image_url) {
+            console.log('[Cache] 缓存数据缺少 image_url，清除旧缓存')
+            safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
+          } else {
+            setSelected(parsed)
+          }
         } catch (e) {
-          // 缓存解析失败，忽略
+          console.error('[Cache] 解析已选服装缓存失败:', e)
         }
       }
 
-      // 确保至少显示 3 秒 loading
+      // 获取模特照片
+      await fetchModelPhotos()
+
       const elapsed = Date.now() - startTime
       const waitTime = MIN_LOADING_TIME - elapsed
       if (waitTime > 0) {
@@ -268,9 +504,8 @@ export default function App() {
     }
 
     initApp()
-  }, [])
+  }, [t, fetchModelPhotos])
 
-  // 登录成功后加载数据
   useEffect(() => {
     if (isLoggedIn) {
       fetchHistory()
@@ -279,95 +514,123 @@ export default function App() {
     }
   }, [isLoggedIn, fetchHistory, fetchClothing, fetchCategories])
 
-  // 主题切换
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
-  // 头像上传处理（保存到本地缓存）
-  const handleAvatarChange = useCallback(e => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setAvatarFile(file)
-      const reader = new FileReader()
-      reader.onload = ev => {
-        const base64 = ev.target.result
-        setAvatarPreview(base64)
-        // 使用安全存储（自动选择 IndexedDB 或 localStorage）
-        safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, base64)
-        // 上传新头像时清除复用的 key
+  const handleAvatarChange = useCallback(
+    e => {
+      const file = e.target.files?.[0]
+      if (file) {
+        const MAX_SIZE = 30 * 1024 * 1024
+        if (file.size > MAX_SIZE) {
+          showToast(t('n_imgTooLarge30MB'), 'warning')
+          e.target.value = ''
+          return
+        }
+
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'image/bmp',
+          'image/heic',
+          'image/heif',
+        ]
+        if (!allowedTypes.includes(file.type)) {
+          showToast(t('n_imgFormatError'), 'error')
+          e.target.value = ''
+          return
+        }
+
+        setAvatarFile(file)
+
+        const objectUrl = URL.createObjectURL(file)
+        setAvatarPreview(objectUrl)
+        safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
+
+        const reader = new FileReader()
+        reader.onload = ev => {
+          const base64 = ev.target.result
+          setAvatarPreview(base64)
+          safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, base64)
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 100)
+        }
+        reader.onerror = () => {
+          URL.revokeObjectURL(objectUrl)
+          showToast(t('n_imgReadFail'), 'error')
+        }
+        reader.readAsDataURL(file)
+      } else if (e.target.files === null) {
+        setAvatarFile(null)
+        setAvatarPreview(null)
+        safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
         safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
       }
-      reader.readAsDataURL(file)
-    } else if (e.target.files === null) {
-      // 删除头像
-      setAvatarFile(null)
-      setAvatarPreview(null)
-      safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-      safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
-    }
-  }, [])
+    },
+    [showToast, t]
+  )
 
-  // 试穿处理
   const handleTryOn = useCallback(async () => {
-    // 检查登录状态
     if (!isLoggedIn) {
-              showToast(t('n_needLogin'), 'warning')
+      showToast(t('n_needLogin'), 'warning')
       setShowLoginModal(true)
       return
     }
 
     if (!avatarPreview) {
-              showToast(t('n_needAvatar'), 'warning')
+      showToast(t('n_needAvatar'), 'warning')
       return
     }
     if (selected.length === 0) {
-              showToast(t('n_needClothing'), 'warning')
+      showToast(t('n_needClothing'), 'warning')
       return
     }
     if (quota.remaining <= 0) {
-              showToast(t('n_quotaEmpty'), 'error')
+      showToast(t('n_quotaEmpty'), 'error')
+      handleShowAdminContact()
       return
     }
 
-    // 立即显示 loading 状态
     startGenerating()
 
-    // 提交前再次校验配额（防止盗刷）
+    // 再次检查服务器配额（防止多设备同时使用）
     try {
       const meResponse = await api.get(API_ENDPOINTS.AUTH.ME)
       if (meResponse.success) {
         const serverQuota = meResponse.data?.data || meResponse.data
-        if (serverQuota?.quota_remaining !== undefined && serverQuota.quota_remaining <= 0) {
+        // 更新本地配额
+        if (serverQuota?.quota_remaining !== undefined) {
+          setQuota({
+            total: serverQuota.quota_total || quota.total,
+            used: serverQuota.quota_used || quota.used,
+            remaining: serverQuota.quota_remaining,
+          })
+        }
+        if (serverQuota.quota_remaining <= 0) {
           cancelGenerating()
-                  showToast(t('n_quotaEmpty'), 'error')
-          refreshUserInfo()
+          showToast(t('n_quotaEmpty'), 'error')
+          handleShowAdminContact()
           return
         }
       }
     } catch (e) {
-      // 验证失败不阻止请求，继续执行
+      // 忽略解析错误，继续执行
     }
 
-    // 检查是否有复用的 avatar_key
     const reuseAvatarKey = await safeStorage.getItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
     let fileToSubmit = null
     let keyToReuse = null
 
     if (reuseAvatarKey) {
-      // 使用 avatar_key 复用
       keyToReuse = reuseAvatarKey
-      // 使用后清除缓存
       safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
     } else if (avatarFile) {
-      // 有头像文件，直接上传
       fileToSubmit = avatarFile
     } else if (avatarPreview) {
-      // 没有 avatarFile 但有 avatarPreview（从缓存恢复或使用模特）
       try {
-        // avatarPreview 可能是:
-        // 1. base64 格式 (data:image/...;base64,...)
-        // 2. 相对路径 (/images/model.png)
         const response = await fetch(avatarPreview)
         if (!response.ok) {
           throw new Error(`Failed to fetch avatar: ${response.status}`)
@@ -377,20 +640,18 @@ export default function App() {
           throw new Error('Avatar blob is empty')
         }
         fileToSubmit = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' })
-        // 只有非模特图片才保存到 avatarFile（模特图片每次都重新 fetch）
         if (!avatarPreview.startsWith('/images/')) {
           setAvatarFile(fileToSubmit)
         }
       } catch (e) {
         cancelGenerating()
-                showToast(t('n_imgReadFail'), 'error')
+        showToast(t('n_imgReadFail'), 'error')
         return
       }
     }
 
     await submitTask(fileToSubmit, selected, keyToReuse)
 
-    // 移动端：滚动到结果展示区域
     if (window.innerWidth < 1024) {
       setTimeout(() => {
         const resultArea = document.getElementById('tryon-result-area')
@@ -404,15 +665,15 @@ export default function App() {
     avatarPreview,
     avatarFile,
     selected,
-    quota.remaining,
+    quota,
     submitTask,
     showToast,
     startGenerating,
     cancelGenerating,
-    refreshUserInfo,
+    handleShowAdminContact,
+    t,
   ])
 
-  // 通知弹窗（保留用于未来扩展）
   const _showNotification = useCallback(
     (message, type = 'success') => {
       showToast(message, type)
@@ -420,7 +681,6 @@ export default function App() {
     [showToast]
   )
 
-  // 确认弹窗
   const showConfirmDialog = useCallback((title, message, action) => {
     setConfirmConfig({ title, message, action })
     setShowConfirmModal(true)
@@ -434,7 +694,6 @@ export default function App() {
     setConfirmConfig({ title: '', message: '', action: null })
   }, [confirmConfig])
 
-  // 图片预览弹窗
   const openPreviewModal = useCallback((src, name) => {
     setPreviewModalData({ src, name })
     setShowPreviewModal(true)
@@ -445,7 +704,6 @@ export default function App() {
     setPreviewModalData({ src: '', name: '' })
   }, [])
 
-  // 拍照选择弹窗
   const openCameraModal = useCallback(callback => {
     setCameraCallback(callback)
     setShowCameraModal(true)
@@ -457,187 +715,181 @@ export default function App() {
   }, [])
 
   const handleLogout = useCallback(() => {
-            showConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => {
-      // 清理认证信息
+    showConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => {
       TokenManager.clearTokens()
       localStorage.removeItem(STORAGE_KEYS.USER_INFO)
       setIsLoggedIn(false)
       setUserInfo(null)
 
-      // 清理配额
       setQuota({ total: 100, used: 0, remaining: 100 })
 
-      // 清理试穿相关状态
       setSelected([])
       setAvatarFile(null)
       setAvatarPreview(null)
       setHasResult(false)
-      clearResult() // 清除 useTryOn 状态
+      clearResult()
       setCustomClothing([])
       setWardrobeClothing([])
 
-      // 清理本地缓存（使用安全存储）
       safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
       safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
       safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
       safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
       safeStorage.removeItem(STORAGE_KEYS.SESSION_CUSTOMER)
 
-              showToast(t('n_logoutSuccess'), 'info')
+      showToast(t('n_logoutSuccess'), 'info')
     })
-  }, [showConfirmDialog, showToast, clearResult])
+  }, [showConfirmDialog, showToast, clearResult, t])
 
-  // 结束试穿（清除本地缓存和试穿记录）
   const handleEndSession = useCallback(async () => {
-            showConfirmDialog(t('endSessionTitle'), t('endSessionMsg'), async () => {
-      // 保存当前 session_id 用于清除
+    if (!isLoggedIn) {
+      showToast(t('n_needLogin'), 'warning')
+      setShowLoginModal(true)
+      return
+    }
+
+    showConfirmDialog(t('endSessionTitle'), t('endSessionMsg'), async () => {
       const currentSessionId = sessionCustomer
 
-      // 先清空后端试穿记录（仅当前顾客）
       try {
         await api.delete(
           `${API_ENDPOINTS.TRYON.CLEAR}?session_id=${encodeURIComponent(currentSessionId)}`
         )
       } catch (error) {
-        // 静默处理清除错误
+        // 忽略清空历史失败
       }
 
       setSelected([])
       setAvatarFile(null)
       setAvatarPreview(null)
       setHasResult(false)
-      clearResult() // 清除 useTryOn 状态
+      clearResult()
       setCustomClothing([])
       setWardrobeClothing([])
-      // 清除本地缓存（使用安全存储）
       safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
       safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
       safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
       safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
 
-      // 生成新顾客标识并保存到缓存
       const now = new Date()
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
       const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
       const newCustomer = `Customer_${dateStr}_${timeStr}`
       safeStorage.setItem(STORAGE_KEYS.SESSION_CUSTOMER, newCustomer)
       setSessionCustomer(newCustomer)
-              showToast(t('n_sessionEnded'), 'info')
+      showToast(t('n_sessionEnded'), 'info')
     })
-  }, [showConfirmDialog, showToast, clearResult, sessionCustomer])
+  }, [isLoggedIn, showConfirmDialog, showToast, clearResult, sessionCustomer, t])
 
-  // 清空历史（当前顾客的记录）
   const handleClearHistory = useCallback(async () => {
-    if (!tryOnHistory || tryOnHistory.length === 0) {
-              showToast(t('n_noHistory'), 'info')
+    if (!isLoggedIn) {
+      showToast(t('n_needLogin'), 'warning')
+      setShowLoginModal(true)
       return
     }
-    showConfirmDialog(
-      t('clearHistoryTitle'),
-      t('clearHistoryMsgCurrent'),
-      async () => {
-        try {
-          const response = await api.delete(
-            `${API_ENDPOINTS.TRYON.CLEAR}?session_id=${encodeURIComponent(sessionCustomer)}`
-          )
-          if (response.success) {
-            // 等待一小段时间让后端完成更新
-            await new Promise(resolve => {
-              setTimeout(resolve, 100)
-            })
-            await fetchHistory()
-            const deletedCount =
-              response.data?.deleted_count || response.data?.data?.deleted_count || 0
-                    showToast(t('n_cleared'), 'info')
-          } else {
-            // 清除失败，静默处理
-          }
-        } catch (error) {
-                  showToast(t('n_clearFail'), 'error')
-        }
-      }
-    )
-  }, [tryOnHistory, showConfirmDialog, showToast, fetchHistory, sessionCustomer])
 
-  // 清空选择
+    if (!tryOnHistory || tryOnHistory.length === 0) {
+      showToast(t('n_noHistory'), 'info')
+      return
+    }
+    showConfirmDialog(t('clearHistoryTitle'), t('clearHistoryMsgCurrent'), async () => {
+      try {
+        const response = await api.delete(
+          `${API_ENDPOINTS.TRYON.CLEAR}?session_id=${encodeURIComponent(sessionCustomer)}`
+        )
+        if (response.success) {
+          await new Promise(resolve => {
+            setTimeout(resolve, 100)
+          })
+          await fetchHistory()
+          showToast(t('n_cleared'), 'info')
+        }
+      } catch (error) {
+        showToast(t('n_clearFail'), 'error')
+      }
+    })
+  }, [isLoggedIn, tryOnHistory, showConfirmDialog, showToast, fetchHistory, sessionCustomer, t])
+
   const handleClearSelection = useCallback(() => {
     setSelected([])
     setHasResult(false)
   }, [])
 
-  // 切换收藏
   const handleToggleHistorySaved = useCallback(
     async uuid => {
-      // 找到当前记录的收藏状态
+      if (!isLoggedIn) {
+        showToast(t('n_needLogin'), 'warning')
+        setShowLoginModal(true)
+        return
+      }
+
       const record = tryOnHistory?.find(r => r.uuid === uuid)
       const newSavedState = record ? !record.is_saved : true
 
       try {
         const response = await api.post(API_ENDPOINTS.TRYON.SAVE(uuid), { is_saved: newSavedState })
         if (response.success) {
-          fetchHistory() // 刷新历史
-                  showToast(newSavedState ? t('n_saved') : t('n_unsaved'), 'success')
+          fetchHistory()
+          showToast(newSavedState ? t('n_saved') : t('n_unsaved'), 'success')
         }
       } catch (error) {
-                showToast(t('n_saveFail'), 'error')
+        showToast(t('n_saveFail'), 'error')
       }
     },
-    [tryOnHistory, fetchHistory, showToast]
+    [isLoggedIn, tryOnHistory, fetchHistory, showToast, t]
   )
 
-  // 删除单条记录
   const handleDeleteHistory = useCallback(
     async uuid => {
+      if (!isLoggedIn) {
+        showToast(t('n_needLogin'), 'warning')
+        setShowLoginModal(true)
+        return
+      }
+
       try {
         const response = await api.delete(API_ENDPOINTS.TRYON.DELETE(uuid))
         if (response.success) {
           fetchHistory()
-                  showToast(t('n_deleted'), 'info')
+          showToast(t('n_deleted'), 'info')
         } else {
-                  showToast(t('n_deleteFail'), 'error')
+          showToast(t('n_deleteFail'), 'error')
         }
       } catch (error) {
-                showToast(t('n_deleteFail'), 'error')
+        showToast(t('n_deleteFail'), 'error')
       }
     },
-    [fetchHistory, showToast]
+    [isLoggedIn, fetchHistory, showToast, t]
   )
 
-  // 从历史记录复用头像
   const handleReuseAvatarFromHistory = useCallback(
     recordUuid => {
-      // 从历史记录中找到对应记录
       const record = tryOnHistory?.find(r => r.uuid === recordUuid)
       if (!record) {
-                showToast(t('n_notFound'), 'error')
+        showToast(t('n_notFound'), 'error')
         return
       }
 
-      // 优先使用 avatar_key（存储 key），其次使用 uuid（历史记录 uuid）
       const keyToReuse = record.avatar_key || record.uuid
 
       if (!keyToReuse) {
-                showToast(t('n_noAvatar'), 'warning')
+        showToast(t('n_noAvatar'), 'warning')
         return
       }
 
-      // 设置头像预览（使用历史记录中的头像 URL）
       if (record.avatar_url) {
         setAvatarPreview(record.avatar_url)
         safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, record.avatar_url)
-        // 清除 avatarFile，因为我们将使用 key 复用
         setAvatarFile(null)
       }
 
-      // 缓存复用的 key，供下次试穿使用
       safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_KEY, keyToReuse)
 
-              showToast(t('n_avatarReused'), 'success')
+      showToast(t('n_avatarReused'), 'success')
     },
-    [tryOnHistory, showToast]
+    [tryOnHistory, showToast, t]
   )
 
-  // ESC 关闭弹窗
   useEffect(() => {
     const handler = e => {
       if (e.key === 'Escape') {
@@ -684,11 +936,10 @@ export default function App() {
     closeCameraModal,
   ])
 
-  // 登录弹窗 - 账号密码登录
   const handleLoginSubmit = useCallback(
     async (username, password) => {
       if (!username || !password) {
-                showToast(t('n_loginInputEmpty'), 'warning')
+        showToast(t('n_loginInputEmpty'), 'warning')
         return
       }
 
@@ -704,36 +955,37 @@ export default function App() {
         )
 
         if (response.success) {
-          // 后端返回结构：{ success: true, data: { success: true, data: { access_token, merchant, ... } } }
           const loginData = response.data?.data || response.data
-          // 保存 Token
           TokenManager.setTokens(loginData.access_token, loginData.refresh_token)
-
-          // 保存用户信息到缓存
           localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(loginData.merchant))
-
-          // 更新状态
           setIsLoggedIn(true)
           setUserInfo(loginData.merchant)
           setShowLoginModal(false)
-                  showToast(t('n_loginSuccess'), 'success')
+          showToast(t('n_loginSuccess'), 'success')
         } else {
-                  showToast(response.error || t('n_loginError'), 'error')
+          const errorMsg = response.error || t('n_loginError')
+          showToast(errorMsg, 'error')
+          if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
+            handleShowAdminContact()
+          }
         }
       } catch (error) {
-                showToast(t('n_loginFail'), 'error')
+        const errorMsg = error?.response?.data?.error || error?.message || t('n_loginFail')
+        showToast(errorMsg, 'error')
+        if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
+          handleShowAdminContact()
+        }
       } finally {
         setLoginLoading(false)
       }
     },
-    [showToast]
+    [showToast, t, handleShowAdminContact]
   )
 
-  // 短信验证码登录
   const handleSmsLogin = useCallback(
     async (phone, code) => {
       if (!phone || !code) {
-                showToast(t('n_loginPhoneEmpty'), 'warning')
+        showToast(t('n_loginPhoneEmpty'), 'warning')
         return
       }
 
@@ -751,25 +1003,31 @@ export default function App() {
         if (response.success) {
           const loginData = response.data?.data || response.data
           TokenManager.setTokens(loginData.access_token, loginData.refresh_token)
-          // 保存用户信息到缓存
           localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(loginData.merchant))
           setIsLoggedIn(true)
           setUserInfo(loginData.merchant)
           setShowLoginModal(false)
           showToast(t('n_loginSuccess'), 'success')
         } else {
-          showToast(response.error || t('n_smsError'), 'error')
+          const errorMsg = response.error || t('n_smsError')
+          showToast(errorMsg, 'error')
+          if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
+            handleShowAdminContact()
+          }
         }
       } catch (error) {
-        showToast(t('n_loginFail'), 'error')
+        const errorMsg = error?.response?.data?.error || error?.message || t('n_loginFail')
+        showToast(errorMsg, 'error')
+        if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
+          handleShowAdminContact()
+        }
       } finally {
         setLoginLoading(false)
       }
     },
-    [showToast]
+    [showToast, t, handleShowAdminContact]
   )
 
-  // 发送验证码
   const handleSendSms = useCallback(
     async phone => {
       if (!phone) {
@@ -788,43 +1046,141 @@ export default function App() {
         )
 
         if (response.success) {
-                  showToast(t('n_smsSent'), 'success')
+          showToast(t('n_smsSent'), 'success')
           return true
         }
-                showToast(response.error || t('n_smsSendFail'), 'error')
+        showToast(response.error || t('n_smsSendFail'), 'error')
         return false
       } catch (error) {
-                showToast(t('n_smsSendFailRetry'), 'error')
+        showToast(t('n_smsSendFailRetry'), 'error')
         return false
       }
     },
-    [showToast]
+    [showToast, t]
   )
 
-  // 保存试穿结果（保留用于未来扩展）
+  const handleRegister = useCallback(
+    async (username, phone, password, storeName = '') => {
+      if (!username || !phone || !password) {
+        showToast(t('n_registerInputEmpty', '请填写完整信息'), 'warning')
+        return
+      }
+
+      setLoginLoading(true)
+      try {
+        const response = await api.post(
+          API_ENDPOINTS.AUTH.REGISTER,
+          {
+            username,
+            phone,
+            password,
+            store_name: storeName,
+          },
+          { requiresAuth: false }
+        )
+
+        if (response.success) {
+          const registerData = response.data?.data || response.data
+          TokenManager.setTokens(registerData.access_token, registerData.refresh_token)
+          localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(registerData.merchant))
+          setIsLoggedIn(true)
+          setUserInfo(registerData.merchant)
+          setShowLoginModal(false)
+          showToast(t('n_registerSuccess', '注册成功'), 'success')
+        } else {
+          showToast(response.error || t('n_registerError', '注册失败'), 'error')
+        }
+      } catch (error) {
+        showToast(t('n_registerFail', '注册失败，请稍后重试'), 'error')
+      } finally {
+        setLoginLoading(false)
+      }
+    },
+    [showToast, t]
+  )
+
+  const handleSendResetSms = useCallback(
+    async phone => {
+      if (!phone) {
+        showToast(t('n_phoneEmpty'), 'warning')
+        return false
+      }
+
+      try {
+        const response = await api.post(
+          API_ENDPOINTS.AUTH.SEND_RESET_SMS,
+          { phone },
+          { requiresAuth: false }
+        )
+
+        if (response.success) {
+          showToast(t('n_smsSent'), 'success')
+          return true
+        }
+        showToast(response.error || t('n_smsSendFail'), 'error')
+        return false
+      } catch (error) {
+        showToast(t('n_smsSendFailRetry'), 'error')
+        return false
+      }
+    },
+    [showToast, t]
+  )
+
+  const handleResetPassword = useCallback(
+    async (phone, code, newPassword) => {
+      if (!phone || !code || !newPassword) {
+        showToast(t('n_resetInputEmpty', '请填写完整信息'), 'warning')
+        return
+      }
+
+      setLoginLoading(true)
+      try {
+        const response = await api.post(
+          API_ENDPOINTS.AUTH.RESET_PASSWORD,
+          {
+            phone,
+            code,
+            new_password: newPassword,
+          },
+          { requiresAuth: false }
+        )
+
+        if (response.success) {
+          showToast(t('n_resetSuccess', '密码重置成功，请登录'), 'success')
+          setShowLoginModal(false)
+        } else {
+          showToast(response.error || t('n_resetError', '重置失败'), 'error')
+        }
+      } catch (error) {
+        showToast(t('n_resetFail', '重置失败，请稍后重试'), 'error')
+      } finally {
+        setLoginLoading(false)
+      }
+    },
+    [showToast, t]
+  )
+
   const _handleSaveResult = useCallback(() => {
     if (!hasResult || tryOnHistory.length === 0) {
-              showToast(t('n_noSave'), 'warning')
+      showToast(t('n_noSave'), 'warning')
       return
     }
     const latest = tryOnHistory[0]
     if (latest) {
       handleToggleHistorySaved(latest.id)
     }
-  }, [hasResult, tryOnHistory, handleToggleHistorySaved, showToast])
+  }, [hasResult, tryOnHistory, handleToggleHistorySaved, showToast, t])
 
-  // 分享（保留用于未来扩展）
   const _handleShare = useCallback(() => {
     if (!hasResult) {
-              showToast(t('n_noShare'), 'warning')
+      showToast(t('n_noShare'), 'warning')
       return
     }
-            showToast(t('n_shareSoon'), 'info')
-  }, [hasResult, showToast])
+    showToast(t('n_shareSoon'), 'info')
+  }, [hasResult, showToast, t])
 
-  // 服装选择切换（同类型替换，保存到本地缓存）
   const handleToggle = useCallback(item => {
-    // 防御性检查：确保 item 存在且有必要属性
     if (!item || item.id === undefined) {
       console.warn('handleToggle: 无效的服装项', item)
       return
@@ -835,11 +1191,9 @@ export default function App() {
       if (exists) {
         newList = prev.filter(s => s.id !== item.id)
       } else {
-        // 同类型替换：同一 category 只保留一件
         const filtered = prev.filter(s => s.category !== item.category)
         newList = [...filtered, item]
       }
-      // 存储时排除大型 base64 图片数据，避免超出 localStorage 限制
       try {
         const storageList = newList.map(i => ({
           id: i.id,
@@ -848,10 +1202,13 @@ export default function App() {
           category: i.category,
           subcategory: i.subcategory,
           color: i.color,
+          // 兼容 image 和 image_url 两种字段名
+          image_url: i.image_url || i.image,
+          image_thumb_url: i.image_thumb_url || i.image,
           isCustom: i.isCustom,
           isWardrobe: i.isWardrobe,
-          // 不存储 image 和 imageFull，这些数据可从 customClothing/wardrobeClothing/clothing 中获取
         }))
+        console.log('[Storage] 存储已选服装:', storageList)
         safeStorage.setItem(STORAGE_KEYS.SELECTED_CLOTHING, storageList)
       } catch (e) {
         console.warn('存储失败:', e)
@@ -860,11 +1217,9 @@ export default function App() {
     })
   }, [])
 
-  // 移除已选服装（更新本地缓存）
   const handleRemoveSelected = useCallback(id => {
     setSelected(prev => {
       const newList = prev.filter(s => s.id !== id)
-      // 存储时排除大型 base64 图片数据，避免超出 localStorage 限制
       try {
         const storageList = newList.map(i => ({
           id: i.id,
@@ -873,6 +1228,9 @@ export default function App() {
           category: i.category,
           subcategory: i.subcategory,
           color: i.color,
+          // 兼容 image 和 image_url 两种字段名
+          image_url: i.image_url || i.image,
+          image_thumb_url: i.image_thumb_url || i.image,
           isCustom: i.isCustom,
           isWardrobe: i.isWardrobe,
         }))
@@ -884,26 +1242,64 @@ export default function App() {
     })
   }, [])
 
-  // 自定义服装上传（直接上传到云端，返回 key）
   const handleCustomUpload = useCallback(
     async (file, category = 'tops', subcategory = '', name = '') => {
-      if (!file) {
-        return
-      }
-      if (file.size > 10 * 1024 * 1024) {
-                showToast(t('n_imgTooLarge'), 'warning')
+      if (!isLoggedIn) {
+        showToast(t('n_needLogin'), 'warning')
+        setShowLoginModal(true)
         return
       }
 
-      // 生成本地预览和临时 ID
+      if (!file) {
+        return
+      }
+
+      const MAX_SIZE = 5 * 1024 * 1024
+      if (file.size > MAX_SIZE) {
+        showToast(t('n_imgSizeLimit'), 'warning')
+        return
+      }
+
+      const allowedTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/bmp',
+        'image/heic',
+        'image/heif',
+      ]
+      if (!allowedTypes.includes(file.type)) {
+        showToast(t('n_imgFormatError'), 'error')
+        return
+      }
+
+      const fileName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
+      let processedFile = file
+      if (file.name.length > 30) {
+        processedFile = new File([file], truncateFileName(file.name), {
+          type: file.type,
+          lastModified: Date.now(),
+        })
+      }
+
+      if (processedFile.size > 500 * 1024) {
+        try {
+          showToast(t('n_imgOptimizing'), 'info')
+          processedFile = await compressImage(processedFile, 5, 1920, 1920)
+        } catch (error) {
+          console.warn('图片压缩失败，使用原始文件:', error)
+        }
+      }
+
       const tempId = `custom_uploading_${Date.now()}`
       const reader = new FileReader()
-      
-      // 创建占位项（显示上传中状态）
+
       const placeholderItem = {
         id: tempId,
         uuid: tempId,
-        name: name || file.name.replace(/\.[^.]+$/, ''),
+        name: fileName,
         category,
         subcategory,
         color: '#F5F4F0',
@@ -912,29 +1308,28 @@ export default function App() {
         isUploading: true,
         isCustom: true,
       }
-      
-      // 先添加占位项
+
       setCustomClothing(prev => [...prev, placeholderItem])
 
-      // 异步读取本地预览
-      reader.onload = async (e) => {
+      reader.onload = async e => {
         const localPreview = e.target.result
-        // 更新占位项的预览图
-        setCustomClothing(prev => 
-          prev.map(item => item.id === tempId ? { ...item, image: localPreview } : item)
+        const dominantColor = await extractDominantColor(file)
+        setCustomClothing(prev =>
+          prev.map(item =>
+            item.id === tempId ? { ...item, image: localPreview, color: dominantColor } : item
+          )
         )
 
         try {
-          // 上传到云端
           const formData = new FormData()
-          formData.append('image', file)
-          formData.append('name', name || file.name.replace(/\.[^.]+$/, ''))
+          formData.append('image', processedFile)
+          formData.append('name', fileName)
           formData.append('category', category)
           formData.append('subcategory', subcategory || 'other')
           formData.append('source', 'custom')
 
           const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
-          
+
           if (response.success) {
             const item = response.data?.data || response.data
             const newItem = {
@@ -943,7 +1338,7 @@ export default function App() {
               name: item.name,
               category: item.category,
               subcategory: item.subcategory,
-              color: item.color || '#F5F4F0',
+              color: item.color || dominantColor,
               image: item.image_thumb_url || item.image_url,
               imageFull: item.image_url,
               image_key: item.image_key,
@@ -951,62 +1346,95 @@ export default function App() {
               isCustom: true,
               isUploading: false,
             }
-            
-            // 替换占位项
+
             setCustomClothing(prev => {
-              const newList = prev.map(item => item.id === tempId ? newItem : item)
+              const newList = prev.map(i => (i.id === tempId ? newItem : i))
               safeStorage.setItem(STORAGE_KEYS.CUSTOM_CLOTHING, newList)
               return newList
             })
-                    showToast(t('n_customAdded'), 'success')
+            showToast(t('n_customAdded', { count: 1 }), 'success')
           } else {
-            // 移除占位项
             setCustomClothing(prev => prev.filter(item => item.id !== tempId))
-                    showToast(response.error || t('n_uploadFail'), 'error')
+            showToast(response.error || t('n_uploadFail'), 'error')
           }
         } catch (error) {
           console.error('[CustomUpload] 上传失败:', error)
-          // 移除占位项
           setCustomClothing(prev => prev.filter(item => item.id !== tempId))
-                  showToast(t('n_imgUploadFail'), 'error')
+          showToast(t('n_imgUploadFail'), 'error')
         }
       }
-      
+
       reader.readAsDataURL(file)
     },
-    [showToast]
+    [isLoggedIn, showToast, t]
   )
 
-  // 更新衣橱上传分类（来自 MainLayout，保留用于未来扩展）
   const _handleUpdateWardrobeCategory = useCallback((category, subcategory) => {
     setWardrobeUploadCategory(category)
     setWardrobeUploadSubcategory(subcategory || '')
     setWardrobeUploadSubcategoryCustom('')
   }, [])
 
-  // 衣橱上传（直接上传到云端，返回 key）
   const handleWardrobeUpload = useCallback(
     async (file, category = 'tops', subcategory = '', name = '') => {
-      if (!file) {
-        return
-      }
-      if (file.size > 10 * 1024 * 1024) {
-                showToast(t('n_imgTooLarge'), 'warning')
+      if (!isLoggedIn) {
+        showToast(t('n_needLogin'), 'warning')
+        setShowLoginModal(true)
         return
       }
 
-      // 生成本地预览和临时 ID
+      if (!file) {
+        return
+      }
+
+      const MAX_SIZE = 5 * 1024 * 1024
+      if (file.size > MAX_SIZE) {
+        showToast(t('n_imgSizeLimit'), 'warning')
+        return
+      }
+
+      const allowedTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/bmp',
+        'image/heic',
+        'image/heif',
+      ]
+      if (!allowedTypes.includes(file.type)) {
+        showToast(t('n_imgFormatError'), 'error')
+        return
+      }
+
+      const fileName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
+      let processedFile = file
+      if (file.name.length > 30) {
+        processedFile = new File([file], truncateFileName(file.name), {
+          type: file.type,
+          lastModified: Date.now(),
+        })
+      }
+
+      if (processedFile.size > 500 * 1024) {
+        try {
+          showToast(t('n_imgOptimizing'), 'info')
+          processedFile = await compressImage(processedFile, 5, 1920, 1920)
+        } catch (error) {
+          console.warn('图片压缩失败，使用原始文件:', error)
+        }
+      }
+
       const tempId = `wardrobe_uploading_${Date.now()}`
       const reader = new FileReader()
-      
-      // 使用自定义二级分类或选择的二级分类
+
       const finalSubcategory = wardrobeUploadSubcategoryCustom || subcategory
-      
-      // 创建占位项（显示上传中状态）
+
       const placeholderItem = {
         id: tempId,
         uuid: tempId,
-        name: name || file.name.replace(/\.[^.]+$/, ''),
+        name: fileName,
         category,
         subcategory: finalSubcategory,
         color: '#F5F4F0',
@@ -1015,29 +1443,28 @@ export default function App() {
         isUploading: true,
         isWardrobe: true,
       }
-      
-      // 先添加占位项
+
       setWardrobeClothing(prev => [...prev, placeholderItem])
 
-      // 异步读取本地预览
-      reader.onload = async (e) => {
+      reader.onload = async e => {
         const localPreview = e.target.result
-        // 更新占位项的预览图
-        setWardrobeClothing(prev => 
-          prev.map(item => item.id === tempId ? { ...item, image: localPreview } : item)
+        const dominantColor = await extractDominantColor(file)
+        setWardrobeClothing(prev =>
+          prev.map(item =>
+            item.id === tempId ? { ...item, image: localPreview, color: dominantColor } : item
+          )
         )
 
         try {
-          // 上传到云端
           const formData = new FormData()
-          formData.append('image', file)
-          formData.append('name', name || file.name.replace(/\.[^.]+$/, ''))
+          formData.append('image', processedFile)
+          formData.append('name', fileName)
           formData.append('category', category)
           formData.append('subcategory', finalSubcategory || 'other')
           formData.append('source', 'wardrobe')
 
           const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
-          
+
           if (response.success) {
             const item = response.data?.data || response.data
             const newItem = {
@@ -1046,7 +1473,7 @@ export default function App() {
               name: item.name,
               category: item.category,
               subcategory: item.subcategory,
-              color: item.color || '#F5F4F0',
+              color: item.color || dominantColor,
               image: item.image_thumb_url || item.image_url,
               imageFull: item.image_url,
               image_key: item.image_key,
@@ -1054,99 +1481,99 @@ export default function App() {
               isWardrobe: true,
               isUploading: false,
             }
-            
-            // 替换占位项
+
             setWardrobeClothing(prev => {
-              const newList = prev.map(item => item.id === tempId ? newItem : item)
+              const newList = prev.map(i => (i.id === tempId ? newItem : i))
               safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, newList)
               return newList
             })
-                    showToast(t('n_wardrobeAdded'), 'success')
+            showToast(t('n_wardrobeAdded'), 'success')
           } else {
-            // 移除占位项
             setWardrobeClothing(prev => prev.filter(item => item.id !== tempId))
-                    showToast(response.error || t('n_uploadFail'), 'error')
+            showToast(response.error || t('n_uploadFail'), 'error')
           }
         } catch (error) {
           console.error('[WardrobeUpload] 上传失败:', error)
-          // 移除占位项
           setWardrobeClothing(prev => prev.filter(item => item.id !== tempId))
-                  showToast(t('n_imgUploadFail'), 'error')
+          showToast(t('n_imgUploadFail'), 'error')
         }
       }
-      
+
       reader.readAsDataURL(file)
     },
-    [showToast, wardrobeUploadSubcategoryCustom]
+    [isLoggedIn, showToast, wardrobeUploadSubcategoryCustom, t]
   )
 
-  // 删除自定义服装（同时删除云端数据）
   const handleRemoveCustomClothing = useCallback(
     async id => {
-      // 找到要删除的服装
+      if (!isLoggedIn) {
+        showToast(t('n_needLogin'), 'warning')
+        setShowLoginModal(true)
+        return
+      }
+
       const item = customClothing.find(c => c.id === id)
-      
-      // 如果有云端 uuid，尝试从云端删除
+
       if (item?.uuid && !item.uuid.startsWith('custom_')) {
         try {
           await api.delete(API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(item.uuid))
         } catch (e) {
           console.warn('云端删除失败:', e)
-          // 继续删除本地数据
         }
       }
-      
+
       setSelected(prev => prev.filter(i => i.id !== id))
       setCustomClothing(prev => {
         const newList = prev.filter(i => i.id !== id)
         safeStorage.setItem(STORAGE_KEYS.CUSTOM_CLOTHING, newList)
         return newList
       })
-              showToast(t('n_customRemoved'), 'info')
+      showToast(t('n_customRemoved'), 'info')
     },
-    [showToast, customClothing]
+    [isLoggedIn, showToast, customClothing, t]
   )
 
-  // 删除衣橱服装（同时删除云端数据）
   const _handleRemoveWardrobeItem = useCallback(
     async id => {
-      // 找到要删除的服装
+      if (!isLoggedIn) {
+        showToast(t('n_needLogin'), 'warning')
+        setShowLoginModal(true)
+        return
+      }
+
       const item = wardrobeClothing.find(c => c.id === id)
-      
-      // 如果有云端 uuid，尝试从云端删除
+
       if (item?.uuid && !item.uuid.startsWith('wardrobe_')) {
         try {
           await api.delete(API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(item.uuid))
         } catch (e) {
           console.warn('云端删除失败:', e)
-          // 继续删除本地数据
         }
       }
-      
+
       setSelected(prev => prev.filter(i => i.id !== id))
       setWardrobeClothing(prev => {
         const newList = prev.filter(i => i.id !== id)
         safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, newList)
         return newList
       })
-              showToast(t('n_wardrobeRemoved'), 'info')
+      showToast(t('n_wardrobeRemoved'), 'info')
     },
-    [showToast, wardrobeClothing]
+    [isLoggedIn, showToast, wardrobeClothing, t]
   )
 
-  // 网络状态
   const [isOnline, setIsOnline] = useState(navigator.onLine)
 
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true)
       if (toast && toast.message === '网络已断开，部分功能不可用') {
-                showToast(t('networkRecovered'), 'success')
+        showToast(t('networkRecovered'), 'success')
       }
     }
     const handleOffline = () => {
       setIsOnline(false)
-              showToast(t('networkOffline'), 'warning')
+      showToast(t('networkOffline'), 'warning')
     }
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -1154,10 +1581,10 @@ export default function App() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [showToast, toast])
+  }, [showToast, toast, t])
 
   return (
-    <I18nProvider>
+    <>
       {appLoading && <GlobalLoading />}
       <div
         className={`bg-texture min-h-screen transition-colors ${theme === 'dark' ? 'dark' : ''}`}
@@ -1165,10 +1592,7 @@ export default function App() {
         <Header
           user={isLoggedIn ? userInfo : null}
           sessionCustomer={sessionCustomer}
-          onLogout={handleLogout}
           onOpenSettings={() => setShowSettingsModal(true)}
-          onOpenStoreInfo={() => setShowStoreModal(true)}
-          onClearHistory={handleClearHistory}
           onEndSession={handleEndSession}
         />
         <MainLayout
@@ -1177,12 +1601,19 @@ export default function App() {
           onSetAvatarPreview={preview => {
             setAvatarPreview(preview)
             safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, preview)
-            // 如果是使用模特图片（URL 形式），清除 avatarFile
-            // 这样生成时会使用 avatarPreview 而不是 avatarFile
             if (preview && preview.startsWith('/images/')) {
               setAvatarFile(null)
               safeStorage.removeItem(STORAGE_KEYS.AVATAR_FILE)
             }
+          }}
+          onModelSelect={(imageUrl, imageKey) => {
+            setAvatarPreview(imageUrl)
+            safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, imageUrl)
+            if (imageKey) {
+              safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_KEY, imageKey)
+            }
+            setAvatarFile(null)
+            safeStorage.removeItem(STORAGE_KEYS.AVATAR_FILE)
           }}
           selected={selected}
           onToggleSelect={handleToggle}
@@ -1222,22 +1653,214 @@ export default function App() {
           onUploadClothing={uploadClothing}
           onDeleteClothing={deleteClothing}
           onRemoveCustomClothing={handleRemoveCustomClothing}
+          modelPhotos={modelPhotos}
+          modelPhotosLoading={modelPhotosLoading}
+          fetchModelPhotos={fetchModelPhotos}
           remainingTime={remainingTime}
         />
         {toast && <Toast message={toast.message} type={toast.type} />}
 
-        {/* 弹窗们 */}
-        {/* 登录弹窗 */}
         <LoginModal
           isOpen={showLoginModal}
           onClose={() => setShowLoginModal(false)}
           onLogin={handleLoginSubmit}
           onSmsLogin={handleSmsLogin}
           onSendSms={handleSendSms}
+          onRegister={handleRegister}
+          onSendResetSms={handleSendResetSms}
+          onResetPassword={handleResetPassword}
           loading={loginLoading}
         />
 
-        {/* 设置弹窗 */}
+        {showAdminContactModal && (
+          <div
+            className='fixed inset-0 z-[91] flex items-center justify-center p-4'
+            role='dialog'
+            aria-modal='true'
+          >
+            <div
+              className='absolute inset-0 bg-black/50 backdrop-blur-sm'
+              onClick={() => setShowAdminContactModal(false)}
+              onKeyDown={e => {
+                if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+                  setShowAdminContactModal(false)
+                }
+              }}
+              role='button'
+              tabIndex={-1}
+              aria-label={t('adminContactClose', '关闭联系方式弹窗')}
+            />
+            <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-white shadow-2xl'>
+              <button
+                type='button'
+                onClick={() => setShowAdminContactModal(false)}
+                className='absolute right-3 top-3 z-10 rounded-full bg-black/30 p-1.5 transition-colors hover:bg-black/50'
+                aria-label={t('settingsClose')}
+              >
+                <svg
+                  className='h-4 w-4 text-white'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth='2'
+                    d='M6 18L18 6M6 6l12 12'
+                  />
+                </svg>
+              </button>
+              <div className='bg-gradient-to-r from-[#1A1A1A] to-[#2A2A2A] px-6 py-5 text-center'>
+                <h2 className='text-lg font-semibold text-white'>
+                  {t('adminContactTitle', '联系管理员')}
+                </h2>
+                <p className='mt-1 text-xs text-gray-400'>
+                  {t('adminContactSubtitle', '如需开通账号或充值额度，请联系管理员')}
+                </p>
+              </div>
+              <div className='px-6 py-5'>
+                {(() => {
+                  if (adminContactLoading) {
+                    return (
+                      <div className='flex items-center justify-center py-8'>
+                        <svg
+                          className='h-8 w-8 animate-spin text-champagne'
+                          fill='none'
+                          viewBox='0 0 24 24'
+                        >
+                          <circle
+                            className='opacity-25'
+                            cx='12'
+                            cy='12'
+                            r='10'
+                            stroke='currentColor'
+                            strokeWidth='4'
+                          />
+                          <path
+                            className='opacity-75'
+                            fill='currentColor'
+                            d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                          />
+                        </svg>
+                      </div>
+                    )
+                  }
+                  if (adminContactInfo) {
+                    return (
+                      <div className='space-y-4'>
+                        {adminContactInfo.name && (
+                          <div className='flex items-center gap-3 rounded-xl border border-grayLight p-3'>
+                            <div className='flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-champagne/20'>
+                              <svg
+                                className='h-5 w-5 text-champagne'
+                                fill='none'
+                                stroke='currentColor'
+                                viewBox='0 0 24 24'
+                              >
+                                <path
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                  strokeWidth='2'
+                                  d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
+                                />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className='text-xs text-grayMuted'>{t('adminName', '管理员')}</p>
+                              <p className='text-sm font-medium text-charcoal'>
+                                {adminContactInfo.name}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {adminContactInfo.phone && (
+                          <AdminContactItem
+                            icon={
+                              <svg
+                                className='h-5 w-5 text-champagne'
+                                fill='none'
+                                stroke='currentColor'
+                                viewBox='0 0 24 24'
+                              >
+                                <path
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                  strokeWidth='2'
+                                  d='M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z'
+                                />
+                              </svg>
+                            }
+                            label={t('adminPhone', '手机号')}
+                            value={adminContactInfo.phone}
+                            maskedValue={maskPhone(adminContactInfo.phone)}
+                          />
+                        )}
+                        {adminContactInfo.wechat && (
+                          <AdminContactItem
+                            icon={
+                              <svg
+                                className='h-5 w-5 text-champagne'
+                                fill='none'
+                                stroke='currentColor'
+                                viewBox='0 0 24 24'
+                              >
+                                <path
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                  strokeWidth='2'
+                                  d='M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'
+                                />
+                              </svg>
+                            }
+                            label={t('adminWechat', '微信号')}
+                            value={adminContactInfo.wechat}
+                            maskedValue={maskWechat(adminContactInfo.wechat)}
+                          />
+                        )}
+                        {adminContactInfo.email && (
+                          <AdminContactItem
+                            icon={
+                              <svg
+                                className='h-5 w-5 text-champagne'
+                                fill='none'
+                                stroke='currentColor'
+                                viewBox='0 0 24 24'
+                              >
+                                <path
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                  strokeWidth='2'
+                                  d='M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
+                                />
+                              </svg>
+                            }
+                            label={t('adminEmail', '邮箱')}
+                            value={adminContactInfo.email}
+                            maskedValue={maskEmail(adminContactInfo.email)}
+                          />
+                        )}
+                      </div>
+                    )
+                  }
+                  return (
+                    <p className='text-center text-sm text-grayMuted'>
+                      {t('adminContactEmpty', '暂无联系方式')}
+                    </p>
+                  )
+                })()}
+                <button
+                  type='button'
+                  onClick={() => setShowAdminContactModal(false)}
+                  className='mt-5 w-full rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90'
+                >
+                  {t('close', '关闭')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showSettingsModal && (
           <div
             className='fixed inset-0 z-[70] flex items-center justify-center p-4'
@@ -1296,7 +1919,9 @@ export default function App() {
                         d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
                       />
                     </svg>
-                    <span className='text-sm font-semibold text-charcoal'>{t('settingsAccountInfo')}</span>
+                    <span className='text-sm font-semibold text-charcoal'>
+                      {t('settingsAccountInfo')}
+                    </span>
                   </div>
                   {isLoggedIn ? (
                     <div className='flex items-center gap-3 rounded-xl border border-success/20 bg-success/5 p-3'>
@@ -1450,7 +2075,9 @@ export default function App() {
                           d='M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 013 3v1'
                         />
                       </svg>
-                      <span className='text-sm font-semibold text-charcoal'>{t('settingsLogoutSection')}</span>
+                      <span className='text-sm font-semibold text-charcoal'>
+                        {t('settingsLogoutSection')}
+                      </span>
                     </div>
                     <p className='mb-2 text-xs text-grayMuted'>{t('settingsLogoutHint')}</p>
                     <button
@@ -1470,7 +2097,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 门店信息弹窗 */}
         {showStoreModal && (
           <div
             className='fixed inset-0 z-[70] flex items-center justify-center p-4'
@@ -1510,13 +2136,14 @@ export default function App() {
                   {isLoggedIn ? userInfo?.store_name || t('storeMyStore') : t('storeNotLoggedIn')}
                 </h2>
                 <p className='mt-1 text-xs text-gray-400'>
-                  {isLoggedIn ? userInfo?.username || t('settingsMerchantAccount') : t('storePleaseLogin')}
+                  {isLoggedIn
+                    ? userInfo?.username || t('settingsMerchantAccount')
+                    : t('storePleaseLogin')}
                 </p>
               </div>
               <div className='space-y-4 px-6 py-4'>
                 {isLoggedIn ? (
                   <>
-                    {/* 配额使用进度 */}
                     <div className='rounded-xl bg-grayLight/30 p-4'>
                       <div className='mb-2 flex items-center justify-between'>
                         <span className='text-sm font-medium text-charcoal'>{t('storeQuota')}</span>
@@ -1533,16 +2160,19 @@ export default function App() {
                         />
                       </div>
                       <div className='mt-2 flex items-center justify-between'>
-                        <span className='text-xs text-grayMuted'>{t('storeQuotaUsed', { n: quota.used })}</span>
+                        <span className='text-xs text-grayMuted'>
+                          {t('storeQuotaUsed', { n: quota.used })}
+                        </span>
                         <span className='text-xs font-medium text-success'>
                           {t('storeQuotaRemaining', { n: quota.remaining })}
                         </span>
                       </div>
                     </div>
-                    {/* 其他统计 */}
                     <div className='flex items-center justify-between py-2'>
                       <span className='text-sm text-grayMuted'>{t('storeAccountStatus')}</span>
-                      <span className='text-sm font-medium text-success'>{t('settingsLoggedIn')}</span>
+                      <span className='text-sm font-medium text-success'>
+                        {t('settingsLoggedIn')}
+                      </span>
                     </div>
                     <div className='flex items-center justify-between py-2'>
                       <span className='text-sm text-grayMuted'>{t('storeWardrobeItems')}</span>
@@ -1553,7 +2183,6 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    {/* 未登录状态 */}
                     <div className='flex items-center justify-between py-2'>
                       <span className='text-sm text-grayMuted'>账号状态</span>
                       <span className='text-sm font-medium text-error'>未登录</span>
@@ -1587,7 +2216,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 衣橱上传弹窗 */}
         {showWardrobeModal && (
           <div
             className='fixed inset-0 z-[70] flex items-center justify-center p-4'
@@ -1869,7 +2497,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 自定义上传弹窗 */}
         {showCustomUploadModal && (
           <div
             className='fixed inset-0 z-[70] flex items-center justify-center p-4'
@@ -2153,7 +2780,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 确认弹窗 */}
         {showConfirmModal && (
           <div
             className='fixed inset-0 z-[85] flex items-center justify-center p-4'
@@ -2214,7 +2840,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 图片预览弹窗 - 统一尺寸 */}
         {showPreviewModal && (
           <div
             className='fixed inset-0 z-[75] flex items-center justify-center p-4'
@@ -2273,7 +2898,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 拍照选择弹窗 */}
         {showCameraModal && (
           <div
             className='fixed inset-0 z-[85] flex items-end justify-center sm:items-center'
@@ -2294,7 +2918,9 @@ export default function App() {
             />
             <div className='relative w-full max-w-xs animate-slide-up overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl'>
               <div className='px-5 pb-3 pt-5'>
-                <h3 className='text-center text-base font-semibold text-charcoal'>{t('cameraSelectTitle')}</h3>
+                <h3 className='text-center text-base font-semibold text-charcoal'>
+                  {t('cameraSelectTitle')}
+                </h3>
               </div>
               <div className='space-y-2.5 px-5 pb-5'>
                 <button
@@ -2370,14 +2996,13 @@ export default function App() {
                   className='w-full py-2.5 text-sm font-medium text-grayMuted transition-colors hover:text-charcoal'
                   onClick={closeCameraModal}
                 >
-                  取消
+                  {t('cancel')}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 网络状态提示条 */}
         {!isOnline && (
           <div
             className='fixed left-0 right-0 top-0 z-[100] bg-error px-4 py-2 text-center text-sm font-medium text-white transition-all duration-300'
@@ -2387,7 +3012,6 @@ export default function App() {
           </div>
         )}
 
-        {/* 通知容器 */}
         <div
           id='notification-container'
           className='fixed right-6 top-24 z-[80] space-y-3'
@@ -2395,6 +3019,14 @@ export default function App() {
           aria-relevant='additions'
         />
       </div>
+    </>
+  )
+}
+
+export default function App() {
+  return (
+    <I18nProvider>
+      <AppContent />
     </I18nProvider>
   )
 }

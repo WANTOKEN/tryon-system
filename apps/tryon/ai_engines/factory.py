@@ -17,8 +17,8 @@ class AIEngineConfigError(Exception):
     """AI 引擎配置错误异常"""
     pass
 
-# 引擎注册表
 _engines: Dict[str, BaseAIEngine] = {}
+_mock_logged: bool = False
 
 
 def _import_engine(module_name: str, class_name: str, raise_on_error: bool = False) -> Optional[BaseAIEngine]:
@@ -34,13 +34,11 @@ def _import_engine(module_name: str, class_name: str, raise_on_error: bool = Fal
         引擎实例或 None
     """
     try:
-        # 使用 importlib 替代 __import__（Python 3.12 兼容）
         full_module_name = f'apps.tryon.ai_engines.{module_name}'
         module = importlib.import_module(full_module_name)
         engine_class = getattr(module, class_name)
         engine = engine_class()
         
-        # 验证配置
         if engine.validate_config():
             logger.info(f"[AIEngineFactory] 引擎 {engine.name} 配置验证通过")
             return engine
@@ -51,7 +49,7 @@ def _import_engine(module_name: str, class_name: str, raise_on_error: bool = Fal
             logger.warning(f"[AIEngineFactory] {msg}")
             return None
     except AIEngineConfigError:
-        raise  # 重新抛出配置错误
+        raise
     except ImportError as e:
         msg = f"无法导入引擎 {module_name}.{class_name}: {e}"
         if raise_on_error:
@@ -70,16 +68,19 @@ def _register_default_engines():
     """注册默认引擎"""
     global _engines
     
-    # 总是注册 mock 引擎作为后备
     _engines['mock'] = MockAIEngine()
     
-    # 动态导入真实引擎（调试阶段：配置失败直接抛异常）
+    use_mock = os.getenv('AI_USE_MOCK', 'false').lower() == 'true'
+    
+    if use_mock:
+        logger.info("[AIEngineFactory] AI_USE_MOCK=true，跳过真实引擎注册")
+        return
+    
     engines_config = [
-        ('seeddance', 'SeedDanceEngine'),  # 当前仅使用 seeddance
+        ('seeddance', 'SeedDanceEngine'),
     ]
     
     for module_name, class_name in engines_config:
-        # raise_on_error=False 允许引擎配置失败时降级到 mock
         engine = _import_engine(module_name, class_name, raise_on_error=False)
         if engine:
             _engines[module_name] = engine
@@ -96,17 +97,25 @@ def get_engine(name: str, allow_fallback: bool = True) -> BaseAIEngine:
     Returns:
         引擎实例
     """
+    global _mock_logged
+    
     if not _engines:
         _register_default_engines()
     
-    # 如果引擎不存在，使用默认值
+    use_mock = os.getenv('AI_USE_MOCK', 'false').lower() == 'true'
+    
+    if use_mock:
+        if not _mock_logged:
+            logger.info("[AIEngineFactory] AI_USE_MOCK=true，强制使用 Mock 引擎")
+            _mock_logged = True
+        return _engines['mock']
+    
     if name not in _engines:
         logger.warning(f"[AIEngineFactory] 引擎 {name} 不存在，使用默认引擎")
         name = os.getenv('AI_ENGINE_DEFAULT', 'mock')
     
     engine = _engines.get(name)
     
-    # 检查熔断器，如需降级
     if allow_fallback and hasattr(engine, 'circuit_breaker'):
         if engine.circuit_breaker.is_open():
             fallback_name = get_fallback_engine(name)

@@ -22,7 +22,6 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
   }, []);
 
@@ -90,6 +89,11 @@ export default function SettingsPage() {
             label: '配额设置',
             children: <QuotaConfigPanel configs={groupedConfig.quota} onSave={handleSave} loading={saving} onRefresh={loadConfig} />,
           },
+          {
+            key: 'contact',
+            label: '联系方式',
+            children: <ContactConfigPanel configs={groupedConfig.contact} onSave={handleSave} loading={saving} onRefresh={loadConfig} />,
+          },
         ]}
       />
     </div>
@@ -105,8 +109,6 @@ function BasicConfigPanel({ configs, onSave, loading, onRefresh }: {
 }) {
   const [localConfigs, setLocalConfigs] = useState(configs);
 
-  // 同步 props 到 state（当父组件数据更新时）
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLocalConfigs(configs); }, [configs]);
 
   const handleChange = (key: string, value: string) => {
@@ -141,8 +143,6 @@ function AIConfigPanel({ configs, onSave, loading, onRefresh }: {
 }) {
   const [localConfigs, setLocalConfigs] = useState(configs);
 
-  // 同步 props 到 state（当父组件数据更新时）
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLocalConfigs(configs); }, [configs]);
 
   const handleChange = (key: string, value: string) => {
@@ -204,8 +204,6 @@ function OSSConfigPanel({ configs, onSave, loading, onRefresh }: {
 }) {
   const [localConfigs, setLocalConfigs] = useState(configs);
 
-  // 同步 props 到 state（当父组件数据更新时）
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLocalConfigs(configs); }, [configs]);
 
   const handleChange = (key: string, value: string) => {
@@ -282,8 +280,6 @@ function StorageConfigPanel({ configs, onSave, loading, onRefresh }: {
 }) {
   const [localConfigs, setLocalConfigs] = useState(configs);
 
-  // 同步 props 到 state（当父组件数据更新时）
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLocalConfigs(configs); }, [configs]);
 
   const handleChange = (key: string, value: string) => {
@@ -339,8 +335,6 @@ function QuotaConfigPanel({ configs, onSave, loading, onRefresh }: {
 }) {
   const [localConfigs, setLocalConfigs] = useState(configs);
 
-  // 同步 props 到 state（当父组件数据更新时）
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setLocalConfigs(configs); }, [configs]);
 
   const handleChange = (key: string, value: string) => {
@@ -372,6 +366,65 @@ function QuotaConfigPanel({ configs, onSave, loading, onRefresh }: {
       <Divider />
       <Space>
         <Button type="primary" loading={loading} onClick={() => onSave('quota', localConfigs)}>保存配置</Button>
+        <Button onClick={onRefresh}>重置</Button>
+      </Space>
+    </Card>
+  );
+}
+
+function ContactConfigPanel({ configs, onSave, loading, onRefresh }: { 
+  configs: SystemConfigItem[]; 
+  onSave: (group: string, configs: SystemConfigItem[]) => void;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const [localConfigs, setLocalConfigs] = useState(configs);
+
+  useEffect(() => { setLocalConfigs(configs); }, [configs]);
+
+  const handleChange = (key: string, value: string) => {
+    setLocalConfigs((prev) => prev.map((c) => (c.key === key ? { ...c, value } : c)));
+  };
+
+  const getConfig = (key: string) => localConfigs.find((c) => c.key === key);
+
+  return (
+    <Card>
+      <Form.Item label="管理员名称">
+        <Input
+          value={getConfig('admin_contact_name')?.value || ''}
+          onChange={(e) => handleChange('admin_contact_name', e.target.value)}
+          placeholder="请输入管理员名称"
+          style={{ width: 400 }}
+        />
+      </Form.Item>
+      <Form.Item label="联系电话">
+        <Input
+          value={getConfig('admin_contact_phone')?.value || ''}
+          onChange={(e) => handleChange('admin_contact_phone', e.target.value)}
+          placeholder="请输入联系电话"
+          style={{ width: 400 }}
+        />
+      </Form.Item>
+      <Form.Item label="微信号">
+        <Input
+          value={getConfig('admin_contact_wechat')?.value || ''}
+          onChange={(e) => handleChange('admin_contact_wechat', e.target.value)}
+          placeholder="请输入微信号"
+          style={{ width: 400 }}
+        />
+      </Form.Item>
+      <Form.Item label="邮箱">
+        <Input
+          value={getConfig('admin_contact_email')?.value || ''}
+          onChange={(e) => handleChange('admin_contact_email', e.target.value)}
+          placeholder="请输入邮箱"
+          style={{ width: 400 }}
+        />
+      </Form.Item>
+      <Divider />
+      <Space>
+        <Button type="primary" loading={loading} onClick={() => onSave('contact', localConfigs)}>保存配置</Button>
         <Button onClick={onRefresh}>重置</Button>
       </Space>
     </Card>

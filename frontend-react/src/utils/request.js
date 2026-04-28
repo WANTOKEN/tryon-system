@@ -58,11 +58,20 @@ export function isEncryptionEnabled() {
   return dataEncryptionEnabled
 }
 
-// 简单加密（XOR + Base64，生产环境应使用 AES）
-const ENCRYPTION_KEY = 'TryOn@2024!Secret'
+function getEncryptionKey() {
+  const key = import.meta.env.VITE_ENCRYPTION_KEY
+  if (!key) {
+    console.warn('VITE_ENCRYPTION_KEY 环境变量未设置，数据加密功能将不可用')
+  }
+  return key
+}
 
 export function encryptData(data) {
   if (!dataEncryptionEnabled) {
+    return data
+  }
+  const key = getEncryptionKey()
+  if (!key) {
     return data
   }
   const jsonStr = JSON.stringify(data)
@@ -70,7 +79,7 @@ export function encryptData(data) {
   for (let i = 0; i < jsonStr.length; i += 1) {
     encrypted += String.fromCharCode(
       // eslint-disable-next-line no-bitwise
-      jsonStr.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length)
+      jsonStr.charCodeAt(i) ^ key.charCodeAt(i % key.length)
     )
   }
   return btoa(encrypted)
@@ -80,13 +89,17 @@ export function decryptData(encrypted) {
   if (!dataEncryptionEnabled) {
     return encrypted
   }
+  const key = getEncryptionKey()
+  if (!key) {
+    return encrypted
+  }
   try {
     const decoded = atob(encrypted)
     let decrypted = ''
     for (let i = 0; i < decoded.length; i += 1) {
       decrypted += String.fromCharCode(
         // eslint-disable-next-line no-bitwise
-        decoded.charCodeAt(i) ^ ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length)
+        decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length)
       )
     }
     return JSON.parse(decrypted)

@@ -147,16 +147,16 @@ class ClothingUploadView(APIView):
         subcategory = serializer.validated_data['subcategory']
         color = serializer.validated_data.get('color', '#000000')
 
-        # 上传图片到 OSS
-        from apps.common.services.oss_service import oss_service
+        # 上传图片到存储服务
+        from apps.common.services.storage_service import storage_service
         import os
 
         # 生成文件名
         ext = os.path.splitext(image.name)[1]
         filename = f"clothing{ext}"
 
-        # 上传到 OSS (自动 MD5 去重，自动记录到 FileUploadRecord)
-        oss_key, image_url, is_duplicate, file_md5 = oss_service.upload_file(
+        # 上传到存储服务 (自动 MD5 去重，自动记录到 FileUploadRecord)
+        storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
             file_obj=image,
             filename=filename,
             folder='clothing',
@@ -168,7 +168,7 @@ class ClothingUploadView(APIView):
             source='merchant_upload'
         )
         image_thumb_url = image_url  # TODO: 生成缩略图
-        file_hash = file_md5  # 使用 MD5 作为唯一标识（相同内容 = 相同 MD5）
+        file_hash = content_key  # 存储 content_key（格式: storage_type:md5），用于复用
 
         # 创建服装记录
         clothing = Clothing.objects.create(

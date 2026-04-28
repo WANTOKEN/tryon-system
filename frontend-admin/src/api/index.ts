@@ -3,7 +3,7 @@ import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type { 
   PaginatedResponse, Merchant, TryOnRecord, Clothing, FileUploadRecord, 
   DashboardStats, AdminUser, AdminUserItem, OperationLog, QuotaHistoryItem, 
-  SystemConfigItem, GroupedConfig 
+  SystemConfigItem, GroupedConfig, ModelPhoto 
 } from '../types';
 
 // 登录响应类型
@@ -354,6 +354,49 @@ export const configApi = {
     const response = await api.post<{ updated: string[] }>('/config/batch/', { 
       configs, 
       ...options 
+    });
+    return response.data;
+  },
+};
+
+// ============ 模特照片 API ============
+export const modelPhotoApi = {
+  list: async (params: { page?: number; page_size?: number; is_active?: boolean }): Promise<{ items: ModelPhoto[]; total: number }> => {
+    const response = await api.get<PaginatedResponse<ModelPhoto>>('/model-photos/', { params });
+    return handlePaginatedResponse(response);
+  },
+
+  get: async (id: number): Promise<ModelPhoto> => {
+    const response = await api.get<ModelPhoto>(`/model-photos/${id}/`);
+    return response.data;
+  },
+
+  create: async (data: Partial<ModelPhoto> | FormData, isFormData = false): Promise<ModelPhoto> => {
+    const response = isFormData
+      ? await api.post<ModelPhoto>('/model-photos/', data as FormData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      : await api.post<ModelPhoto>('/model-photos/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: Partial<ModelPhoto> | FormData, isFormData = false): Promise<ModelPhoto> => {
+    const response = isFormData
+      ? await api.put<ModelPhoto>(`/model-photos/${id}/`, data as FormData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      : await api.put<ModelPhoto>(`/model-photos/${id}/`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/model-photos/${id}/`);
+  },
+
+  // 上传模特照片 (FormData)
+  upload: async (formData: FormData): Promise<ModelPhoto> => {
+    const response = await api.post<ModelPhoto>('/model-photos/upload/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },

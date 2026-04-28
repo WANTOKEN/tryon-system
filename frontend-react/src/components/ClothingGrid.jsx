@@ -35,7 +35,7 @@ export default function ClothingGrid({ clothing, selected, onToggleSelect }) {
             className={`clothing-card ${isSelected ? 'selected' : ''}`}
           >
             {/* Image */}
-            <div className='aspect-square bg-grayLight/50 dark:bg-gray-700/50'>
+            <div className='aspect-square overflow-hidden rounded-lg bg-grayLight/50 dark:bg-gray-700/50'>
               {item.image || item.image_url ? (
                 <CachedImage
                   src={item.image || item.image_url}

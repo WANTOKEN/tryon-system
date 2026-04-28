@@ -11,6 +11,9 @@ export const API_ENDPOINTS = {
     ME: `${API_BASE}/auth/me/`,
     SEND_SMS: `${API_BASE}/auth/send-sms/`,
     REFRESH: `${API_BASE}/auth/refresh/`,
+    SEND_RESET_SMS: `${API_BASE}/auth/send-reset-sms/`,
+    RESET_PASSWORD: `${API_BASE}/auth/reset-password/`,
+    ADMIN_CONTACT: `${API_BASE}/auth/admin-contact/`,
   },
   // 衣橱
   WARDROBE: {
@@ -28,6 +31,12 @@ export const API_ENDPOINTS = {
     SAVE: uuid => `${API_BASE}/tryon/records/${uuid}/save/`,
     DELETE: uuid => `${API_BASE}/tryon/records/${uuid}/`,
     CLEAR: `${API_BASE}/tryon/records/clear/`,
+    UPLOAD_AVATAR: `${API_BASE}/tryon/upload/avatar/`,
+    UPLOAD_CLOTHING: `${API_BASE}/tryon/upload/clothing/`,
+  },
+  // 通用
+  COMMON: {
+    MODEL_PHOTOS: `${API_BASE}/common/model-photos/`,
   },
 }
 

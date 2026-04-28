@@ -1,11 +1,8 @@
 """
 试穿视图
 """
-import base64
-from io import BytesIO
-from django.conf import settings
+import logging
 from django.utils import timezone
-from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import F
 from rest_framework.views import APIView
@@ -17,15 +14,14 @@ from apps.common.utils.cache_utils import QuotaCache
 from apps.common.exceptions import QuotaExceededException, ResourceNotFoundException
 from apps.common.constants import RecordPrefix, ErrorMessage
 from apps.common.utils.content_key import ContentKey
+from apps.common.utils.url_utils import get_private_url
 from apps.accounts.models import Merchant
-from apps.tryon.serializers import get_full_url
+from apps.tryon.serializers import TryOnRecordSerializer, TryOnGenerateSerializer, TryOnStatusSerializer, TryOnSaveSerializer
 from apps.wardrobe.models import Clothing
 from .models import TryOnRecord, TryOnClothing
-from .serializers import (
-    TryOnRecordSerializer, TryOnGenerateSerializer,
-    TryOnStatusSerializer, TryOnSaveSerializer
-)
 from .services import TryOnService
+
+logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request):
@@ -36,37 +32,6 @@ def get_client_ip(request):
     return request.META.get('REMOTE_ADDR', '')
 
 
-def save_base64_image(base64_data, folder, filename_prefix):
-    """保存 Base64 图片到存储"""
-    # 解析 Base64
-    if base64_data.startswith('data:'):
-        # 格式: data:image/png;base64,xxxxx
-        header, data = base64_data.split(',', 1)
-        # 获取扩展名
-        if 'png' in header:
-            ext = '.png'
-        elif 'jpeg' in header or 'jpg' in header:
-            ext = '.jpg'
-        elif 'webp' in header:
-            ext = '.webp'
-        else:
-            ext = '.jpg'
-    else:
-        data = base64_data
-        ext = '.jpg'
-    
-    # 解码
-    image_data = base64.b64decode(data)
-    image_file = BytesIO(image_data)
-    
-    # 生成文件路径
-    filename = f"{folder}/{filename_prefix}{ext}"
-    
-    # 保存
-    path = default_storage.save(filename, image_file)
-    return f"{settings.MEDIA_URL}{path}"
-
-
 class TryOnGenerateView(APIView):
     """提交试穿任务"""
     permission_classes = [IsAuthenticated]
@@ -75,10 +40,8 @@ class TryOnGenerateView(APIView):
         serializer = TryOnGenerateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        avatar = serializer.validated_data.get('avatar')
-        avatar_key = serializer.validated_data.get('avatar_key', '')
-        clothing_uuids = serializer.validated_data.get('clothing_uuids', [])
-        custom_clothes = serializer.validated_data.get('custom_clothes', [])
+        avatar_key = serializer.validated_data['avatar_key']
+        clothing_uuids = serializer.validated_data['clothing_uuids']
         session_id = serializer.validated_data['session_id']
         ai_engine_name = serializer.validated_data.get('ai_engine', 'seeddance')
 
@@ -87,50 +50,45 @@ class TryOnGenerateView(APIView):
         if merchant.quota_remaining <= 0:
             raise QuotaExceededException()
 
-        # 处理头像：支持 key 复用（通用，支持 OSS 和本地）
-        avatar_url = None
-        avatar_storage_key = ''
+        # 处理头像：通过 key 解析 URL
+        from apps.common.utils.url_utils import get_url_by_key
         
-        if avatar_key:
-            # 通过 Key 复用已上传的头像
-            from apps.common.utils.url_utils import get_url_by_key
-            
-            if RecordPrefix.is_tryon_uuid(avatar_key):
-                # 历史记录 UUID
-                try:
-                    history_record = TryOnRecord.objects.get(
-                        uuid=avatar_key,
-                        merchant_id=merchant.id,
-                        is_deleted=False
-                    )
-                    avatar_url = history_record.avatar_url
-                    avatar_storage_key = history_record.avatar_key
-                except TryOnRecord.DoesNotExist:
-                    raise ResourceNotFoundException(ErrorMessage.HISTORY_NOT_FOUND)
-            elif ContentKey.is_valid(avatar_key):
-                # 内容 Key: "local:xxx" 或 "oss:xxx"
-                avatar_url = ContentKey.resolve_or_raise(
-                    avatar_key, 
-                    tenant_id=str(merchant.uuid),
-                    resource_name='头像'
+        if RecordPrefix.is_tryon_uuid(avatar_key):
+            # 历史记录 UUID
+            try:
+                history_record = TryOnRecord.objects.get(
+                    uuid=avatar_key,
+                    merchant_id=merchant.id,
+                    is_deleted=False
                 )
-                avatar_storage_key = avatar_key
-            else:
-                # 存储路径: "wardrobe/xxx.jpg"
-                avatar_url = get_url_by_key(avatar_key)
-                avatar_storage_key = avatar_key
+                avatar_url = history_record.avatar_url
+                avatar_storage_key = history_record.avatar_key
+            except TryOnRecord.DoesNotExist:
+                raise ResourceNotFoundException(ErrorMessage.HISTORY_NOT_FOUND)
+        elif ContentKey.is_valid(avatar_key):
+            # 内容 Key: "local:xxx" 或 "oss:xxx"
+            avatar_url = ContentKey.resolve_or_raise(
+                avatar_key, 
+                tenant_id=str(merchant.uuid),
+                resource_name='头像'
+            )
+            avatar_storage_key = avatar_key
+        else:
+            # 存储路径: "wardrobe/xxx.jpg"
+            avatar_url = get_url_by_key(avatar_key)
+            avatar_storage_key = avatar_key
         
         # 分离数据库服装 UUID 和 key 形式的服装标识
         db_clothing_uuids = []
         key_clothing_urls = []  # 通过 key 复用的服装 URL
         
-        print(f"[TryOn] 收到的 clothing_uuids: {clothing_uuids}")
+        logger.info(f"[TryOn] 收到的 clothing_uuids: {clothing_uuids}")
         
         for uuid_or_key in clothing_uuids:
             if uuid_or_key.startswith('key:'):
                 # key: 形式，通过 ContentKey 复用
                 content_key = uuid_or_key[4:]  # 去掉 "key:" 前缀
-                print(f"[TryOn] 检测到 key 形式的服装: content_key={content_key}")
+                logger.info(f"[TryOn] 检测到 key 形式的服装: content_key={content_key}")
                 if ContentKey.is_valid(content_key):
                     url = ContentKey.resolve_or_raise(
                         content_key,
@@ -138,16 +96,16 @@ class TryOnGenerateView(APIView):
                         resource_name='服装'
                     )
                     key_clothing_urls.append(url)
-                    print(f"[TryOn] 通过 key 复用服装成功: key={content_key}, url={url}")
+                    logger.info(f"[TryOn] 通过 key 复用服装成功: key={content_key}, url={url}")
                 else:
                     # 无效的 key，跳过
-                    print(f"[TryOn] 无效的 content_key，跳过: {content_key}")
+                    logger.warning(f"[TryOn] 无效的 content_key，跳过: {content_key}")
             else:
                 # 普通 UUID
                 db_clothing_uuids.append(uuid_or_key)
         
-        print(f"[TryOn] 数据库服装 UUIDs: {db_clothing_uuids}")
-        print(f"[TryOn] 通过 key 复用的服装 URLs: {key_clothing_urls}")
+        logger.info(f"[TryOn] 数据库服装 UUIDs: {db_clothing_uuids}")
+        logger.info(f"[TryOn] 通过 key 复用的服装 URLs: {key_clothing_urls}")
         
         # 获取数据库中的服装
         db_clothes = []
@@ -162,61 +120,72 @@ class TryOnGenerateView(APIView):
         # 准备服装文件列表
         clothing_files = []
         
-        # 添加数据库服装 (已上传到 OSS 的 URL)
+        # 添加数据库服装 (已上传到 OSS 的 URL，TryOnService 会自动生成预签名)
         clothing_urls = [c.image_url for c in db_clothes]
         # 添加通过 key 复用的服装 URL
         clothing_urls.extend(key_clothing_urls)
 
-        # 处理自定义服装
-        for idx, custom in enumerate(custom_clothes):
-            image_data = custom['image']
-            
-            # 如果是 URL，直接使用
-            if image_data.startswith('http'):
-                clothing_urls.append(image_data)
-                continue
-            
-            # Base64 图片，转换为文件对象
-            if image_data.startswith('data:'):
-                header, data = image_data.split(',', 1)
-                if 'png' in header:
-                    ext = '.png'
-                elif 'jpeg' in header or 'jpg' in header:
-                    ext = '.jpg'
-                elif 'webp' in header:
-                    ext = '.webp'
-                else:
-                    ext = '.jpg'
+        # 构建服装 key 列表（用于前端复用）
+        clothing_keys = []
+        # 数据库服装的 key
+        from apps.common.utils.url_utils import get_key_from_url
+        from apps.common.constants import ContentKeyPrefix
+        import os
+        import re
+        
+        for c in db_clothes:
+            if c.file_hash:
+                # file_hash 已经是 content_key 格式（storage_type:md5）
+                clothing_keys.append(c.file_hash)
             else:
-                data = image_data
-                ext = '.jpg'
-            
-            image_bytes = base64.b64decode(data)
-            image_file = BytesIO(image_bytes)
-            image_file.name = f"custom_{idx}{ext}"
-            clothing_files.append({
-                'file': image_file,
-                'name': custom.get('name', f'自定义服装{idx + 1}'),
-                'category': custom.get('category', 'tops'),
-                'subcategory': custom.get('subcategory', ''),
+                # 从 URL 中提取 MD5 生成 content_key
+                storage_key = get_key_from_url(c.image_url)
+                if storage_key:
+                    filename = os.path.basename(storage_key)
+                    filename_without_ext = os.path.splitext(filename)[0]
+                    
+                    # 检查文件名是否是 MD5 格式（32位十六进制）
+                    if len(filename_without_ext) == 32 and re.match(r'^[a-f0-9]{32}$', filename_without_ext):
+                        storage_type = ContentKeyPrefix.OSS if 'oss' in c.image_url.lower() else ContentKeyPrefix.LOCAL
+                        content_key = ContentKey.from_md5(filename_without_ext, storage_type)
+                        clothing_keys.append(content_key)
+                    else:
+                        clothing_keys.append('')
+                else:
+                    clothing_keys.append('')
+        # 通过 key 复用的服装 key
+        for uuid_or_key in clothing_uuids:
+            if uuid_or_key.startswith('key:'):
+                clothing_keys.append(uuid_or_key[4:])  # 去掉 "key:" 前缀
+
+        # 构建服装信息列表（用于 AI prompt 优化）
+        clothing_info_list = []
+        
+        # 数据库服装的信息
+        for c in db_clothes:
+            clothing_info_list.append({
+                'category': c.category,
+                'subcategory': c.subcategory,
+                'name': c.name,
+            })
+        
+        # 通过 key 复用的服装（没有 category 信息）
+        for _ in key_clothing_urls:
+            clothing_info_list.append({
+                'category': '',
+                'subcategory': '',
+                'name': '',
             })
 
         # 使用 TryOnService 创建任务
         service = TryOnService(engine_name=ai_engine_name)
         
         try:
-            # 合并 clothing_urls 和 clothing_files
-            # 将 clothing_files 转换为 image 对象列表
-            clothes_images = list(clothing_urls)  # 复制 URL 列表
-            clothes_images.extend([cf['file'] for cf in clothing_files])  # 添加文件对象
-            
-            # 处理头像参数：key 复用时传 URL，新上传时传文件
-            avatar_param = avatar_url if avatar_key else avatar
-            
             result = service.create_task(
-                avatar_image=avatar_param,
-                clothes_images=clothes_images,
+                avatar_image=avatar_url,
+                clothes_images=clothing_urls,
                 tenant_id=str(merchant.uuid),
+                clothing_info=clothing_info_list,
             )
         except Exception as e:
             return ApiResponse.error(str(e))
@@ -289,12 +258,15 @@ class TryOnGenerateView(APIView):
                     'record_uuid': record.uuid,
                     'task_id': record.task_id,
                     'status': record.status,
-                    'result_url': get_full_url(record.result_url),
+                    'result_url': get_private_url(record.result_url),
                     'estimated_time': 0,
                 })
 
         # 清理旧记录（同一会话最多保留 20 条）
         self._cleanup_old_records(merchant, session_id)
+
+        # 合并服装 keys：数据库/key复用的服装 + 自定义服装
+        all_clothes_keys = clothing_keys + result.get('clothes_keys', [])
 
         return ApiResponse.success({
             'record_uuid': record.uuid,
@@ -302,8 +274,8 @@ class TryOnGenerateView(APIView):
             'status': record.status,
             'estimated_time': 50,  # AI 生成预计 40-60 秒
             'sse_url': f'/api/v1/tryon/records/{record.uuid}/sse/',
-            'avatar_key': result.get('avatar_key'),  # 头像 key（供前端复用）
-            'clothes_keys': result.get('clothes_keys', []),  # 服装 key 列表（供前端复用）
+            'avatar_key': result.get('avatar_key') or avatar_storage_key,  # 头像 key（供前端复用）
+            'clothes_keys': all_clothes_keys,  # 服装 key 列表（供前端复用）
         })
 
     def _cleanup_old_records(self, merchant, session_id):
@@ -388,13 +360,13 @@ class TryOnStatusView(APIView):
 
         # 如果已完成或失败，直接返回
         if record.status in [TryOnRecord.Status.COMPLETED, TryOnRecord.Status.FAILED]:
-            print(f"[TryOnStatus] 已完成记录: result_url={record.result_url}")
+            logger.info(f"[TryOnStatus] 已完成记录: result_url={record.result_url}")
             return ApiResponse.success({
                 'record_uuid': record.uuid,
                 'status': record.status,
                 'progress': 100 if record.status == TryOnRecord.Status.COMPLETED else 0,
-                'result_url': get_full_url(record.result_url),
-                'result_thumb_url': get_full_url(record.result_thumb_url),
+                'result_url': get_private_url(record.result_url),
+                'result_thumb_url': get_private_url(record.result_thumb_url),
                 'error_message': self._get_user_friendly_error(record.error_message),
                 'processing_time': float(record.processing_time) if record.processing_time else None
             })
@@ -418,7 +390,7 @@ class TryOnStatusView(APIView):
         # 更新记录状态
         if result['status'] == 'completed':
             record.status = TryOnRecord.Status.COMPLETED
-            print(f"[TryOnStatus] 更新 result_url: {result.get('result_url')}")
+            logger.info(f"[TryOnStatus] 更新 result_url: {result.get('result_url')}")
             record.result_url = result['result_url']
             record.processing_time = result.get('processing_time')
 
@@ -443,8 +415,8 @@ class TryOnStatusView(APIView):
             'record_uuid': record.uuid,
             'status': record.status,
             'progress': result.get('progress', 0),
-            'result_url': get_full_url(record.result_url) if record.status == TryOnRecord.Status.COMPLETED else None,
-            'result_thumb_url': get_full_url(record.result_thumb_url) if record.status == TryOnRecord.Status.COMPLETED else None,
+            'result_url': get_private_url(record.result_url) if record.status == TryOnRecord.Status.COMPLETED else None,
+            'result_thumb_url': get_private_url(record.result_thumb_url) if record.status == TryOnRecord.Status.COMPLETED else None,
             'error_message': self._get_user_friendly_error(record.error_message),
             'processing_time': float(record.processing_time) if record.processing_time else None
         })

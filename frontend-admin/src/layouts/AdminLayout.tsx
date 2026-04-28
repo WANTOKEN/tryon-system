@@ -19,6 +19,7 @@ import {
   PieChartOutlined,
   CloudUploadOutlined,
   HistoryOutlined,
+  MonitorOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { PERMISSIONS } from '../types';
@@ -63,6 +64,12 @@ const superAdminMenuItems: MenuItemWithPermission[] = [
     requiredPermissions: [PERMISSIONS.CLOTHING_VIEW],
   },
   {
+    key: '/model-photos',
+    icon: <UserOutlined />,
+    label: '模特管理',
+    requiredPermissions: [PERMISSIONS.CLOTHING_VIEW],
+  },
+  {
     key: '/files',
     icon: <FileImageOutlined />,
     label: '文件管理',
@@ -92,6 +99,12 @@ const superAdminMenuItems: MenuItemWithPermission[] = [
     ],
   },
   {
+    key: '/system-monitor',
+    icon: <MonitorOutlined />,
+    label: '系统监控',
+    requiredPermissions: [PERMISSIONS.SUPER_ADMIN],
+  },
+  {
     key: '/settings',
     icon: <SettingOutlined />,
     label: '系统设置',
@@ -110,6 +123,11 @@ const merchantMenuItems: MenuItemWithPermission[] = [
     key: '/clothing',
     icon: <CloudUploadOutlined />,
     label: '服装管理',
+  },
+  {
+    key: '/model-photos',
+    icon: <UserOutlined />,
+    label: '模特管理',
   },
   {
     key: '/tryon-records',

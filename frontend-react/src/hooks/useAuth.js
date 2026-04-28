@@ -1,40 +1,11 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 
 import { api, TokenManager } from '../utils/request'
 import { API_ENDPOINTS } from '../config/api'
 
 export function useAuth() {
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [quota, setQuota] = useState({ total: 100, used: 0, remaining: 100 })
-
-  // 检查登录状态
-  useEffect(() => {
-    const checkAuth = async () => {
-      if (!TokenManager.isAuthenticated()) {
-        setLoading(false)
-        return
-      }
-
-      try {
-        const response = await api.get(API_ENDPOINTS.AUTH.ME)
-        if (response.success) {
-          setUser(response.data)
-          setQuota({
-            total: response.data.quota_total || 100,
-            used: response.data.quota_used || 0,
-            remaining: response.data.quota_remaining || 100,
-          })
-        }
-      } catch (error) {
-        // 静默处理错误
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkAuth()
-  }, [])
 
   // 登录
   const login = useCallback(async (username, password) => {
@@ -82,7 +53,6 @@ export function useAuth() {
   return {
     user,
     isAuthenticated: !!user,
-    loading,
     quota,
     login,
     logout,

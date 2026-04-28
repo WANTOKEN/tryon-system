@@ -1,5 +1,5 @@
 import { Row, Col, Card, Progress, Typography, Divider, Empty, Spin, Alert, Statistic } from 'antd';
-import { UserOutlined, ShoppingOutlined, FileImageOutlined, CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, RiseOutlined, ShopOutlined, CreditCardOutlined, CloudServerOutlined } from '@ant-design/icons';
+import { UserOutlined, ShoppingOutlined, FileImageOutlined, CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, RiseOutlined, ShopOutlined, CreditCardOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { dashboardApi } from '../api';
 import type { DashboardStats } from '../types';
@@ -62,7 +62,7 @@ export default function DashboardPage() {
       suffix: '件',
     },
   ] : [
-    // 普通管理员（商家）看到的统计
+    // 普通管理员（商家）看到的统计 - 只显示业务相关数据
     {
       title: '我的试穿',
       value: stats?.total_tryon_records || 0,
@@ -80,26 +80,25 @@ export default function DashboardPage() {
       suffix: '件',
     },
     {
-      title: '存储占用',
-      value: ((stats?.total_storage_bytes || 0) / 1024 / 1024).toFixed(1),
-      icon: <DatabaseOutlined />,
-      color: '#faad14',
-      bgColor: '#fffbe6',
-      suffix: 'MB',
-    },
-    {
-      title: '账号状态',
-      value: stats?.active_merchants || 0,
-      icon: <CheckCircleOutlined />,
+      title: '配额剩余',
+      value: (stats?.quota_total || 0) - (stats?.quota_used || 0),
+      icon: <CreditCardOutlined />,
       color: '#52c41a',
       bgColor: '#f6ffed',
-      suffix: stats?.active_merchants ? '正常' : '停用',
-      isStatus: true,
+      suffix: '次',
+    },
+    {
+      title: '配额总量',
+      value: stats?.quota_total || 0,
+      icon: <DatabaseOutlined />,
+      color: '#1677ff',
+      bgColor: '#e6f4ff',
+      suffix: '次',
     },
   ];
 
-  // 今日统计卡片
-  const todayStats = [
+  // 今日统计卡片 - 根据角色显示不同内容
+  const todayStats = isSuperAdmin ? [
     {
       title: '今日试穿',
       value: stats?.today_tryon_count || 0,
@@ -130,6 +129,39 @@ export default function DashboardPage() {
       color: '#faad14',
       bgColor: '#fffbe6',
       suffix: 'MB',
+    },
+  ] : [
+    // 商家看到的今日统计 - 不显示存储
+    {
+      title: '今日试穿',
+      value: stats?.today_tryon_count || 0,
+      icon: <RiseOutlined />,
+      color: '#eb2f96',
+      bgColor: '#fff0f6',
+    },
+    {
+      title: '成功率',
+      value: ((stats?.today_success_rate || 0) * 100).toFixed(1),
+      icon: <CheckCircleOutlined />,
+      color: '#52c41a',
+      bgColor: '#f6ffed',
+      suffix: '%',
+    },
+    {
+      title: '平均耗时',
+      value: (stats?.today_avg_processing_time || 0).toFixed(1),
+      icon: <ClockCircleOutlined />,
+      color: '#1677ff',
+      bgColor: '#e6f4ff',
+      suffix: '秒',
+    },
+    {
+      title: '配额使用率',
+      value: stats?.quota_total ? ((stats.quota_used / stats.quota_total) * 100).toFixed(1) : 0,
+      icon: <CreditCardOutlined />,
+      color: '#722ed1',
+      bgColor: '#f9f0ff',
+      suffix: '%',
     },
   ];
 
@@ -166,7 +198,7 @@ export default function DashboardPage() {
           />
           {/* 额度使用卡片 */}
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} lg={12}>
+            <Col xs={24}>
               <Card
                 style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
                 styles={{ body: { padding: 24 } }}
@@ -175,7 +207,7 @@ export default function DashboardPage() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <CreditCardOutlined style={{ fontSize: 20, color: '#1677ff' }} />
-                      <Text strong style={{ fontSize: 16 }}>额度使用</Text>
+                      <Text strong style={{ fontSize: 16 }}>额度使用情况</Text>
                     </div>
                     <Statistic
                       value={stats?.quota_used || 0}
@@ -196,44 +228,6 @@ export default function DashboardPage() {
                 <div style={{ marginTop: 16 }}>
                   <Text type="secondary">
                     剩余额度: <Text strong style={{ color: '#52c41a' }}>{(stats?.quota_total || 0) - (stats?.quota_used || 0)}</Text> 次
-                  </Text>
-                </div>
-              </Card>
-            </Col>
-            <Col xs={24} lg={12}>
-              <Card
-                style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
-                styles={{ body: { padding: 24 } }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <CloudServerOutlined style={{ fontSize: 20, color: '#722ed1' }} />
-                      <Text strong style={{ fontSize: 16 }}>存储空间</Text>
-                    </div>
-                    <Statistic
-                      value={((stats?.total_storage_bytes || 0) / 1024 / 1024).toFixed(1)}
-                      suffix="MB"
-                      valueStyle={{ fontSize: 28, color: '#722ed1' }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      width: 80,
-                      height: 80,
-                      borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <DatabaseOutlined style={{ fontSize: 32, color: '#722ed1' }} />
-                  </div>
-                </div>
-                <div style={{ marginTop: 16 }}>
-                  <Text type="secondary">
-                    文件数量: <Text strong>{stats?.total_clothing || 0}</Text> 个
                   </Text>
                 </div>
               </Card>
@@ -333,79 +327,78 @@ export default function DashboardPage() {
       <div style={{ marginBottom: 16 }}>
         <Title level={5} style={{ margin: 0 }}>试穿趋势</Title>
       </div>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={16}>
+      <Card
+        style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+        styles={{ body: { padding: 20 } }}
+      >
+        {stats?.tryon_trend && stats.tryon_trend.length > 0 ? (
+          <div>
+            {/* 简单的趋势展示 */}
+            <Row gutter={[8, 8]}>
+              {stats.tryon_trend.slice(-7).map((item, index) => (
+                <Col span={24/7} key={index}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {item.date.slice(5)}
+                    </Text>
+                    <div style={{ 
+                      height: 60, 
+                      display: 'flex', 
+                      alignItems: 'flex-end', 
+                      justifyContent: 'center',
+                      marginTop: 8,
+                    }}>
+                      <div style={{
+                        width: 24,
+                        height: `${Math.min(100, (item.count / Math.max(...stats.tryon_trend.map(t => t.count))) * 100)}%`,
+                        minHeight: 8,
+                        background: 'linear-gradient(180deg, #1677ff 0%, #69b1ff 100%)',
+                        borderRadius: 4,
+                      }} />
+                    </div>
+                    <Text strong style={{ fontSize: 14 }}>{item.count}</Text>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          </div>
+        ) : (
+          <Empty description="暂无趋势数据" style={{ margin: '20px 0' }} />
+        )}
+      </Card>
+
+      {/* 超管专属：AI 引擎统计 */}
+      {isSuperAdmin && stats?.engine_stats && stats.engine_stats.length > 0 && (
+        <>
+          <Divider style={{ margin: '24px 0' }} />
+          <div style={{ marginBottom: 16 }}>
+            <Title level={5} style={{ margin: 0 }}>AI 引擎统计</Title>
+          </div>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
-            styles={{ body: { padding: 20 } }}
-          >
-            {stats?.tryon_trend && stats.tryon_trend.length > 0 ? (
-              <div>
-                {/* 简单的趋势展示 */}
-                <Row gutter={[8, 8]}>
-                  {stats.tryon_trend.slice(-7).map((item, index) => (
-                    <Col span={24/7} key={index}>
-                      <div style={{ textAlign: 'center' }}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {item.date.slice(5)}
-                        </Text>
-                        <div style={{ 
-                          height: 60, 
-                          display: 'flex', 
-                          alignItems: 'flex-end', 
-                          justifyContent: 'center',
-                          marginTop: 8,
-                        }}>
-                          <div style={{
-                            width: 24,
-                            height: `${Math.min(100, (item.count / Math.max(...stats.tryon_trend.map(t => t.count))) * 100)}%`,
-                            minHeight: 8,
-                            background: 'linear-gradient(180deg, #1677ff 0%, #69b1ff 100%)',
-                            borderRadius: 4,
-                          }} />
-                        </div>
-                        <Text strong style={{ fontSize: 14 }}>{item.count}</Text>
-                      </div>
-                    </Col>
-                  ))}
-                </Row>
-              </div>
-            ) : (
-              <Empty description="暂无趋势数据" style={{ margin: '20px 0' }} />
-            )}
-          </Card>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card
-            title="AI 引擎统计"
             style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
             styles={{ body: { padding: 16 } }}
           >
-            {stats?.engine_stats && stats.engine_stats.length > 0 ? (
-              <div>
-                {stats.engine_stats.map((engine, index) => (
-                  <div key={index} style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <Text>{engine.engine}</Text>
-                      <Text strong>{engine.count} 次</Text>
-                    </div>
-                    <Progress 
-                      percent={Math.round((engine.count / (stats?.total_tryon_records || 1)) * 100)} 
-                      size="small"
-                      strokeColor="#1677ff"
-                    />
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      平均耗时: {engine.avg_time.toFixed(1)}秒
-                    </Text>
+            <div>
+              {stats.engine_stats.map((engine, index) => (
+                <div key={index} style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text>{engine.engine}</Text>
+                    <Text strong>{engine.count} 次</Text>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <Empty description="暂无引擎数据" style={{ margin: '10px 0' }} />
-            )}
+                  <Progress 
+                    percent={Math.round((engine.count / (stats?.total_tryon_records || 1)) * 100)} 
+                    size="small"
+                    strokeColor="#1677ff"
+                  />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    平均耗时: {engine.avg_time.toFixed(1)}秒
+                  </Text>
+                </div>
+              ))}
+            </div>
           </Card>
-        </Col>
-      </Row>
+        </>
+      )}
     </div>
   );
 }

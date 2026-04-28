@@ -65,7 +65,7 @@ class TryOnService:
             {
                 'url': 访问 URL,
                 'key': 存储路径,
-                'md5': 文件 MD5（用于唯一标识）,
+                'content_key': 内容 Key（格式: storage_type:md5，用于复用）,
                 'is_duplicate': 是否重复,
             }
         """
@@ -73,7 +73,7 @@ class TryOnService:
         if isinstance(image_data, str):
             if image_data.startswith('data:'):
                 # Base64 数据 URL
-                key, url, is_duplicate, md5 = storage_service.upload_from_base64(
+                key, url, is_duplicate, content_key = storage_service.upload_from_base64(
                     image_data,
                     folder=folder,
                     tenant_id=tenant_id,
@@ -81,13 +81,13 @@ class TryOnService:
                     file_category=file_category,
                     skip_duplicate=skip_duplicate
                 )
-                return {'url': url, 'key': key, 'md5': md5, 'is_duplicate': is_duplicate}
+                return {'url': url, 'key': key, 'content_key': content_key, 'is_duplicate': is_duplicate}
             elif image_data.startswith('http'):
                 # 已经是 URL，直接返回
                 return {
                     'url': image_data,
                     'key': '',
-                    'md5': '',
+                    'content_key': '',
                     'is_duplicate': False,
                 }
             else:
@@ -95,7 +95,7 @@ class TryOnService:
                 # 添加前缀以便 storage_service 识别
                 if not image_data.startswith('data:'):
                     image_data = f'data:{content_type};base64,{image_data}'
-                key, url, is_duplicate, md5 = storage_service.upload_from_base64(
+                key, url, is_duplicate, content_key = storage_service.upload_from_base64(
                     image_data,
                     folder=folder,
                     tenant_id=tenant_id,
@@ -103,12 +103,12 @@ class TryOnService:
                     file_category=file_category,
                     skip_duplicate=skip_duplicate
                 )
-                return {'url': url, 'key': key, 'md5': md5, 'is_duplicate': is_duplicate}
+                return {'url': url, 'key': key, 'content_key': content_key, 'is_duplicate': is_duplicate}
 
         elif hasattr(image_data, 'read'):
             # 文件对象
             filename = getattr(image_data, 'name', 'image.png')
-            key, url, is_duplicate, md5 = storage_service.upload_file(
+            key, url, is_duplicate, content_key = storage_service.upload_file(
                 image_data,
                 filename=filename,
                 folder=folder,
@@ -117,7 +117,7 @@ class TryOnService:
                 file_category=file_category,
                 skip_duplicate=skip_duplicate
             )
-            return {'url': url, 'key': key, 'md5': md5, 'is_duplicate': is_duplicate}
+            return {'url': url, 'key': key, 'content_key': content_key, 'is_duplicate': is_duplicate}
 
         else:
             raise OssException(f'不支持的图片数据类型: {type(image_data)}')
@@ -145,6 +145,7 @@ class TryOnService:
         tenant_id: str = '',
         prompt: Optional[str] = None,
         skip_duplicate: bool = True,
+        clothing_info: Optional[List[Dict]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -156,6 +157,7 @@ class TryOnService:
             tenant_id: 租户 ID（用于去重隔离）
             prompt: 自定义提示词
             skip_duplicate: 是否跳过重复文件（MD5 去重）
+            clothing_info: 服装信息列表，每项包含 category, subcategory 等
             **kwargs: 额外参数传递给引擎
 
         Returns:
@@ -183,14 +185,14 @@ class TryOnService:
                 skip_duplicate=skip_duplicate
             )
             avatar_url = avatar_result['url']
-            print(f"[TryOnService] avatar_url from upload: {avatar_url}")
-            avatar_md5 = avatar_result.get('md5', '')  # 获取 content_key（已带前缀）
+            logger.info(f"[TryOnService] avatar_url from upload: {avatar_url}")
+            avatar_content_key = avatar_result.get('content_key', '')
             # 如果返回的是纯 MD5（32位），转换为带前缀的 ContentKey
             # 如果已经是带前缀的 content_key，直接使用
-            if avatar_md5 and len(avatar_md5) == 32:
+            if avatar_content_key and len(avatar_content_key) == 32:
                 storage_type = ContentKeyPrefix.OSS if storage_service.is_oss else ContentKeyPrefix.LOCAL
-                avatar_md5 = ContentKey.from_md5(avatar_md5, storage_type)
-            # 否则 avatar_md5 已经是 content_key，直接使用
+                avatar_content_key = ContentKey.from_md5(avatar_content_key, storage_type)
+            # 否则 avatar_content_key 已经是 content_key，直接使用
             duplicate_stats['avatar'] = avatar_result['is_duplicate']
 
             # 2. 上传服装照片
@@ -212,16 +214,16 @@ class TryOnService:
                 clothes_urls.append(result['url'])
                 duplicate_stats['clothes'].append(result['is_duplicate'])
                 
-                # 生成 image_key（带前缀的 MD5）
-                clothes_md5 = result.get('md5', '')  # 获取 content_key（已带前缀）
-                if clothes_md5:
-                    # 如果返回的是纯 MD5（32位），转换为带前缀的 ContentKey
-                    if len(clothes_md5) == 32:
+                # 获取 content_key（格式: storage_type:md5）
+                content_key = result.get('content_key', '')
+                if content_key:
+                    # 如果是纯 MD5（32位），转换为带前缀的 ContentKey
+                    if len(content_key) == 32:
                         storage_type = ContentKeyPrefix.OSS if storage_service.is_oss else ContentKeyPrefix.LOCAL
-                        clothes_keys.append(ContentKey.from_md5(clothes_md5, storage_type))
+                        clothes_keys.append(ContentKey.from_md5(content_key, storage_type))
                     else:
-                        # 已经是带前缀的 content_key，直接使用
-                        clothes_keys.append(clothes_md5)
+                        # 已经是 content_key 格式，直接使用
+                        clothes_keys.append(content_key)
                 else:
                     clothes_keys.append('')
 
@@ -251,6 +253,7 @@ class TryOnService:
                 avatar_url=signed_avatar_url,
                 clothing_urls=signed_clothes_urls,
                 prompt=prompt,
+                clothing_info=clothing_info,
                 tenant_id=tenant_id,
                 **kwargs
             )
@@ -262,7 +265,7 @@ class TryOnService:
                 merchant_id=kwargs.get('merchant_id', 0),
                 session_id=kwargs.get('session_id', ''),
                 avatar_url=avatar_url,
-                avatar_key=avatar_md5,  # 人物照片存储 key
+                avatar_key=avatar_content_key,  # 人物照片存储 key
                 clothes_urls=clothes_urls,
                 clothes_keys=clothes_keys,  # 服装图片存储 key 列表
                 result=result,
@@ -274,7 +277,7 @@ class TryOnService:
 
             # 添加 URL 信息到返回结果
             result['avatar_url'] = avatar_url
-            result['avatar_key'] = avatar_md5  # 带前缀的 MD5 key (如 "local:xxx" 或 "oss:xxx")
+            result['avatar_key'] = avatar_content_key  # 带前缀的 MD5 key (如 "local:xxx" 或 "oss:xxx")
             result['clothes_urls'] = clothes_urls
             result['clothes_keys'] = clothes_keys  # 服装的 image_key 列表（供前端复用）
             result['engine'] = self.engine_name
@@ -283,9 +286,9 @@ class TryOnService:
             result['record_uuid'] = record.uuid if record else None
 
             # 打印返回的 keys（供前端复用）
-            print(f"[TryOnService] 返回 avatar_key: {avatar_md5}")
-            print(f"[TryOnService] 返回 clothes_keys: {clothes_keys}")
-            print(f"[TryOnService] 去重统计: avatar={'命中缓存' if duplicate_stats['avatar'] else '新上传'}, clothes={[('命中缓存' if d else '新上传') for d in duplicate_stats['clothes']]}")
+            logger.info(f"[TryOnService] 返回 avatar_key: {avatar_content_key}")
+            logger.info(f"[TryOnService] 返回 clothes_keys: {clothes_keys}")
+            logger.info(f"[TryOnService] 去重统计: avatar={'命中缓存' if duplicate_stats['avatar'] else '新上传'}, clothes={[('命中缓存' if d else '新上传') for d in duplicate_stats['clothes']]}")
 
             return result
 

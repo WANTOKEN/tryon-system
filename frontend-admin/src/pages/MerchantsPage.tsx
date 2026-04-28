@@ -1,7 +1,7 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, Form, Input, message, Tag, Progress, Space, InputNumber, Popconfirm, Drawer, Descriptions, List, Typography } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, HistoryOutlined } from '@ant-design/icons';
+import { Button, Modal, Form, Input, message, Tag, Progress, Space, InputNumber, Popconfirm, Drawer, Descriptions, List, Typography, Switch, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, HistoryOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useState, useRef } from 'react';
 import type { Merchant, QuotaHistoryItem } from '../types';
 import { merchantApi } from '../api';
@@ -102,8 +102,16 @@ export default function MerchantsPage() {
     {
       title: '操作',
       valueType: 'option',
-      width: 280,
+      width: 350,
       render: (_, record) => [
+        <Tooltip key="status" title={record.status === 1 ? '点击禁用' : '点击启用'}>
+          <Switch
+            checked={record.status === 1}
+            onChange={() => handleToggleStatus(record)}
+            checkedChildren={<CheckCircleOutlined />}
+            unCheckedChildren={<StopOutlined />}
+          />
+        </Tooltip>,
         <Button key="edit" type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
           编辑
         </Button>,
@@ -212,6 +220,19 @@ export default function MerchantsPage() {
     } catch (error) {
       const err = error as { response?: { data?: { message?: string } } };
       message.error(err.response?.data?.message || '配额重置失败');
+    }
+  };
+
+  const handleToggleStatus = async (merchant: Merchant) => {
+    const newStatus = merchant.status === 1 ? 0 : 1;
+    const statusText = newStatus === 1 ? '启用' : '禁用';
+    try {
+      await merchantApi.update(merchant.id, { status: newStatus });
+      message.success(`已${statusText}商家`);
+      actionRef.current?.reload();
+    } catch (error) {
+      const err = error as { response?: { data?: { message?: string } } };
+      message.error(err.response?.data?.message || `${statusText}失败`);
     }
   };
 

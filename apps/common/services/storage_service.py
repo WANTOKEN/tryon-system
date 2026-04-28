@@ -3,6 +3,15 @@
 支持 OSS 和本地存储切换
 支持 MD5 去重（跨进程持久化到数据库）
 
+功能特性:
+- 统一 API 接口，支持本地存储和 OSS 无缝切换
+- MD5 去重，避免重复上传相同内容的文件
+- 支持文件公开性设置（is_public），决定是否需要签名 URL
+- 自动生成唯一文件路径，基于 MD5 哈希
+- 完整的错误处理和日志记录
+- 支持 Base64 数据直接上传
+- 支持签名 URL 生成（仅 OSS）
+
 配置环境变量:
 - STORAGE_TYPE: 存储类型 'oss' 或 'local'，默认 'local'
 - OSS_ACCESS_KEY_ID: 阿里云 AccessKey ID
@@ -10,6 +19,7 @@
 - OSS_BUCKET_NAME: OSS Bucket 名称
 - OSS_ENDPOINT: OSS 端点
 - OSS_DOMAIN: 自定义域名 (可选)
+- BACKEND_URL: 后端服务 URL，用于生成本地存储的完整 URL
 
 返回值说明:
     upload_file() 返回 (storage_key, url, is_duplicate, content_key)
@@ -17,6 +27,64 @@
     - url: 访问 URL
     - is_duplicate: 是否重复
     - content_key: 内容 Key，如 "local:a1b2c3d4..." 或 "oss:a1b2c3d4..."
+
+使用示例:
+
+1. 上传文件
+   ```python
+   from apps.common.services.storage_service import storage_service
+   
+   # 从文件对象上传
+   with open('image.jpg', 'rb') as f:
+       storage_key, url, is_duplicate, content_key = storage_service.upload_file(
+           file_obj=f,
+           filename='image.jpg',
+           folder='avatars',
+           tenant_id='merchant1',
+           content_type='image/jpeg',
+           file_category='avatar',
+           is_public=True  # 公开文件，不需要签名 URL
+       )
+   
+   # 从 Base64 上传
+   base64_data = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+   storage_key, url, is_duplicate, content_key = storage_service.upload_from_base64(
+       base64_data=base64_data,
+       folder='avatars',
+       tenant_id='merchant1',
+       is_public=False  # 私有文件，需要签名 URL
+   )
+   ```
+
+2. 获取文件 URL
+   ```python
+   # 获取公开文件 URL
+   public_url = storage_service.get_url(storage_key)
+   
+   # 获取签名 URL（仅 OSS 有效）
+   signed_url = storage_service.get_signed_url(storage_key, expires=3600)
+   
+   # 从现有 URL 生成签名 URL
+   signed_url = storage_service.get_signed_url_from_url(public_url, expires=3600)
+   ```
+
+3. 批量操作
+   ```python
+   # 批量删除文件
+   files = [
+       {'storage_key': 'avatars/123.jpg', 'storage_type': 'local'},
+       {'storage_key': 'avatars/456.jpg', 'storage_type': 'oss'}
+   ]
+   result = storage_service.delete_files(files)
+   print(f"删除成功: {result['deleted']}, 失败: {result['failed']}")
+   ```
+
+最佳实践:
+- 始终提供 tenant_id 以启用 MD5 去重功能
+- 根据文件的公开性设置 is_public 参数
+- 对于需要长期访问的文件，使用 is_public=True
+- 对于敏感文件，使用 is_public=False 并通过签名 URL 访问
+- 保存返回的 content_key，用于后续通过 get_url_by_key 快速获取 URL
 """
 import os
 import hashlib
@@ -33,6 +101,7 @@ from apps.common.constants import (
 )
 from apps.common.services.upload_config import UploadValidationError
 from apps.common.utils.content_key import ContentKey
+from apps.common.exceptions import StorageException
 
 logger = logging.getLogger('storage')
 
@@ -174,7 +243,8 @@ class LocalStorageService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
+        client_ip: str = '',
+        is_public: bool = False
     ):
         """保存上传记录"""
         try:
@@ -196,6 +266,7 @@ class LocalStorageService:
                 ref_id=ref_id,
                 source=source,
                 client_ip=client_ip,
+                is_public=is_public,
             )
         except Exception as e:
             logger.warning(f"[LocalStorage] 保存记录失败: {e}")
@@ -212,8 +283,9 @@ class LocalStorageService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
-    ) -> Tuple[str, str, bool]:
+        client_ip: str = '',
+        is_public: bool = False
+    ) -> Tuple[str, str, bool, str]:
         """
         上传文件到本地
 
@@ -229,63 +301,76 @@ class LocalStorageService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
-            (relative_path, url, is_duplicate)
+            (relative_path, url, is_duplicate, content_key)
         """
-        # 读取内容
-        if hasattr(file_obj, 'seek'):
-            file_obj.seek(0)
-        content = file_obj.read()
+        try:
+            # 读取内容
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+            content = file_obj.read()
 
-        # 验证上传文件（类型、大小）
-        ext = self._validate_upload(content, filename, content_type)
+            # 验证上传文件（类型、大小）
+            ext = self._validate_upload(content, filename, content_type)
 
-        # 计算 MD5
-        md5 = calculate_md5(content)
+            # 计算 MD5
+            md5 = calculate_md5(content)
 
-        # 检查去重
-        if skip_duplicate and tenant_id:
-            cached = self._check_duplicate(md5, tenant_id)
-            if cached:
-                content_key = ContentKey.from_md5(md5, 'local')
-                return cached[0], cached[1], True, content_key
+            # 检查去重
+            if skip_duplicate and tenant_id:
+                cached = self._check_duplicate(md5, tenant_id)
+                if cached:
+                    content_key = ContentKey.from_md5(md5, 'local')
+                    return cached[0], cached[1], True, content_key
 
-        # 生成存储路径
-        relative_path = self._generate_filename(folder, md5, ext)
-        full_path = os.path.join(self.media_root, relative_path)
+            # 生成存储路径
+            relative_path = self._generate_filename(folder, md5, ext)
+            full_path = os.path.join(self.media_root, relative_path)
 
-        # 确保目录存在
-        self._ensure_dir(full_path)
+            # 确保目录存在
+            self._ensure_dir(full_path)
 
-        # 写入文件
-        with open(full_path, 'wb') as f:
-            f.write(content)
+            # 写入文件
+            with open(full_path, 'wb') as f:
+                f.write(content)
 
-        # 生成 URL
-        url = f"{self.media_url}{relative_path.replace(os.sep, '/')}"
+            # 生成 URL
+            from django.conf import settings
+            base_url = os.getenv('BACKEND_URL', 'http://localhost:8888')
+            url = f"{base_url.rstrip('/')}{self.media_url}{relative_path.replace(os.sep, '/')}"
 
-        # 保存上传记录
-        if tenant_id:
-            self._save_record(
-                md5=md5,
-                storage_key=relative_path,
-                access_url=url,
-                folder=folder,
-                tenant_id=tenant_id,
-                file_category=file_category,
-                file_size=len(content),
-                content_type=content_type,
-                file_ext=ext,
-                ref_type=ref_type,
-                ref_id=ref_id,
-                source=source,
-                client_ip=client_ip,
-            )
+            # 保存上传记录
+            if tenant_id:
+                self._save_record(
+                    md5=md5,
+                    storage_key=relative_path,
+                    access_url=url,
+                    folder=folder,
+                    tenant_id=tenant_id,
+                    file_category=file_category,
+                    file_size=len(content),
+                    content_type=content_type,
+                    file_ext=ext,
+                    ref_type=ref_type,
+                    ref_id=ref_id,
+                    source=source,
+                    client_ip=client_ip,
+                    is_public=is_public,
+                )
 
-        logger.info(f"[LocalStorage] 文件已保存: {relative_path}, MD5={md5}")
-        content_key = ContentKey.from_md5(md5, 'local')
-        return relative_path, url, False, content_key
+            logger.info(f"[LocalStorage] 文件已保存: {relative_path}, MD5={md5}")
+            content_key = ContentKey.from_md5(md5, 'local')
+            return relative_path, url, False, content_key
+        except UploadValidationError:
+            # 验证错误直接抛出
+            raise
+        except Exception as e:
+            logger.error(f"[LocalStorage] 上传失败: {e}")
+            raise StorageException(f'本地存储上传失败: {str(e)}')
 
     def upload_from_base64(
         self,
@@ -298,8 +383,9 @@ class LocalStorageService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
-    ) -> Tuple[str, str, bool]:
+        client_ip: str = '',
+        is_public: bool = False
+    ) -> Tuple[str, str, bool, str]:
         """
         从 Base64 数据上传
 
@@ -314,80 +400,93 @@ class LocalStorageService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
-            (relative_path, url, is_duplicate)
+            (relative_path, url, is_duplicate, content_key)
         """
         import base64
 
-        # 处理 data URL 格式
-        if base64_data.startswith('data:'):
-            # data:image/png;base64,xxxxx
-            header, base64_data = base64_data.split(',', 1)
-            # 从 header 提取 content-type
-            if 'image/' in header:
-                content_type = header.split(':')[1].split(';')[0]
+        try:
+            # 处理 data URL 格式
+            if base64_data.startswith('data:'):
+                # data:image/png;base64,xxxxx
+                header, base64_data = base64_data.split(',', 1)
+                # 从 header 提取 content-type
+                if 'image/' in header:
+                    content_type = header.split(':')[1].split(';')[0]
 
-        # 解码
-        content = base64.b64decode(base64_data)
+            # 解码
+            content = base64.b64decode(base64_data)
 
-        # 验证上传文件（类型、大小）
-        default_ext = FileType.get_extension(content_type)
-        ext = self._validate_upload(content, 'image' + default_ext, content_type)
+            # 验证上传文件（类型、大小）
+            default_ext = FileType.get_extension(content_type)
+            ext = self._validate_upload(content, 'image' + default_ext, content_type)
 
-        # 计算 MD5
-        md5 = calculate_md5(content)
+            # 计算 MD5
+            md5 = calculate_md5(content)
 
-        # 检查去重
-        if skip_duplicate and tenant_id:
-            cached = self._check_duplicate(md5, tenant_id)
-            if cached:
-                content_key = ContentKey.from_md5(md5, 'local')
-                return cached[0], cached[1], True, content_key
+            # 检查去重
+            if skip_duplicate and tenant_id:
+                cached = self._check_duplicate(md5, tenant_id)
+                if cached:
+                    content_key = ContentKey.from_md5(md5, 'local')
+                    return cached[0], cached[1], True, content_key
 
-        # 生成存储路径
-        relative_path = self._generate_filename(folder, md5, ext)
-        full_path = os.path.join(self.media_root, relative_path)
+            # 生成存储路径
+            relative_path = self._generate_filename(folder, md5, ext)
+            full_path = os.path.join(self.media_root, relative_path)
 
-        # 确保目录存在
-        self._ensure_dir(full_path)
+            # 确保目录存在
+            self._ensure_dir(full_path)
 
-        # 写入文件
-        with open(full_path, 'wb') as f:
-            f.write(content)
+            # 写入文件
+            with open(full_path, 'wb') as f:
+                f.write(content)
 
-        # 生成 URL
-        url = f"{self.media_url}{relative_path.replace(os.sep, '/')}"
+            # 生成 URL
+            from django.conf import settings
+            base_url = os.getenv('BACKEND_URL', 'http://localhost:8888')
+            url = f"{base_url.rstrip('/')}{self.media_url}{relative_path.replace(os.sep, '/')}"
 
-        # 保存上传记录
-        if tenant_id:
-            self._save_record(
-                md5=md5,
-                storage_key=relative_path,
-                access_url=url,
-                folder=folder,
-                tenant_id=tenant_id,
-                file_category=file_category,
-                file_size=len(content),
-                content_type=content_type,
-                file_ext=ext,
-                ref_type=ref_type,
-                ref_id=ref_id,
-                source=source,
-                client_ip=client_ip,
-            )
+            # 保存上传记录
+            if tenant_id:
+                self._save_record(
+                    md5=md5,
+                    storage_key=relative_path,
+                    access_url=url,
+                    folder=folder,
+                    tenant_id=tenant_id,
+                    file_category=file_category,
+                    file_size=len(content),
+                    content_type=content_type,
+                    file_ext=ext,
+                    ref_type=ref_type,
+                    ref_id=ref_id,
+                    source=source,
+                    client_ip=client_ip,
+                    is_public=is_public,
+                )
 
-        logger.info(f"[LocalStorage] Base64 文件已保存: {relative_path}, MD5={md5}")
-        content_key = ContentKey.from_md5(md5, 'local')
-        return relative_path, url, False, content_key
+            logger.info(f"[LocalStorage] Base64 文件已保存: {relative_path}, MD5={md5}")
+            content_key = ContentKey.from_md5(md5, 'local')
+            return relative_path, url, False, content_key
+        except UploadValidationError:
+            # 验证错误直接抛出
+            raise
+        except Exception as e:
+            logger.error(f"[LocalStorage] Base64 上传失败: {e}")
+            raise StorageException(f'本地存储 Base64 上传失败: {str(e)}')
     
-    def get_url(self, relative_path: str) -> str:
+    def get_url(self, key: str) -> str:
         """获取文件 URL"""
-        return f"{self.media_url}{relative_path.replace(os.sep, '/')}"
+        return f"{self.media_url}{key.replace(os.sep, '/')}"
     
-    def get_signed_url(self, relative_path: str, expires: int = 3600) -> str:
+    def get_signed_url(self, key: str, expires: int = 3600) -> str:
         """本地存储不需要签名，返回完整 URL"""
-        return self.get_url(relative_path)
+        return self.get_url(key)
     
     def get_signed_url_from_url(self, url: str, expires: int = 3600) -> str:
         """本地存储返回完整 URL（供 AI 引擎访问）"""
@@ -462,8 +561,9 @@ class StorageService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
-    ) -> Tuple[str, str, bool]:
+        client_ip: str = '',
+        is_public: bool = False
+    ) -> Tuple[str, str, bool, str]:
         """
         上传文件
 
@@ -479,9 +579,12 @@ class StorageService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
-            (key, url, is_duplicate)
+            (key, url, is_duplicate, content_key)
         """
         return self._backend.upload_file(
             file_obj=file_obj,
@@ -494,7 +597,8 @@ class StorageService:
             ref_type=ref_type,
             ref_id=ref_id,
             source=source,
-            client_ip=client_ip
+            client_ip=client_ip,
+            is_public=is_public
         )
 
     def upload_from_base64(
@@ -508,8 +612,9 @@ class StorageService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
-    ) -> Tuple[str, str, bool]:
+        client_ip: str = '',
+        is_public: bool = False
+    ) -> Tuple[str, str, bool, str]:
         """
         从 Base64 上传
 
@@ -524,9 +629,12 @@ class StorageService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
-            (key, url, is_duplicate)
+            (key, url, is_duplicate, content_key)
         """
         return self._backend.upload_from_base64(
             base64_data=base64_data,
@@ -538,7 +646,8 @@ class StorageService:
             ref_type=ref_type,
             ref_id=ref_id,
             source=source,
-            client_ip=client_ip
+            client_ip=client_ip,
+            is_public=is_public
         )
     
     def get_url(self, key: str) -> str:

@@ -35,6 +35,11 @@ class Merchant(AbstractBaseUser, PermissionsMixin):
         DISABLED = 0, '禁用'
         NORMAL = 1, '正常'
         EXPIRED = 2, '过期'
+        PENDING = 3, '待审核'
+
+    class Role(models.TextChoices):
+        MERCHANT = 'merchant', '普通商家'
+        MERCHANT_ADMIN = 'merchant_admin', '商家管理员'
 
     id = models.BigAutoField(primary_key=True)
     uuid = models.CharField(max_length=42, unique=True, default=generate_merchant_uuid, editable=False)
@@ -50,7 +55,13 @@ class Merchant(AbstractBaseUser, PermissionsMixin):
     quota_used = models.PositiveIntegerField(default=0, verbose_name='已用配额')
     quota_reset_at = models.DateField(null=True, blank=True, verbose_name='配额重置日期')
 
-    # 状态
+    # 角色和状态
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.MERCHANT,
+        verbose_name='用户角色'
+    )
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.NORMAL)
     last_login_at = models.DateTimeField(null=True, blank=True)
     last_login_ip = models.CharField(max_length=45, default='', blank=True)  # 支持 IPv6
@@ -82,6 +93,16 @@ class Merchant(AbstractBaseUser, PermissionsMixin):
         """剩余配额"""
         return max(0, self.quota_total - self.quota_used)
 
+    @property
+    def is_merchant_admin(self):
+        """是否是商家管理员"""
+        return self.role == self.Role.MERCHANT_ADMIN
+
+    @property
+    def is_super_admin(self):
+        """是否是超级管理员"""
+        return self.is_superuser
+
     def deduct_quota(self, count: int = 1):
         """扣减配额"""
         self.quota_used = min(self.quota_total, self.quota_used + count)
@@ -100,6 +121,7 @@ class SmsLog(models.Model):
     class Purpose(models.TextChoices):
         LOGIN = 'login', '登录'
         BIND_PHONE = 'bind_phone', '绑定手机'
+        RESET_PASSWORD = 'reset_password', '重置密码'
 
     id = models.BigAutoField(primary_key=True)
     merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE, null=True, related_name='sms_logs')

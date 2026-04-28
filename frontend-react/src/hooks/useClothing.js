@@ -3,6 +3,22 @@ import { useState, useCallback } from 'react'
 import { api } from '../utils/request'
 import { API_ENDPOINTS } from '../config/api'
 
+const MAX_NAME_LENGTH = 30
+
+function truncateFileName(fileName, maxLength = MAX_NAME_LENGTH) {
+  if (!fileName || fileName.length <= maxLength) {
+    return fileName
+  }
+  const extIndex = fileName.lastIndexOf('.')
+  if (extIndex === -1 || extIndex === 0) {
+    return `${fileName.substring(0, maxLength - 3)}...`
+  }
+  const extension = fileName.substring(extIndex)
+  const nameWithoutExt = fileName.substring(0, extIndex)
+  const truncatedName = `${nameWithoutExt.substring(0, maxLength - extension.length - 3)}...`
+  return truncatedName + extension
+}
+
 export function useClothing() {
   const [clothing, setClothing] = useState([])
   const [categories, setCategories] = useState([])
@@ -80,7 +96,8 @@ export function useClothing() {
     try {
       const formData = new FormData()
       formData.append('image', file)
-      formData.append('name', name || file.name.replace(/\.[^.]+$/, ''))
+      const finalName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
+      formData.append('name', finalName)
       formData.append('category', category)
       formData.append('subcategory', subcategory || '')
       if (color) {

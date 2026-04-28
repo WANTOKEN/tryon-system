@@ -310,5 +310,18 @@ export interface GroupedConfig {
   oss: SystemConfigItem[];
   storage: SystemConfigItem[];
   quota: SystemConfigItem[];
+  contact: SystemConfigItem[];
   other: SystemConfigItem[];
+}
+
+// 模特照片
+export interface ModelPhoto {
+  id: number;
+  image_url: string;
+  image_thumb_url: string;
+  image_key: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }

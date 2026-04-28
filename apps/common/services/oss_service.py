@@ -40,109 +40,11 @@ from apps.common.utils.content_key import ContentKey
 logger = logging.getLogger('oss')
 
 
-class OSSFileHash:
-    """
-    OSS 文件哈希管理器 (数据库持久化版本)
-    
-    用于 MD5 去重：
-    - 相同内容的文件只上传一次
-    - 后续上传直接返回已有的 URL
-    - 使用数据库持久化,支持跨进程、跨服务
-    """
-    
-    def calculate_md5(self, content: bytes) -> str:
-        """计算内容的 MD5 哈希值"""
-        return hashlib.md5(content).hexdigest()
-    
-    def calculate_file_md5(self, file: BinaryIO) -> str:
-        """计算文件的 MD5 哈希值（会读取整个文件）"""
-        md5_hash = hashlib.md5()
-        
-        # 保存当前位置
-        original_pos = file.tell()
-        file.seek(0)
-        
-        # 分块计算
-        for chunk in iter(lambda: file.read(8192), b''):
-            md5_hash.update(chunk)
-        
-        # 恢复位置
-        file.seek(original_pos)
-        
-        return md5_hash.hexdigest()
-    
-    def get(self, md5: str, file_size: int = 0, content_type: str = '') -> Optional[Tuple[str, str]]:
-        """
-        根据 MD5 获取已上传的文件信息
-        
-        Args:
-            md5: 文件 MD5 哈希
-            file_size: 文件大小(仅用于统计)
-            content_type: 文件类型(仅用于统计)
-            
-        Returns:
-            (oss_key, url) 或 None
-        """
-        try:
-            from apps.common.models import OSSFileCache
-            return OSSFileCache.get_by_md5(md5)
-        except Exception as e:
-            # 数据库异常时降级到跳过去重
-            logger.warning(f"[OSS] 查询缓存失败,跳过去重: {e}")
-            return None
-    
-    def set(self, md5: str, oss_key: str, url: str, file_size: int = 0, content_type: str = ''):
-        """
-        缓存 MD5 映射到数据库
-        
-        Args:
-            md5: 文件 MD5 哈希
-            oss_key: OSS 文件路径
-            url: 公网访问 URL
-            file_size: 文件大小
-            content_type: 文件类型
-        """
-        try:
-            from apps.common.models import OSSFileCache
-            OSSFileCache.set_cache(md5, oss_key, url, file_size, content_type)
-        except Exception as e:
-            # 数据库异常时仅记录日志,不影响上传
-            logger.warning(f"[OSS] 保存缓存失败: {e}")
-    
-    def exists(self, md5: str) -> bool:
-        """检查 MD5 是否已缓存"""
-        try:
-            from apps.common.models import OSSFileCache
-            return OSSFileCache.objects.filter(md5=md5).exists()
-        except Exception:
-            return False
-    
-    def get_stats(self) -> dict:
-        """获取缓存统计"""
-        try:
-            from apps.common.models import OSSFileCache
-            from django.db.models import Sum, Count
-            stats = OSSFileCache.objects.aggregate(
-                total_count=Count('id'),
-                total_size=Sum('file_size'),
-                total_uploads=Sum('upload_count')
-            )
-            return {
-                'cache_size': stats['total_count'] or 0,
-                'total_size_bytes': stats['total_size'] or 0,
-                'total_uploads': stats['total_uploads'] or 0,
-            }
-        except Exception as e:
-            logger.warning(f"[OSS] 获取缓存统计失败: {e}")
-            return {
-                'cache_size': 0,
-                'total_size_bytes': 0,
-                'total_uploads': 0,
-            }
+# 从 storage_service 导入 MD5 计算函数
+from .storage_service import calculate_md5
 
-
-# 全局 MD5 缓存实例
-_hash_cache = OSSFileHash()
+# 全局 MD5 缓存实例（使用统一的存储服务）
+_hash_cache = None
 
 
 class OSSService:
@@ -171,18 +73,17 @@ class OSSService:
         return cls._instance
     
     def __init__(self):
-        # 防止重复初始化
         if hasattr(self, 'initialized'):
             return
         
-        # 从环境变量读取配置
         self.access_key_id = os.getenv('OSS_ACCESS_KEY_ID', '')
         self.access_key_secret = os.getenv('OSS_ACCESS_KEY_SECRET', '')
         self.bucket_name = os.getenv('OSS_BUCKET_NAME', '')
         self.endpoint = os.getenv('OSS_ENDPOINT', 'oss-cn-shanghai.aliyuncs.com')
-        self.domain = os.getenv('OSS_DOMAIN', '')  # 自定义域名
+        self.domain = os.getenv('OSS_DOMAIN', '')
         
-        # 初始化 OSS 客户端
+        self.public_read = os.getenv('OSS_PUBLIC_READ', 'false').lower() == 'true'
+        
         self._auth = None
         self._bucket = None
         self.enabled = self._check_config()
@@ -256,9 +157,57 @@ class OSSService:
                 self.bucket_name
             )
             logger.info(f"[OSS] 初始化成功: bucket={self.bucket_name}, endpoint={self.endpoint}")
+            # 配置 CORS
+            self._setup_cors()
+            # 配置 Referer
+            self._setup_referer()
         except Exception as e:
             logger.error(f"[OSS] 初始化失败: {e}")
             self.enabled = False
+    
+    def _setup_cors(self):
+        """设置 OSS 存储桶的 CORS 规则"""
+        try:
+            # CORS 规则配置
+            cors_rules = [
+                {
+                    'allowed_origins': ['http://localhost:5173', 'http://localhost:3000', 'https://your-production-domain.com'],
+                    'allowed_methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+                    'allowed_headers': ['*'],
+                    'expose_headers': ['ETag', 'Content-Length'],
+                    'max_age_seconds': 3600
+                }
+            ]
+            
+            # 应用 CORS 规则
+            self.bucket.put_bucket_cors(cors_rules)
+            logger.info("[OSS] CORS 配置成功")
+        except Exception as e:
+            logger.warning(f"[OSS] CORS 配置失败: {e}")
+            # CORS 配置失败不影响其他功能
+    
+    def _setup_referer(self):
+        """设置 OSS 存储桶的防盗链规则"""
+        try:
+            # Referer 白名单配置
+            referer_config = {
+                'allow_empty_referer': True,  # 允许空 Referer
+                'referers': [
+                    'localhost',
+                    '127.0.0.1',
+                    'localhost:5173',
+                    'localhost:3000',
+                    'yourdomain.com',
+                    '*.yourdomain.com'
+                ]
+            }
+            
+            # 应用 Referer 配置
+            self.bucket.put_bucket_referer(referer_config)
+            logger.info("[OSS] Referer 配置成功")
+        except Exception as e:
+            logger.warning(f"[OSS] Referer 配置失败: {e}")
+            # Referer 配置失败不影响其他功能
     
     @property
     def bucket(self) -> oss2.Bucket:
@@ -311,7 +260,9 @@ class OSSService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
+        client_ip: str = '',
+        acl: str = '',
+        is_public: bool = False
     ) -> Tuple[str, str, bool]:
         """
         上传文件到 OSS（支持 MD5 去重）
@@ -328,9 +279,16 @@ class OSSService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            acl: 对象访问权限
+                - '': 默认（继承 Bucket 权限）
+                - 'public-read': 公共读（任何人可访问）
+                - 'private': 私有（只有 Owner 可访问）
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
-            (oss_key, public_url, is_duplicate, md5) - OSS 文件路径、公网访问 URL、是否重复、文件 MD5
+            (oss_key, public_url, is_duplicate, content_key) - OSS 文件路径、公网访问 URL、是否重复、内容 Key
 
         Raises:
             OssException: 上传失败
@@ -347,7 +305,7 @@ class OSSService:
             self._validate_upload(content, filename, content_type)
 
             # 计算 MD5
-            md5 = _hash_cache.calculate_md5(content)
+            md5 = calculate_md5(content)
 
             # 检查是否已存在（去重）
             if skip_duplicate and tenant_id:
@@ -365,14 +323,16 @@ class OSSService:
 
             # 设置 headers（包含缓存控制）
             headers = {
-                'x-oss-meta-md5': md5,  # 存储 MD5 到元数据
-                # 浏览器缓存：1 年（图片内容不变，可长期缓存）
+                'x-oss-meta-md5': md5,
                 'Cache-Control': 'public, max-age=31536000, immutable',
-                # 过期时间（兼容旧浏览器）
                 'Expires': 'Thu, 31 Dec 2026 23:59:59 GMT',
             }
             if content_type:
                 headers['Content-Type'] = content_type
+            
+            # 设置对象 ACL
+            if acl:
+                headers['x-oss-object-acl'] = acl
 
             # 上传到 OSS
             result = self.bucket.put_object(oss_key, content, headers=headers)
@@ -398,6 +358,7 @@ class OSSService:
                     ref_id=ref_id,
                     source=source,
                     client_ip=client_ip,
+                    is_public=is_public,
                 )
 
             logger.info(
@@ -456,7 +417,8 @@ class OSSService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
+        client_ip: str = '',
+        is_public: bool = False
     ):
         """保存上传记录"""
         try:
@@ -476,6 +438,7 @@ class OSSService:
                 ref_id=ref_id,
                 source=source,
                 client_ip=client_ip,
+                is_public=is_public,
             )
         except Exception as e:
             logger.warning(f"[OSS] 保存记录失败: {e}")
@@ -490,7 +453,8 @@ class OSSService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
+        client_ip: str = '',
+        is_public: bool = False
     ) -> Tuple[str, str, bool]:
         """
         从本地路径上传文件
@@ -505,6 +469,9 @@ class OSSService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
             (oss_key, public_url, is_duplicate)
@@ -522,7 +489,8 @@ class OSSService:
                 ref_type=ref_type,
                 ref_id=ref_id,
                 source=source,
-                client_ip=client_ip
+                client_ip=client_ip,
+                is_public=is_public
             )
     
     def upload_from_base64(
@@ -536,8 +504,9 @@ class OSSService:
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
-    ) -> Tuple[str, str, bool]:
+        client_ip: str = '',
+        is_public: bool = False
+    ) -> Tuple[str, str, bool, str]:
         """
         从 Base64 数据上传文件
 
@@ -552,9 +521,12 @@ class OSSService:
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
+                - True: 公开文件，不需要签名 URL
+                - False: 私有文件，需要签名 URL
 
         Returns:
-            (oss_key, public_url, is_duplicate)
+            (oss_key, public_url, is_duplicate, content_key)
         """
         import base64 as b64_module
 
@@ -593,79 +565,333 @@ class OSSService:
             ref_type=ref_type,
             ref_id=ref_id,
             source=source,
-            client_ip=client_ip
+            client_ip=client_ip,
+            is_public=is_public
         )
     
-    def get_url(self, oss_key: str) -> str:
+    def get_url(self, key: str) -> str:
         """
         获取文件的公网访问 URL
         
         Args:
-            oss_key: OSS 文件路径
+            key: OSS 文件路径
         
         Returns:
             公网访问 URL
         """
+        # 确保 key 未被 URL 编码
+        from urllib.parse import unquote
+        key = unquote(key)
+        
         if self.domain:
             # 使用自定义域名
-            return f"https://{self.domain}/{oss_key}"
+            return f"https://{self.domain}/{key}"
         else:
             # 使用 OSS 默认域名
-            return f"https://{self.bucket_name}.{self.endpoint}/{oss_key}"
+            return f"https://{self.bucket_name}.{self.endpoint}/{key}"
     
     def get_signed_url(
         self,
-        oss_key: str,
+        key: str,
         expires: int = 3600
     ) -> str:
         """
-        获取带签名的临时访问 URL
-        
+        获取带签名的临时访问 URL（支持缓存）
+
+        策略：
+        1. 如果 public_read=true，直接返回公网 URL
+        2. 如果缓存的签名 URL 存在且未过期，返回缓存的签名 URL
+        3. 否则生成新的签名 URL 并缓存到数据库
+
         Args:
-            oss_key: OSS 文件路径
+            key: OSS 文件路径
             expires: 过期时间（秒），默认 1 小时
-        
+
         Returns:
             签名 URL（HTTPS）
         """
         if not self.enabled:
             raise OssException('OSS 服务不可用')
-        
-        url = self.bucket.sign_url('GET', oss_key, expires)
+
+        # 确保 key 未被 URL 编码（防止双重编码）
+        from urllib.parse import unquote
+        key = unquote(key)
+
+        # 如果是公开读的 bucket，直接返回公网 URL
+        if self.public_read:
+            return self.get_url(key)
+
+        # 尝试从数据库缓存获取签名 URL
+        cached_signed_url = self._get_cached_signed_url_by_key(key, expires)
+        if cached_signed_url:
+            return cached_signed_url
+
+        # 生成新的签名 URL
+        url = self.bucket.sign_url('GET', key, expires)
         # 强制使用 HTTPS
         if url.startswith('http://'):
             url = 'https://' + url[7:]
+
+        # 缓存签名 URL 到数据库
+        self._cache_signed_url_by_key(key, url, expires)
+
         return url
+
+    def _get_cached_signed_url_by_key(self, key: str, expires: int) -> str:
+        """
+        通过 key 从数据库缓存获取签名 URL
+
+        Returns:
+            缓存的签名 URL 或 None（如果不存在或已过期）
+        """
+        from django.utils import timezone
+        from apps.common.models import FileUploadRecord
+
+        try:
+            record = FileUploadRecord.objects.filter(
+                storage_key=key,
+                storage_type='oss'
+            ).order_by('-created_at').first()
+
+            if not record:
+                return None
+
+            # 检查缓存是否有效
+            if record.signed_url and record.signed_url_expires:
+                if record.signed_url_expires > timezone.now():
+                    logger.debug(f"[OSS] 使用缓存的签名 URL: {record.signed_url[:80]}...")
+                    return record.signed_url
+                else:
+                    logger.debug(f"[OSS] 缓存的签名 URL 已过期，需要重新签名")
+            else:
+                logger.debug(f"[OSS] 没有缓存的签名 URL，需要重新签名")
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"[OSS] 获取缓存签名 URL 失败: {e}")
+            return None
+
+    def _cache_signed_url_by_key(self, key: str, signed_url: str, expires: int):
+        """
+        将签名 URL 缓存到数据库（通过 key）
+        """
+        from django.utils import timezone
+        from apps.common.models import FileUploadRecord
+
+        try:
+            record = FileUploadRecord.objects.filter(
+                storage_key=key,
+                storage_type='oss'
+            ).order_by('-created_at').first()
+
+            if record:
+                record.signed_url = signed_url
+                record.signed_url_expires = timezone.now() + timezone.timedelta(seconds=expires)
+                record.save(update_fields=['signed_url', 'signed_url_expires', 'updated_at'])
+                logger.debug(f"[OSS] 已缓存签名 URL，过期时间: {record.signed_url_expires}")
+            else:
+                logger.debug(f"[OSS] 未找到 FileUploadRecord 记录，跳过缓存")
+
+        except Exception as e:
+            logger.warning(f"[OSS] 缓存签名 URL 失败: {e}")
+    
+    def get_thumb_url(
+        self,
+        key: str,
+        width: int = 200,
+        height: int = 200,
+        mode: str = 'fill',
+        quality: int = 80,
+        format: str = 'webp'
+    ) -> str:
+        """
+        获取缩略图 URL（OSS 图片处理）
+        
+        Args:
+            key: OSS 文件路径
+            width: 宽度，默认 200
+            height: 高度，默认 200
+            mode: 缩放模式
+                - fill: 按长边缩放，填充至指定尺寸
+                - lfit: 按长边缩放，保留原比例
+                - mfit: 按短边缩放，裁剪至指定尺寸
+            quality: 图片质量，默认 80
+            format: 输出格式，默认 webp（体积更小）
+        
+        Returns:
+            缩略图 URL
+        """
+        base_url = self.get_url(key)
+        
+        # OSS 图片处理参数
+        # 文档: https://help.aliyun.com/document_detail/44688.html
+        process_params = f"image/resize,m_{mode},h_{height},w_{width}"
+        
+        if quality:
+            process_params += f"/quality,q_{quality}"
+        
+        if format:
+            process_params += f"/format,{format}"
+        
+        return f"{base_url}?x-oss-process={process_params}"
+    
+    def get_signed_thumb_url(
+        self,
+        key: str,
+        width: int = 200,
+        height: int = 200,
+        mode: str = 'fill',
+        quality: int = 80,
+        format: str = 'webp',
+        expires: int = 86400
+    ) -> str:
+        """
+        获取带签名的缩略图 URL
+        
+        Args:
+            key: OSS 文件路径
+            width: 宽度
+            height: 高度
+            mode: 缩放模式
+            quality: 图片质量
+            format: 输出格式
+            expires: 签名有效期（秒）
+        
+        Returns:
+            带签名的缩略图 URL
+        """
+        # 先获取基础签名 URL
+        signed_url = self.get_signed_url(key, expires)
+        
+        # 添加图片处理参数
+        process_params = f"image/resize,m_{mode},h_{height},w_{width}"
+        
+        if quality:
+            process_params += f"/quality,q_{quality}"
+        
+        if format:
+            process_params += f"/format,{format}"
+        
+        # 签名 URL 已有查询参数，用 & 连接
+        return f"{signed_url}&x-oss-process={process_params}"
     
     def get_signed_url_from_url(self, url: str, expires: int = 3600) -> str:
         """
-        从 URL 生成带签名的临时访问 URL
-        
+        从 URL 生成带签名的临时访问 URL（支持缓存）
+
+        策略：
+        1. 如果 URL 已经是签名 URL，直接返回
+        2. 如果 bucket 是公开读的，直接返回公网 URL
+        3. 如果缓存的签名 URL 存在且未过期，返回缓存的签名 URL
+        4. 否则生成新的签名 URL 并缓存到数据库
+
         Args:
             url: 原 URL (公网 URL 或 OSS 路径)
             expires: 过期时间（秒），默认 1 小时
-        
+
         Returns:
             签名 URL (如果是 OSS 文件) 或原 URL (如果不是 OSS 文件)
         """
         if not url:
             return url
-        
+
         # 已经是签名 URL，直接返回
         if 'OSSAccessKeyId' in url or 'Signature' in url:
             return url
-        
+
+        # 如果 bucket 是公开读的，直接返回公网 URL（不签名，支持浏览器缓存）
+        if self.public_read:
+            logger.debug(f"[OSS] Bucket 公开可读，直接返回原 URL: {url[:80]}...")
+            return url
+
         # 非 OSS URL (如第三方图片)，直接返回
         if not self._is_oss_url(url):
             logger.info(f"[OSS] 非 OSS URL，直接返回: {url}")
             return url
-        
+
         # 提取 oss_key
         oss_key = self._extract_oss_key(url)
         if not oss_key:
             return url
-        
-        return self.get_signed_url(oss_key, expires)
+
+        # 尝试从数据库缓存获取签名 URL
+        cached_signed_url = self._get_cached_signed_url(url, oss_key, expires)
+        if cached_signed_url:
+            return cached_signed_url
+
+        # 生成新的签名 URL
+        signed_url = self.get_signed_url(oss_key, expires)
+
+        # 缓存签名 URL 到数据库
+        self._cache_signed_url(url, oss_key, signed_url, expires)
+
+        return signed_url
+
+    def _get_cached_signed_url(self, url: str, oss_key: str, expires: int) -> str:
+        """
+        从数据库缓存获取签名 URL
+
+        Returns:
+            缓存的签名 URL 或 None（如果不存在或已过期）
+        """
+        from django.utils import timezone
+        from apps.common.models import FileUploadRecord
+
+        try:
+            # 从 URL 提取 tenant_id 和 md5
+            # URL 格式通常是: https://bucket.endpoint/folder/md5.jpg
+            # 或者从 storage_key 反向查找
+
+            # 尝试通过 storage_key 查找
+            record = FileUploadRecord.objects.filter(
+                storage_key=oss_key,
+                storage_type='oss'
+            ).order_by('-created_at').first()
+
+            if not record:
+                return None
+
+            # 检查缓存是否有效
+            if record.signed_url and record.signed_url_expires:
+                if record.signed_url_expires > timezone.now():
+                    logger.debug(f"[OSS] 使用缓存的签名 URL: {record.signed_url[:80]}...")
+                    return record.signed_url
+                else:
+                    logger.debug(f"[OSS] 缓存的签名 URL 已过期，需要重新签名")
+            else:
+                logger.debug(f"[OSS] 没有缓存的签名 URL，需要重新签名")
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"[OSS] 获取缓存签名 URL 失败: {e}")
+            return None
+
+    def _cache_signed_url(self, url: str, oss_key: str, signed_url: str, expires: int):
+        """
+        将签名 URL 缓存到数据库
+        """
+        from django.utils import timezone
+        from apps.common.models import FileUploadRecord
+
+        try:
+            # 查找记录
+            record = FileUploadRecord.objects.filter(
+                storage_key=oss_key,
+                storage_type='oss'
+            ).order_by('-created_at').first()
+
+            if record:
+                record.signed_url = signed_url
+                record.signed_url_expires = timezone.now() + timezone.timedelta(seconds=expires)
+                record.save(update_fields=['signed_url', 'signed_url_expires', 'updated_at'])
+                logger.debug(f"[OSS] 已缓存签名 URL，过期时间: {record.signed_url_expires}")
+            else:
+                logger.debug(f"[OSS] 未找到 FileUploadRecord 记录，跳过缓存")
+
+        except Exception as e:
+            logger.warning(f"[OSS] 缓存签名 URL 失败: {e}")
     
     def _is_oss_url(self, url: str) -> bool:
         """判断是否为 OSS URL"""
@@ -676,9 +902,15 @@ class OSSService:
         if self.domain and self.domain in url:
             return True
         # 检查是否包含 OSS 默认域名
-        if f"{self.bucket_name}.{self.endpoint}" in url:
+        expected_domain = f"{self.bucket_name}.{self.endpoint}"
+        if expected_domain in url:
             return True
         
+        # 调试：打印为什么不是 OSS URL
+        logger.debug(
+            f"[OSS] URL 不匹配: domain={self.domain}, "
+            f"expected={expected_domain}, url={url[:80]}..."
+        )
         return False
     
     def _extract_oss_key(self, url: str) -> Optional[str]:
@@ -687,19 +919,21 @@ class OSSService:
             return None
         
         try:
-            from urllib.parse import urlparse
+            from urllib.parse import urlparse, unquote
             parsed = urlparse(url)
             path = parsed.path.lstrip('/')
+            # URL 解码（处理 %2F 等编码字符）
+            path = unquote(path)
             return path if path else None
         except Exception:
             return None
     
-    def delete_file(self, oss_key: str) -> bool:
+    def delete_file(self, key: str) -> bool:
         """
         删除 OSS 文件
         
         Args:
-            oss_key: OSS 文件路径
+            key: OSS 文件路径
         
         Returns:
             是否成功
@@ -708,41 +942,41 @@ class OSSService:
             return False
         
         try:
-            self.bucket.delete_object(oss_key)
-            logger.info(f"[OSS] 文件删除成功: key={oss_key}")
+            self.bucket.delete_object(key)
+            logger.info(f"[OSS] 文件删除成功: key={key}")
             return True
         except oss2.exceptions.OssError as e:
-            logger.error(f"[OSS] 删除失败: key={oss_key}, error={e}")
+            logger.error(f"[OSS] 删除失败: key={key}, error={e}")
             return False
     
-    def delete_files(self, oss_keys: list) -> dict:
+    def delete_files(self, keys: list) -> dict:
         """
         批量删除 OSS 文件
         
         Args:
-            oss_keys: OSS 文件路径列表
+            keys: OSS 文件路径列表
         
         Returns:
             {'deleted': int, 'failed': int}
         """
-        if not self.enabled or not oss_keys:
-            return {'deleted': 0, 'failed': len(oss_keys)}
+        if not self.enabled or not keys:
+            return {'deleted': 0, 'failed': len(keys)}
         
         try:
-            result = self.bucket.batch_delete_objects(oss_keys)
+            result = self.bucket.batch_delete_objects(keys)
             deleted = len(result.deleted_keys) if hasattr(result, 'deleted_keys') else 0
             logger.info(f"[OSS] 批量删除成功: {deleted} 个文件")
-            return {'deleted': deleted, 'failed': len(oss_keys) - deleted}
+            return {'deleted': deleted, 'failed': len(keys) - deleted}
         except oss2.exceptions.OssError as e:
             logger.error(f"[OSS] 批量删除失败: {e}")
-            return {'deleted': 0, 'failed': len(oss_keys)}
+            return {'deleted': 0, 'failed': len(keys)}
     
-    def file_exists(self, oss_key: str) -> bool:
+    def file_exists(self, key: str) -> bool:
         """
         检查文件是否存在
         
         Args:
-            oss_key: OSS 文件路径
+            key: OSS 文件路径
         
         Returns:
             是否存在
@@ -751,16 +985,16 @@ class OSSService:
             return False
         
         try:
-            return self.bucket.object_exists(oss_key)
+            return self.bucket.object_exists(key)
         except oss2.exceptions.OssError:
             return False
     
-    def get_file_meta(self, oss_key: str) -> Optional[dict]:
+    def get_file_meta(self, key: str) -> Optional[dict]:
         """
         获取文件元信息
         
         Args:
-            oss_key: OSS 文件路径
+            key: OSS 文件路径
         
         Returns:
             元信息字典
@@ -769,7 +1003,7 @@ class OSSService:
             return None
         
         try:
-            meta = self.bucket.head_object(oss_key)
+            meta = self.bucket.head_object(key)
             return {
                 'size': meta.content_length,
                 'content_type': meta.content_type,
@@ -831,7 +1065,19 @@ class OSSService:
         try:
             # 尝试获取 Bucket 信息
             info = self.bucket.get_bucket_info()
-            cache_stats = _hash_cache.get_stats()
+            # 获取缓存统计（使用 FileUploadRecord）
+            from apps.common.models import FileUploadRecord
+            from django.db.models import Sum, Count
+            stats = FileUploadRecord.objects.filter(storage_type='oss').aggregate(
+                total_count=Count('id'),
+                total_size=Sum('file_size'),
+                total_hits=Sum('hit_count')
+            )
+            cache_stats = {
+                'cache_size': stats['total_count'] or 0,
+                'total_size_bytes': stats['total_size'] or 0,
+                'total_uploads': stats['total_hits'] or 0,
+            }
             return {
                 'status': 'ok',
                 'message': f"Bucket: {info.name}, Region: {info.location}",
@@ -850,12 +1096,36 @@ class OSSService:
         Returns:
             缓存统计信息
         """
-        return _hash_cache.get_stats()
+        try:
+            from apps.common.models import FileUploadRecord
+            from django.db.models import Sum, Count
+            stats = FileUploadRecord.objects.filter(storage_type='oss').aggregate(
+                total_count=Count('id'),
+                total_size=Sum('file_size'),
+                total_hits=Sum('hit_count')
+            )
+            return {
+                'cache_size': stats['total_count'] or 0,
+                'total_size_bytes': stats['total_size'] or 0,
+                'total_uploads': stats['total_hits'] or 0,
+            }
+        except Exception as e:
+            logger.warning(f"[OSS] 获取缓存统计失败: {e}")
+            return {
+                'cache_size': 0,
+                'total_size_bytes': 0,
+                'total_uploads': 0,
+            }
     
     def clear_cache(self):
         """清空 MD5 缓存"""
-        _hash_cache.clear()
-        logger.info("[OSS] MD5 缓存已清空")
+        try:
+            from apps.common.models import FileUploadRecord
+            # 清空 OSS 相关的上传记录
+            FileUploadRecord.objects.filter(storage_type='oss').delete()
+            logger.info("[OSS] MD5 缓存已清空")
+        except Exception as e:
+            logger.warning(f"[OSS] 清空缓存失败: {e}")
 
 
 # 全局单例

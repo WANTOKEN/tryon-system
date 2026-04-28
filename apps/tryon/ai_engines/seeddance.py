@@ -43,7 +43,8 @@ class SeedDanceEngine(BaseAIEngine):
 
     # API 配置
     DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
-    DEFAULT_MODEL_ID = 'doubao-seedream-4-0-250828'
+    # DEFAULT_MODEL_ID = 'doubao-seedream-4-0-250828'
+    DEFAULT_MODEL_ID = 'doubao-seedream-5-0-lite-260128'
     DEFAULT_REGION = 'cn-beijing'
 
     # 请求配置
@@ -138,6 +139,7 @@ class SeedDanceEngine(BaseAIEngine):
             avatar_url: str,
             clothing_urls: List[str],
             prompt: Optional[str] = None,
+            clothing_info: Optional[List[Dict]] = None,
             **kwargs
     ) -> Dict[str, Any]:
         """
@@ -147,6 +149,7 @@ class SeedDanceEngine(BaseAIEngine):
             avatar_url: 人物照片 URL (图1)
             clothing_urls: 服装图片 URL 列表 (图2)
             prompt: 自定义提示词 (可选)
+            clothing_info: 服装信息列表，每项包含 category, subcategory 等
             **kwargs: 额外参数
                 - size: 输出尺寸 "1K" | "2K" (默认: "2K")
                 - watermark: 是否添加水印 (默认: False)
@@ -185,30 +188,63 @@ class SeedDanceEngine(BaseAIEngine):
             }
 
         try:
-            # 构建图片列表
-            # image[0] = 人物照片, image[1:] = 服装照片（支持多张）
             images = [avatar_url] + clothing_urls
 
-            # 构建提示词
-            if not prompt:
-                clothing_count = len(clothing_urls)
+            CATEGORY_NAMES = {
+                'tops': '上装',
+                'bottoms': '下装',
+                'dresses': '连衣裙',
+                'outerwear': '外套',
+                'shoes': '鞋子',
+                'accessories': '配饰',
+            }
+
+            def build_smart_prompt(clothing_count: int, clothing_info_list: Optional[List[Dict]]) -> str:
                 if clothing_count == 1:
-                    prompt = (
+                    return (
                         "请根据图1中的人物姿态和背景，"
                         "将图2的服装自然地穿在人物身上，"
                         "确保服装贴合身体曲线、光影自然、褶皱真实，"
                         "保持人物原有姿态、表情和背景不变。"
                     )
-                else:
-                    # 多张服装图片：上衣、裤子、鞋子等不同部位
+
+                if not clothing_info_list or len(clothing_info_list) < clothing_count:
                     clothing_refs = "、".join([f"图{i+2}" for i in range(clothing_count)])
-                    prompt = (
+                    return (
                         f"请根据图1中的人物姿态和背景，"
                         f"将{clothing_refs}的服装搭配穿在人物身上，"
                         f"确保各服装单品风格统一、搭配协调，"
                         f"服装贴合身体曲线、光影自然、褶皱真实，"
                         f"保持人物原有姿态、表情和背景不变。"
                     )
+
+                clothing_parts = []
+                for i, info in enumerate(clothing_info_list[:clothing_count]):
+                    category = info.get('category', '')
+                    cat_name = CATEGORY_NAMES.get(category, '服装')
+                    clothing_parts.append(f"图{i+2}的{cat_name}")
+
+                clothing_desc = "、".join(clothing_parts)
+
+                has_tops = any(info.get('category') == 'tops' for info in clothing_info_list[:clothing_count])
+                has_bottoms = any(info.get('category') == 'bottoms' for info in clothing_info_list[:clothing_count])
+
+                if has_tops and has_bottoms:
+                    position_hint = "上装穿在上半身，下装穿在下半身，注意上下装的衔接处要自然过渡。"
+                else:
+                    position_hint = ""
+
+                return (
+                    f"请根据图1中的人物姿态和背景，"
+                    f"将{clothing_desc}自然地穿在人物身上。"
+                    f"{position_hint}"
+                    f"确保各服装单品风格统一、搭配协调，"
+                    f"服装贴合身体曲线、光影自然、褶皱真实，"
+                    f"保持人物原有姿态、表情和背景不变。"
+                )
+
+            if not prompt:
+                prompt = build_smart_prompt(len(clothing_urls), clothing_info)
 
             # 获取可选参数
             biz_size = kwargs.get('size', '2K')
@@ -218,13 +254,16 @@ class SeedDanceEngine(BaseAIEngine):
             # 构建请求参数
             request_params = {
                 "model": self.model_id,
-                "prompt": prompt,
-                "size": biz_size,
+                "prompt": "保留人物原有姿态、表情与背景，将参考服装精准穿戴在对应身体部位，上下装衔接自然，衣物贴合身形，褶皱、光影真实自然，整体搭配协调。",
+                "width": 1024,
+                "height": 1024,
                 "response_format": "url",
                 "extra_body": {
                     "image": images,
                     "watermark": watermark,
                     "sequential_image_generation": sequential,
+                    "steps": 20,
+                    "cfg_scale": 7.5
                 }
             }
             
@@ -234,50 +273,48 @@ class SeedDanceEngine(BaseAIEngine):
             MOCK_RESULT_URL = "https://test-9977.oss-cn-shenzhen.aliyuncs.com/results/mock_tryon_result.jpg"
             
             # # 调用 API (同步返回结果)
-            # def _call_api():
-            #     response = self.client.images.generate(
-            #         model=self.model_id,
-            #         prompt=prompt,
-            #         size=biz_size,
-            #         response_format="url",  # 返回 URL 而非 base64
-            #         extra_body={
-            #             "image": images,
-            #             "watermark": watermark,
-            #             "sequential_image_generation": sequential,
-            #         }
-            #     )
-            #     return response
+            def _call_api():
+                response = self.client.images.generate(
+                    model=self.model_id,
+                    prompt=prompt,
+                    size=biz_size,
+                    response_format="url",  # 返回 URL 而非 base64
+                    extra_body={
+                        "image": images,
+                        "watermark": watermark,
+                        "sequential_image_generation": sequential,
+                    }
+                )
+                return response
 
 
-            # response = self._execute_with_circuit_breaker(
-            #     '生成试穿图像',
-            #     _call_api
-            # )
+            response = self._execute_with_circuit_breaker(
+                '生成试穿图像',
+                _call_api
+            )
             
-            # # 记录返回参数
-            # if response.data and len(response.data) > 0:
-            #     response_info = {
-            #         "url": response.data[0].url,
-            #         "data_count": len(response.data)
-            #     }
-            # else:
-            #     response_info = {"data": None}
-            # logger.info(f"[{self.name}] [{trace_id}] API 返回: {json.dumps(response_info, ensure_ascii=False, indent=2)}")
+            # 记录返回参数
+            if response.data and len(response.data) > 0:
+                response_info = {
+                    "url": response.data[0].url,
+                    "data_count": len(response.data)
+                }
+            else:
+                response_info = {"data": None}
+            logger.info(f"[{self.name}] [{trace_id}] API 返回: {json.dumps(response_info, ensure_ascii=False, indent=2)}")
 
-            # # 提取结果 URL
-            # if response.data and len(response.data) > 0:
-            #     result_url = response.data[0].url
-
-            # 使用 Mock URL
-            result_url = MOCK_RESULT_URL
+            # 提取结果 URL
+            if response.data and len(response.data) > 0:
+                result_url = response.data[0].url
             
             # 生成任务 ID (用于追踪)
             task_id = f"seed_{uuid.uuid4().hex[:16]}_{int(time.time())}"
 
             logger.info(f"[{self.name}] [{trace_id}] 任务完成 (MOCK): task_id={task_id}, result_url={result_url}")
 
-            # 下载并存储结果图片
-            stored_url, stored_key = self._download_and_store_result(
+            # 立即返回原始 URL 给前端预览（不等待存储）
+            # 后台异步存储结果图片
+            self._async_store_result(
                 result_url=result_url,
                 task_id=task_id,
                 trace_id=trace_id,
@@ -288,10 +325,10 @@ class SeedDanceEngine(BaseAIEngine):
                 'task_id': task_id,
                 'success': True,
                 'error_message': '',
-                'result_url': stored_url or result_url,  # 优先返回存储后的 URL
-                'result_key': stored_key or '',  # 存储 key 供复用
-                'original_url': result_url,  # 保留原始 URL
-                'processing_time': 0,  # 同步 API，无法获取耗时
+                'result_url': result_url,  # 立即返回原始 URL，不等待存储
+                'result_key': '',  # 异步存储后更新
+                'original_url': result_url,
+                'processing_time': 0,
                 'trace_id': trace_id,
             }
 
@@ -502,7 +539,7 @@ class SeedDanceEngine(BaseAIEngine):
             
             from apps.common.constants import StorageFolder
             
-            storage_key, stored_url, is_dup, file_md5 = storage.upload_file(
+            storage_key, stored_url, is_dup, content_key = storage.upload_file(
                 file_obj=file_obj,
                 filename=filename,
                 folder=StorageFolder.RESULTS,  # 结果图片存储目录
@@ -525,6 +562,63 @@ class SeedDanceEngine(BaseAIEngine):
         except Exception as e:
             logger.error(f"[{self.name}] [{trace_id}] 存储结果图片失败: {e}")
             return None, None
+
+    def _async_store_result(
+        self,
+        result_url: str,
+        task_id: str,
+        trace_id: str,
+        tenant_id: str = 'default',
+    ):
+        """
+        后台异步存储结果图片
+
+        用户无需等待存储完成，可以立即看到预览图
+        存储完成后会更新 TryOnRecord 记录
+        """
+        import threading
+
+        def store_in_background():
+            try:
+                logger.info(f"[{self.name}] [{trace_id}] 后台开始存储结果图片: task_id={task_id}")
+                stored_url, stored_key = self._download_and_store_result(
+                    result_url=result_url,
+                    task_id=task_id,
+                    trace_id=trace_id,
+                    tenant_id=tenant_id,
+                )
+
+                if stored_url and stored_key:
+                    # 更新 TryOnRecord 记录
+                    self._update_record_result(task_id, stored_url, stored_key)
+                    logger.info(f"[{self.name}] [{trace_id}] 后台存储完成: task_id={task_id}")
+                else:
+                    logger.warning(f"[{self.name}] [{trace_id}] 后台存储失败，结果将使用原始 URL: task_id={task_id}")
+
+            except Exception as e:
+                logger.error(f"[{self.name}] [{trace_id}] 后台存储异常: {e}")
+
+        thread = threading.Thread(target=store_in_background)
+        thread.daemon = True
+        thread.start()
+        logger.info(f"[{self.name}] [{trace_id}] 已启动后台存储线程: task_id={task_id}")
+
+    def _update_record_result(self, task_id: str, result_url: str, result_key: str):
+        """
+        更新 TryOnRecord 记录，添加存储后的 URL 和 key
+        """
+        try:
+            from apps.tryon.models import TryOnRecord
+            record = TryOnRecord.objects.filter(task_id=task_id).first()
+            if record:
+                record.result_url = result_url
+                record.result_key = result_key
+                record.save(update_fields=['result_url', 'result_key', 'updated_at'])
+                logger.info(f"[{self.name}] 已更新记录 {task_id} 的 result_url 和 result_key")
+            else:
+                logger.warning(f"[{self.name}] 未找到任务 {task_id} 对应的记录")
+        except Exception as e:
+            logger.error(f"[{self.name}] 更新记录失败: {e}")
 
     def cleanup(self, task_id: str):
         """清理任务资源"""

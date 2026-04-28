@@ -57,6 +57,17 @@ export const useAuthStore = create<AuthState>()(
         if (!user) return false;
         // 超管拥有所有权限
         if (user.is_superuser || user.role === 'super_admin') return true;
+        // 商家管理员自动拥有基础权限
+        if (user.role === 'merchant_admin') {
+          const merchantAdminPermissions = [
+            'clothing_view',
+            'clothing_manage',
+            'tryon_view',
+            'tryon_manage',
+            'file_view',
+          ];
+          if (merchantAdminPermissions.includes(permission)) return true;
+        }
         // 检查权限列表
         return user.permissions?.includes(permission) ?? false;
       },
@@ -69,6 +80,17 @@ export const useAuthStore = create<AuthState>()(
         if (user.is_superuser || user.role === 'super_admin') return true;
         // 空权限数组表示所有人可访问
         if (permissions.length === 0) return true;
+        // 商家管理员自动拥有基础权限
+        if (user.role === 'merchant_admin') {
+          const merchantAdminPermissions = [
+            'clothing_view',
+            'clothing_manage',
+            'tryon_view',
+            'tryon_manage',
+            'file_view',
+          ];
+          if (permissions.some(p => merchantAdminPermissions.includes(p))) return true;
+        }
         // 检查权限列表
         return permissions.some(p => user.permissions?.includes(p) ?? false);
       },

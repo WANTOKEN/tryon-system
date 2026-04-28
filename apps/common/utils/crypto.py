@@ -37,7 +37,12 @@ def xor_decrypt(encrypted: str, key: str) -> str:
     return xor_encrypt(encrypted, key)
 
 
-ENCRYPTION_KEY = 'TryOn@2024!Secret'
+def _get_encryption_key() -> str:
+    """获取加密密钥，优先从环境变量读取"""
+    key = settings.DATA_ENCRYPTION_KEY
+    if not key:
+        raise ValueError("DATA_ENCRYPTION_KEY 环境变量未设置，请配置加密密钥")
+    return key
 
 
 def encrypt_data(data) -> str:
@@ -54,10 +59,11 @@ def encrypt_data(data) -> str:
     try:
         if isinstance(data, dict):
             data = json.dumps(data, ensure_ascii=False)
-        encrypted = xor_encrypt(data, ENCRYPTION_KEY)
+        encrypted = xor_encrypt(data, _get_encryption_key())
         return base64.b64encode(encrypted.encode()).decode()
     except Exception as e:
-        print(f"Encryption error: {e}")
+        import logging
+        logging.getLogger(__name__).warning(f"Encryption error: {e}")
         return str(data) if not isinstance(data, dict) else json.dumps(data, ensure_ascii=False)
 
 
@@ -75,13 +81,14 @@ def decrypt_data(encrypted_data: str):
     
     try:
         decoded = base64.b64decode(encrypted_data.encode()).decode()
-        decrypted = xor_decrypt(decoded, ENCRYPTION_KEY)
+        decrypted = xor_decrypt(decoded, _get_encryption_key())
         try:
             return json.loads(decrypted)
         except:
             return decrypted
     except Exception as e:
-        print(f"Decryption error: {e}")
+        import logging
+        logging.getLogger(__name__).warning(f"Decryption error: {e}")
         try:
             return json.loads(encrypted_data)
         except:

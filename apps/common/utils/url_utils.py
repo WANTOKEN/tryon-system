@@ -304,43 +304,92 @@ def _migrate_local_url_to_oss(url: str) -> Optional[str]:
         return None
 
 
-def _get_presigned_url_if_oss(url):
+def _get_presigned_url_if_oss(url, use_public_read=None, expires=604800):
     """
-    如果是 OSS URL,生成预签名 URL
-    否则返回原 URL
+    如果是 OSS URL,根据配置返回公共读 URL 或预签名 URL
     
     Args:
         url: 完整的 URL
+        use_public_read: 是否使用公共读模式，None 表示自动判断
+        expires: 预签名 URL 过期时间（秒），默认 7 天
         
     Returns:
-        预签名 URL 或原 URL
+        公共读 URL 或预签名 URL
     """
-    # 检查存储类型
     storage_type = os.getenv('STORAGE_TYPE', 'local').lower()
     if storage_type != 'oss':
         return url
     
-    # 检查是否已经是预签名 URL（包含签名参数）
     if 'OSSAccessKeyId' in url or 'Signature' in url or 'X-Tos' in url:
         return url
     
-    # 检查是否是第三方 URL（非 OSS）
     try:
         from apps.common.services.oss_service import oss_service
         
-        # 判断是否为我们的 OSS URL
-        if not oss_service.enabled or not oss_service._is_oss_url(url):
+        if not oss_service.enabled:
             return url
         
-        # 提取 oss_key 并生成预签名 URL
+        if not oss_service._is_oss_url(url):
+            return url
+        
         oss_key = oss_service._extract_oss_key(url)
-        if oss_key:
-            presigned_url = oss_service.get_signed_url(oss_key, expires=86400)  # 24小时有效
-            return presigned_url
-    except Exception:
-        pass
+        if not oss_key:
+            return url
+        
+        if use_public_read is None:
+            use_public_read = oss_service.public_read
+        
+        if use_public_read:
+            return oss_service.get_url(oss_key)
+        else:
+            return oss_service.get_signed_url(oss_key, expires=expires)
+            
+    except Exception as e:
+        print(f"[URL] 生成 URL 失败: {e}")
     
     return url
+
+
+def get_public_url(url):
+    """
+    获取服装图片 URL
+    
+    根据 OSS_PUBLIC_READ 自动判断：
+    - OSS_PUBLIC_READ=true: 返回公共读 URL（无签名）
+    - OSS_PUBLIC_READ=false: 返回预签名 URL（7天有效）
+    
+    Args:
+        url: 原始 URL
+        
+    Returns:
+        可访问的 URL
+    """
+    return _get_presigned_url_if_oss(url, use_public_read=None)
+
+
+def get_private_url(url, expires=604800):
+    """
+    获取私有读预签名 URL（试穿结果等私密图片）
+    
+    适用于：需要权限控制的图片，如试穿结果
+    
+    Args:
+        url: 原始 URL
+        expires: 过期时间（秒），默认 7 天
+        
+    Returns:
+        预签名 URL（7天有效）
+    """
+    return _get_presigned_url_if_oss(url, use_public_read=False, expires=expires)
+
+
+def _get_presigned_url_if_oss_legacy(url):
+    """
+    [已废弃] 旧版预签名 URL 生成函数
+    
+    保留用于兼容，新代码请使用 get_public_url() 或 get_private_url()
+    """
+    return _get_presigned_url_if_oss(url)
 
 
 def get_image_url(image_field):
@@ -367,6 +416,63 @@ def get_image_url(image_field):
         return get_full_url(image_field.url)
     
     return None
+
+
+def get_thumb_url(url, width=200, height=200, quality=80, use_presigned=None):
+    """
+    获取缩略图 URL
+    
+    Args:
+        url: 原图 URL
+        width: 宽度，默认 200
+        height: 高度，默认 200
+        quality: 图片质量，默认 80
+        use_presigned: 是否使用预签名，None 表示根据 OSS_PUBLIC_READ 自动判断
+        
+    Returns:
+        缩略图 URL
+    """
+    if not url:
+        return None
+    
+    storage_type = os.getenv('STORAGE_TYPE', 'local').lower()
+    
+    if storage_type != 'oss':
+        return get_full_url(url)
+    
+    try:
+        from apps.common.services.oss_service import oss_service
+        
+        if not oss_service.enabled:
+            return get_full_url(url)
+        
+        oss_key = oss_service._extract_oss_key(url)
+        if not oss_key:
+            return get_full_url(url)
+        
+        if use_presigned is None:
+            use_presigned = not oss_service.public_read
+        
+        if use_presigned:
+            return oss_service.get_signed_thumb_url(
+                oss_key,
+                width=width,
+                height=height,
+                quality=quality,
+                format='webp',
+                expires=604800
+            )
+        else:
+            return oss_service.get_thumb_url(
+                oss_key,
+                width=width,
+                height=height,
+                quality=quality,
+                format='webp'
+            )
+    except Exception as e:
+        print(f"[URL] 获取缩略图失败: {e}")
+        return get_full_url(url)
 
 
 def calculate_content_md5(content: bytes) -> str:

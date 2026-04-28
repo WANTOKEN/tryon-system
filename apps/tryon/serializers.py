@@ -61,13 +61,11 @@ class TryOnRecordSerializer(serializers.ModelSerializer):
 
 class TryOnGenerateSerializer(serializers.Serializer):
     """提交试穿任务序列化器"""
-    # 头像：支持文件上传或 key 复用（二选一）
-    avatar = serializers.ImageField(required=False)
-    avatar_key = serializers.CharField(required=False, allow_blank=True)  # 复用已上传头像的 key
+    # 头像：必须提供 avatar_key（已上传的图片 key）
+    avatar_key = serializers.CharField(required=True, allow_blank=False)
     
-    # 服装：支持 UUID 复用或自定义上传
-    clothing_uuids = serializers.CharField(required=False, allow_blank=True)  # 逗号分隔，可选
-    custom_clothes = serializers.CharField(required=False, allow_blank=True)  # JSON 字符串
+    # 服装：支持 UUID 复用或 key 形式（逗号分隔）
+    clothing_uuids = serializers.CharField(required=True, allow_blank=False)
     
     session_id = serializers.CharField(required=True)
     ai_engine = serializers.ChoiceField(
@@ -75,33 +73,20 @@ class TryOnGenerateSerializer(serializers.Serializer):
         default=TryOnRecord.AIEngine.SEEDDANCE
     )
 
-    def validate_avatar(self, value):
-        """验证图片"""
-        if value.size > 10 * 1024 * 1024:  # 10MB
-            raise serializers.ValidationError('图片大小不能超过 10MB')
-        allowed_types = ['image/jpeg', 'image/png']
-        if value.content_type not in allowed_types:
-            raise serializers.ValidationError('仅支持 JPG、PNG 格式')
-        return value
-
     def validate(self, data):
-        """验证：avatar 和 avatar_key 二选一，必须有服装"""
-        import json
-        
-        # 验证头像：avatar 或 avatar_key 必须有一个
-        avatar = data.get('avatar')
+        """验证：必须有 avatar_key 和 clothing_uuids"""
+        # 验证头像 key
         avatar_key = data.get('avatar_key', '')
+        if not avatar_key:
+            raise serializers.ValidationError('请提供 avatar_key')
         
-        if not avatar and not avatar_key:
-            raise serializers.ValidationError('请上传头像图片或提供 avatar_key')
-        
-        if avatar and avatar_key:
-            raise serializers.ValidationError('avatar 和 avatar_key 只能提供一个')
-        
+        # 验证服装
         clothing_uuids = data.get('clothing_uuids', '')
-        custom_clothes_raw = data.get('custom_clothes', '')
+        if not clothing_uuids:
+            raise serializers.ValidationError('请提供服装 UUID 或 key')
         
         # 解析 clothing_uuids（支持 JSON 数组或逗号分隔字符串）
+        import json
         uuids = []
         if clothing_uuids:
             try:
@@ -115,24 +100,13 @@ class TryOnGenerateSerializer(serializers.Serializer):
                 # 回退到逗号分隔
                 uuids = [uuid.strip() for uuid in clothing_uuids.split(',') if uuid.strip()]
         
-        # 解析 custom_clothes (JSON 字符串 -> 列表)
-        custom_clothes = []
-        if custom_clothes_raw:
-            try:
-                custom_clothes = json.loads(custom_clothes_raw)
-                if not isinstance(custom_clothes, list):
-                    raise serializers.ValidationError('custom_clothes 格式错误')
-            except json.JSONDecodeError as e:
-                raise serializers.ValidationError(f'custom_clothes JSON 解析失败: {e}')
-        
-        if len(uuids) == 0 and len(custom_clothes) == 0:
+        if len(uuids) == 0:
             raise serializers.ValidationError('请至少选择一件服装')
         
-        if len(uuids) + len(custom_clothes) > 6:
+        if len(uuids) > 6:
             raise serializers.ValidationError('最多选择 6 件服装')
         
         data['clothing_uuids'] = uuids
-        data['custom_clothes'] = custom_clothes
         return data
 
 

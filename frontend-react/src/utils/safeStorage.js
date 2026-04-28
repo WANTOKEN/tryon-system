@@ -1,6 +1,6 @@
 /**
  * 安全存储工具
- * 
+ *
  * iPad Safari 对 localStorage 有严格限制（约 5MB），且可能在空间不足时清空数据。
  * 此工具使用 IndexedDB 作为主要存储方式，localStorage 作为轻量数据的备用。
  */
@@ -14,50 +14,54 @@ let dbInitPromise = null
 
 // 初始化 IndexedDB
 function initDB() {
-  if (dbInitPromise) return dbInitPromise
-  
-  dbInitPromise = new Promise((resolve, reject) => {
+  if (dbInitPromise) {
+    return dbInitPromise
+  }
+
+  dbInitPromise = new Promise(resolve => {
     // 检查 IndexedDB 是否可用
     if (!window.indexedDB) {
       console.warn('IndexedDB 不可用，将使用 localStorage')
       resolve(null)
       return
     }
-    
+
     const request = indexedDB.open(DB_NAME, DB_VERSION)
-    
+
     request.onerror = () => {
       console.warn('IndexedDB 打开失败:', request.error)
       resolve(null)
     }
-    
+
     request.onsuccess = () => {
       db = request.result
       resolve(db)
     }
-    
-    request.onupgradeneeded = (event) => {
+
+    request.onupgradeneeded = event => {
       const database = event.target.result
       if (!database.objectStoreNames.contains(STORE_NAME)) {
         database.createObjectStore(STORE_NAME, { keyPath: 'key' })
       }
     }
   })
-  
+
   return dbInitPromise
 }
 
 // IndexedDB 操作
 async function setIDB(key, value) {
   await initDB()
-  if (!db) return false
-  
-  return new Promise((resolve) => {
+  if (!db) {
+    return false
+  }
+
+  return new Promise(resolve => {
     try {
       const transaction = db.transaction([STORE_NAME], 'readwrite')
       const store = transaction.objectStore(STORE_NAME)
       const request = store.put({ key, value })
-      
+
       request.onsuccess = () => resolve(true)
       request.onerror = () => {
         console.warn('IndexedDB 写入失败:', request.error)
@@ -72,14 +76,16 @@ async function setIDB(key, value) {
 
 async function getIDB(key) {
   await initDB()
-  if (!db) return null
-  
-  return new Promise((resolve) => {
+  if (!db) {
+    return null
+  }
+
+  return new Promise(resolve => {
     try {
       const transaction = db.transaction([STORE_NAME], 'readonly')
       const store = transaction.objectStore(STORE_NAME)
       const request = store.get(key)
-      
+
       request.onsuccess = () => {
         resolve(request.result?.value ?? null)
       }
@@ -96,14 +102,16 @@ async function getIDB(key) {
 
 async function removeIDB(key) {
   await initDB()
-  if (!db) return false
-  
-  return new Promise((resolve) => {
+  if (!db) {
+    return false
+  }
+
+  return new Promise(resolve => {
     try {
       const transaction = db.transaction([STORE_NAME], 'readwrite')
       const store = transaction.objectStore(STORE_NAME)
       const request = store.delete(key)
-      
+
       request.onsuccess = () => resolve(true)
       request.onerror = () => resolve(false)
     } catch (e) {
@@ -161,7 +169,7 @@ export const safeStorage = {
    */
   async setItem(key, value) {
     const stringValue = typeof value === 'string' ? value : JSON.stringify(value)
-    
+
     if (isLargeData(stringValue)) {
       // 大型数据优先使用 IndexedDB
       const idbSuccess = await setIDB(key, value)
@@ -172,19 +180,18 @@ export const safeStorage = {
       }
       // IndexedDB 失败，尝试 localStorage
       return setLS(key, stringValue)
-    } else {
-      // 小型数据使用 localStorage
-      const lsSuccess = setLS(key, stringValue)
-      if (lsSuccess) {
-        // 同时清除 IndexedDB 中的旧数据
-        await removeIDB(key)
-        return true
-      }
-      // localStorage 失败，尝试 IndexedDB
-      return setIDB(key, value)
     }
+    // 小型数据使用 localStorage
+    const lsSuccess = setLS(key, stringValue)
+    if (lsSuccess) {
+      // 同时清除 IndexedDB 中的旧数据
+      await removeIDB(key)
+      return true
+    }
+    // localStorage 失败，尝试 IndexedDB
+    return setIDB(key, value)
   },
-  
+
   /**
    * 读取数据
    * - 先尝试 localStorage
@@ -196,12 +203,12 @@ export const safeStorage = {
     if (lsValue !== null) {
       return lsValue
     }
-    
+
     // 再尝试 IndexedDB
     const idbValue = await getIDB(key)
     return idbValue
   },
-  
+
   /**
    * 删除数据
    */
@@ -209,14 +216,14 @@ export const safeStorage = {
     removeLS(key)
     await removeIDB(key)
   },
-  
+
   /**
    * 同步存储（用于需要同步的场景，如 React state 更新）
    * 注意：大型数据可能失败
    */
   setItemSync(key, value) {
     const stringValue = typeof value === 'string' ? value : JSON.stringify(value)
-    
+
     if (isLargeData(stringValue)) {
       // 大型数据异步存储到 IndexedDB
       setIDB(key, value).catch(() => {})
@@ -224,10 +231,10 @@ export const safeStorage = {
       removeLS(key)
       return true
     }
-    
+
     return setLS(key, stringValue)
   },
-  
+
   /**
    * 同步读取（只从 localStorage 读取）
    */

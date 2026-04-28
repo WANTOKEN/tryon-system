@@ -2,11 +2,21 @@
 RSA 加密工具
 用于密码传输加密
 """
+import os
 import base64
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
-from django.core.cache import cache
+from django.conf import settings
+
+
+def get_rsa_key_paths():
+    """获取 RSA 密钥文件路径"""
+    keys_dir = os.path.join(settings.BASE_DIR, 'keys')
+    os.makedirs(keys_dir, exist_ok=True)
+    private_key_path = os.path.join(keys_dir, 'private_key.pem')
+    public_key_path = os.path.join(keys_dir, 'public_key.pem')
+    return private_key_path, public_key_path
 
 
 def generate_rsa_key_pair():
@@ -35,18 +45,32 @@ def generate_rsa_key_pair():
 
 
 def get_or_create_rsa_keys():
-    """获取或创建 RSA 密钥对（缓存 1 小时）"""
-    cache_key_private = 'rsa_private_key'
-    cache_key_public = 'rsa_public_key'
+    """获取或创建 RSA 密钥对（保存到文件）"""
+    private_key_path, public_key_path = get_rsa_key_paths()
     
-    private_key = cache.get(cache_key_private)
-    public_key = cache.get(cache_key_public)
+    # 如果密钥文件存在，直接读取
+    if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+        try:
+            with open(private_key_path, 'r', encoding='utf-8') as f:
+                private_key = f.read()
+            with open(public_key_path, 'r', encoding='utf-8') as f:
+                public_key = f.read()
+            return private_key, public_key
+        except Exception as e:
+            print(f"[RSA] 读取密钥文件失败: {e}")
     
-    if not private_key or not public_key:
-        private_key, public_key = generate_rsa_key_pair()
-        # 缓存 1 小时
-        cache.set(cache_key_private, private_key, 3600)
-        cache.set(cache_key_public, public_key, 3600)
+    # 生成新的密钥对
+    private_key, public_key = generate_rsa_key_pair()
+    
+    # 保存到文件
+    try:
+        with open(private_key_path, 'w', encoding='utf-8') as f:
+            f.write(private_key)
+        with open(public_key_path, 'w', encoding='utf-8') as f:
+            f.write(public_key)
+        print(f"[RSA] 密钥对已生成并保存到 {private_key_path}")
+    except Exception as e:
+        print(f"[RSA] 保存密钥文件失败: {e}")
     
     return private_key, public_key
 

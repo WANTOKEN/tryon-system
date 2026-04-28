@@ -51,6 +51,14 @@ function CachedImage({
   const imgRef = useRef(null)
   const observerRef = useRef(null)
 
+  useEffect(() => {
+    if (src !== currentSrc) {
+      setCurrentSrc(thumbUrl || src)
+      setLoaded(imageCache.has(src))
+      setHasError(false)
+    }
+  }, [src, thumbUrl, currentSrc])
+
   // 懒加载：监听元素是否进入视口
   useEffect(() => {
     if (!lazy || inView) {

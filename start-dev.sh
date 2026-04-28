@@ -37,7 +37,7 @@ pip install -r requirements.txt --quiet
 
 # 安装前端依赖
 echo -e "\033[33m检查前端依赖...\033[0m"
-cd frontend-react
+cd frontend-react2
 if [ ! -d "node_modules" ]; then
     echo -e "\033[33m安装 npm 依赖...\033[0m"
     npm install

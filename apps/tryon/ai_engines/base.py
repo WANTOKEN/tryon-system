@@ -89,6 +89,7 @@ class BaseAIEngine(ABC):
         avatar_url: str,
         clothing_urls: list,
         prompt: Optional[str] = None,
+        clothing_info: Optional[List[Dict]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -98,6 +99,7 @@ class BaseAIEngine(ABC):
             avatar_url: 顾客形象照片 URL
             clothing_urls: 服装图片 URL 列表
             prompt: 可选的自定义提示词
+            clothing_info: 服装信息列表，每项包含 category, subcategory 等
             **kwargs: 额外参数，供具体引擎实现使用
 
         Returns:

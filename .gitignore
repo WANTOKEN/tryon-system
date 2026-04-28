@@ -56,9 +56,9 @@ logs/*.log
 .mypy_cache/
 
 # Frontend
-frontend-react/node_modules/
-frontend-react/dist/
-frontend-react/.cache/
+frontend-react2/node_modules/
+frontend-react2/dist/
+frontend-react2/.cache/
 
 # Misc
 *.log

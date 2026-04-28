@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+
 import { useI18n } from '../hooks/useI18n'
 
 export default function LoginModal({
@@ -7,17 +8,21 @@ export default function LoginModal({
   onLogin,
   onSmsLogin,
   onSendSms,
+  onRegister,
+  onSendResetSms,
+  onResetPassword,
   loading = false,
 }) {
   const { t } = useI18n()
+  const [mode, setMode] = useState('login') // 'login' | 'register' | 'reset'
   const [tab, setTab] = useState('password') // 'password' | 'sms'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [phone, setPhone] = useState('')
   const [smsCode, setSmsCode] = useState('')
   const [countdown, setCountdown] = useState(0)
+  const [storeName, setStoreName] = useState('')
 
-  // 倒计时
   useEffect(() => {
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
@@ -26,7 +31,6 @@ export default function LoginModal({
     return undefined
   }, [countdown])
 
-  // 重置表单
   useEffect(() => {
     if (!isOpen) {
       setUsername('')
@@ -34,6 +38,9 @@ export default function LoginModal({
       setPhone('')
       setSmsCode('')
       setCountdown(0)
+      setStoreName('')
+      setMode('login')
+      setTab('password')
     }
   }, [isOpen])
 
@@ -57,14 +64,47 @@ export default function LoginModal({
     onSmsLogin(phone.trim(), smsCode)
   }
 
-  const handleSendSms = async () => {
+  const handleRegister = e => {
+    e.preventDefault()
+    if (!username.trim() || !phone.trim() || !password.trim()) {
+      return
+    }
+    onRegister(username.trim(), phone.trim(), password, storeName.trim())
+  }
+
+  const handleResetPassword = e => {
+    e.preventDefault()
+    if (!phone.trim() || !smsCode.trim() || !password.trim()) {
+      return
+    }
+    onResetPassword(phone.trim(), smsCode.trim(), password)
+  }
+
+  const handleSendSms = async purpose => {
     if (countdown > 0 || !phone.trim()) {
       return
     }
-    const success = await onSendSms(phone.trim())
+    let success = false
+    if (purpose === 'reset') {
+      success = await onSendResetSms(phone.trim())
+    } else {
+      success = await onSendSms(phone.trim())
+    }
     if (success) {
       setCountdown(60)
     }
+  }
+
+  const titles = {
+    login: t('loginTitle'),
+    register: t('registerTitle', '注册账号'),
+    reset: t('resetPasswordTitle', '重置密码'),
+  }
+
+  const subtitles = {
+    login: t('loginSubtitle'),
+    register: t('registerSubtitle', '创建您的商家账号'),
+    reset: t('resetPasswordSubtitle', '通过手机验证码重置密码'),
   }
 
   return (
@@ -86,7 +126,6 @@ export default function LoginModal({
         aria-label={t('loginClose')}
       />
       <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-white shadow-2xl'>
-        {/* Header */}
         <div className='bg-gradient-to-r from-[#1A1A1A] to-[#2A2A2A] px-6 py-6 text-center'>
           <div className='mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-2 border-champagne/40 bg-champagne/20'>
             <svg
@@ -103,76 +142,273 @@ export default function LoginModal({
               />
             </svg>
           </div>
-          <h2 className='text-lg font-semibold text-white'>{t('loginTitle')}</h2>
-          <p className='mt-1 text-xs text-gray-400'>{t('loginSubtitle')}</p>
+          <h2 className='text-lg font-semibold text-white'>{titles[mode]}</h2>
+          <p className='mt-1 text-xs text-gray-400'>{subtitles[mode]}</p>
         </div>
 
-        {/* Tab 切换 */}
         <div className='px-6 pt-5'>
-          <div className='mb-5 flex rounded-xl bg-gray-100 p-1'>
-            <button
-              type='button'
-              className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
-                tab === 'password'
-                  ? 'bg-white text-charcoal shadow-sm'
-                  : 'text-grayMuted hover:text-charcoal'
-              }`}
-              onClick={() => setTab('password')}
-            >
-              {t('loginTabPassword')}
-            </button>
-            <button
-              type='button'
-              className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
-                tab === 'sms'
-                  ? 'bg-white text-charcoal shadow-sm'
-                  : 'text-grayMuted hover:text-charcoal'
-              }`}
-              onClick={() => setTab('sms')}
-            >
-              {t('loginTabSms')}
-            </button>
-          </div>
+          {mode === 'login' && (
+            <>
+              <div className='mb-5 flex rounded-xl bg-gray-100 p-1'>
+                <button
+                  type='button'
+                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
+                    tab === 'password'
+                      ? 'bg-white text-charcoal shadow-sm'
+                      : 'text-grayMuted hover:text-charcoal'
+                  }`}
+                  onClick={() => setTab('password')}
+                >
+                  {t('loginTabPassword')}
+                </button>
+                <button
+                  type='button'
+                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
+                    tab === 'sms'
+                      ? 'bg-white text-charcoal shadow-sm'
+                      : 'text-grayMuted hover:text-charcoal'
+                  }`}
+                  onClick={() => setTab('sms')}
+                >
+                  {t('loginTabSms')}
+                </button>
+              </div>
 
-          {/* 账号密码表单 */}
-          {tab === 'password' && (
-            <form onSubmit={handlePasswordLogin} className='space-y-3'>
+              {tab === 'password' && (
+                <form onSubmit={handlePasswordLogin} className='space-y-3'>
+                  <div>
+                    <label
+                      htmlFor='login-username'
+                      className='mb-1.5 block text-xs font-medium text-charcoal'
+                    >
+                      {t('loginUsernameLabel')}
+                    </label>
+                    <input
+                      id='login-username'
+                      type='text'
+                      value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                      placeholder={t('loginUsernamePlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor='login-password'
+                      className='mb-1.5 block text-xs font-medium text-charcoal'
+                    >
+                      {t('loginPasswordLabel')}
+                    </label>
+                    <input
+                      id='login-password'
+                      type='password'
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                      placeholder={t('loginPasswordPlaceholder')}
+                    />
+                  </div>
+                  <div className='flex items-center justify-between text-xs'>
+                    <button
+                      type='button'
+                      onClick={() => setMode('reset')}
+                      className='text-champagne hover:underline'
+                    >
+                      {t('forgotPassword', '忘记密码？')}
+                    </button>
+                  </div>
+                  <button
+                    type='submit'
+                    disabled={loading || !username.trim() || !password.trim()}
+                    className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
+                  >
+                    {loading ? (
+                      <>
+                        <svg className='h-4 w-4 animate-spin' fill='none' viewBox='0 0 24 24'>
+                          <circle
+                            className='opacity-25'
+                            cx='12'
+                            cy='12'
+                            r='10'
+                            stroke='currentColor'
+                            strokeWidth='4'
+                          />
+                          <path
+                            className='opacity-75'
+                            fill='currentColor'
+                            d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                          />
+                        </svg>
+                        {t('loginLoading')}
+                      </>
+                    ) : (
+                      t('loginBtn')
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {tab === 'sms' && (
+                <form onSubmit={handleSmsLogin} className='space-y-3'>
+                  <div>
+                    <label
+                      htmlFor='login-phone'
+                      className='mb-1.5 block text-xs font-medium text-charcoal'
+                    >
+                      {t('loginPhoneLabel')}
+                    </label>
+                    <input
+                      id='login-phone'
+                      type='tel'
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                      placeholder={t('loginPhonePlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor='login-sms-code'
+                      className='mb-1.5 block text-xs font-medium text-charcoal'
+                    >
+                      {t('loginSmsLabel')}
+                    </label>
+                    <div className='flex gap-2'>
+                      <input
+                        id='login-sms-code'
+                        type='text'
+                        value={smsCode}
+                        onChange={e => setSmsCode(e.target.value)}
+                        maxLength={6}
+                        className='flex-1 rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                        placeholder={t('loginSmsPlaceholder')}
+                      />
+                      <button
+                        type='button'
+                        onClick={() => handleSendSms('login')}
+                        disabled={countdown > 0 || !phone.trim()}
+                        className='whitespace-nowrap rounded-xl border border-champagne/30 px-4 py-2.5 text-sm font-medium text-champagne transition-colors hover:bg-champagne/5 disabled:cursor-not-allowed disabled:opacity-50'
+                      >
+                        {countdown > 0
+                          ? t('loginSendSmsCountdown', { n: countdown })
+                          : t('loginSendSms')}
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type='submit'
+                    disabled={loading || !phone.trim() || !smsCode.trim()}
+                    className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
+                  >
+                    {loading ? (
+                      <>
+                        <svg className='h-4 w-4 animate-spin' fill='none' viewBox='0 0 24 24'>
+                          <circle
+                            className='opacity-25'
+                            cx='12'
+                            cy='12'
+                            r='10'
+                            stroke='currentColor'
+                            strokeWidth='4'
+                          />
+                          <path
+                            className='opacity-75'
+                            fill='currentColor'
+                            d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                          />
+                        </svg>
+                        {t('loginLoading')}
+                      </>
+                    ) : (
+                      t('loginBtn')
+                    )}
+                  </button>
+                </form>
+              )}
+
+              <div className='mt-4 text-center text-xs text-grayMuted'>
+                {t('noAccount', '还没有账号？')}
+                <button
+                  type='button'
+                  onClick={() => setMode('register')}
+                  className='ml-1 text-champagne hover:underline'
+                >
+                  {t('registerNow', '立即注册')}
+                </button>
+              </div>
+            </>
+          )}
+
+          {mode === 'register' && (
+            <form onSubmit={handleRegister} className='space-y-3'>
               <div>
                 <label
-                  htmlFor='login-username'
+                  htmlFor='register-username'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  {t('loginUsernameLabel')}
+                  {t('registerUsernameLabel', '用户名')}
                 </label>
                 <input
-                  id='login-username'
+                  id='register-username'
                   type='text'
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder={t('loginUsernamePlaceholder')}
+                  placeholder={t('registerUsernamePlaceholder', '请输入用户名')}
                 />
               </div>
               <div>
                 <label
-                  htmlFor='login-password'
+                  htmlFor='register-phone'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  {t('loginPasswordLabel')}
+                  {t('registerPhoneLabel', '手机号')}
                 </label>
                 <input
-                  id='login-password'
+                  id='register-phone'
+                  type='tel'
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  placeholder={t('registerPhonePlaceholder', '请输入手机号')}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor='register-password'
+                  className='mb-1.5 block text-xs font-medium text-charcoal'
+                >
+                  {t('registerPasswordLabel', '密码')}
+                </label>
+                <input
+                  id='register-password'
                   type='password'
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder={t('loginPasswordPlaceholder')}
+                  placeholder={t('registerPasswordPlaceholder', '请输入密码（至少6位）')}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor='register-store-name'
+                  className='mb-1.5 block text-xs font-medium text-charcoal'
+                >
+                  {t('registerStoreNameLabel', '门店名称（选填）')}
+                </label>
+                <input
+                  id='register-store-name'
+                  type='text'
+                  value={storeName}
+                  onChange={e => setStoreName(e.target.value)}
+                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  placeholder={t('registerStoreNamePlaceholder', '请输入门店名称')}
                 />
               </div>
               <button
                 type='submit'
-                disabled={loading || !username.trim() || !password.trim()}
-                className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
+                disabled={loading || !username.trim() || !phone.trim() || !password.trim()}
+                className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-champagne py-3 text-sm font-semibold text-white transition-colors hover:bg-yellow-600 disabled:cursor-not-allowed disabled:opacity-50'
               >
                 {loading ? (
                   <>
@@ -191,64 +427,91 @@ export default function LoginModal({
                         d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
                       />
                     </svg>
-                    {t('loginLoading')}
+                    {t('registerLoading', '注册中...')}
                   </>
                 ) : (
-                  t('loginBtn')
+                  t('registerBtn', '注册')
                 )}
               </button>
+              <div className='mt-3 text-center text-xs text-grayMuted'>
+                {t('hasAccount', '已有账号？')}
+                <button
+                  type='button'
+                  onClick={() => setMode('login')}
+                  className='ml-1 text-champagne hover:underline'
+                >
+                  {t('loginNow', '立即登录')}
+                </button>
+              </div>
             </form>
           )}
 
-          {/* 短信验证码表单 */}
-          {tab === 'sms' && (
-            <form onSubmit={handleSmsLogin} className='space-y-3'>
+          {mode === 'reset' && (
+            <form onSubmit={handleResetPassword} className='space-y-3'>
               <div>
                 <label
-                  htmlFor='login-phone'
+                  htmlFor='reset-phone'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  {t('loginPhoneLabel')}
+                  {t('resetPhoneLabel', '手机号')}
                 </label>
                 <input
-                  id='login-phone'
+                  id='reset-phone'
                   type='tel'
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder={t('loginPhonePlaceholder')}
+                  placeholder={t('resetPhonePlaceholder', '请输入注册手机号')}
                 />
               </div>
               <div>
                 <label
-                  htmlFor='login-sms-code'
+                  htmlFor='reset-sms-code'
                   className='mb-1.5 block text-xs font-medium text-charcoal'
                 >
-                  {t('loginSmsLabel')}
+                  {t('resetSmsLabel', '验证码')}
                 </label>
                 <div className='flex gap-2'>
                   <input
-                    id='login-sms-code'
+                    id='reset-sms-code'
                     type='text'
                     value={smsCode}
                     onChange={e => setSmsCode(e.target.value)}
                     maxLength={6}
                     className='flex-1 rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                    placeholder={t('loginSmsPlaceholder')}
+                    placeholder={t('resetSmsPlaceholder', '请输入验证码')}
                   />
                   <button
                     type='button'
-                    onClick={handleSendSms}
+                    onClick={() => handleSendSms('reset')}
                     disabled={countdown > 0 || !phone.trim()}
                     className='whitespace-nowrap rounded-xl border border-champagne/30 px-4 py-2.5 text-sm font-medium text-champagne transition-colors hover:bg-champagne/5 disabled:cursor-not-allowed disabled:opacity-50'
                   >
-                    {countdown > 0 ? t('loginSendSmsCountdown', { n: countdown }) : t('loginSendSms')}
+                    {countdown > 0
+                      ? t('loginSendSmsCountdown', { n: countdown })
+                      : t('loginSendSms')}
                   </button>
                 </div>
               </div>
+              <div>
+                <label
+                  htmlFor='reset-password'
+                  className='mb-1.5 block text-xs font-medium text-charcoal'
+                >
+                  {t('resetNewPasswordLabel', '新密码')}
+                </label>
+                <input
+                  id='reset-password'
+                  type='password'
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  placeholder={t('resetNewPasswordPlaceholder', '请输入新密码（至少6位）')}
+                />
+              </div>
               <button
                 type='submit'
-                disabled={loading || !phone.trim() || !smsCode.trim()}
+                disabled={loading || !phone.trim() || !smsCode.trim() || !password.trim()}
                 className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
               >
                 {loading ? (
@@ -268,16 +531,24 @@ export default function LoginModal({
                         d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
                       />
                     </svg>
-                    {t('loginLoading')}
+                    {t('resetLoading', '重置中...')}
                   </>
                 ) : (
-                  t('loginBtn')
+                  t('resetBtn', '重置密码')
                 )}
               </button>
+              <div className='mt-3 text-center text-xs text-grayMuted'>
+                <button
+                  type='button'
+                  onClick={() => setMode('login')}
+                  className='text-champagne hover:underline'
+                >
+                  {t('backToLogin', '返回登录')}
+                </button>
+              </div>
             </form>
           )}
 
-          {/* 取消按钮 */}
           <button
             type='button'
             onClick={onClose}

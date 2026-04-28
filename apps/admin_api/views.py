@@ -2,7 +2,6 @@ from rest_framework import routers, viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate
 from django.conf import settings
 from django.db import models
@@ -12,7 +11,7 @@ from datetime import timedelta
 
 from apps.accounts.models import Merchant
 from apps.tryon.models import TryOnRecord, TryOnClothing
-from apps.common.models import FileUploadRecord
+from apps.common.models import FileUploadRecord, ModelPhoto
 from .models import AdminOperationLog, SystemConfig, QuotaHistory
 from .serializers import (
     AdminOperationLogSerializer, SystemConfigSerializer, SystemConfigBatchSerializer,
@@ -23,6 +22,22 @@ from .serializers import (
 
 # ==================== Admin Authentication ====================
 
+def get_user_permissions(user):
+    """获取用户权限列表"""
+    if user.is_superuser:
+        return ['super_admin']  # 超管拥有所有权限
+    
+    # 获取用户权限组
+    permissions = []
+    for group in user.groups.all():
+        permissions.extend(group.permissions.values_list('codename', flat=True))
+    
+    # 获取用户直接权限
+    permissions.extend(user.user_permissions.values_list('codename', flat=True))
+    
+    return list(set(permissions))
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_public_key(request):
@@ -32,7 +47,6 @@ def get_public_key(request):
     return Response({'public_key': public_key})
 
 
-@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def admin_login(request):
@@ -57,8 +71,11 @@ def admin_login(request):
     if user is None:
         return Response({'message': '用户名或密码错误'}, status=status.HTTP_401_UNAUTHORIZED)
     
+    if not user.is_active:
+        return Response({'message': '账号已被禁用，请联系管理员'}, status=status.HTTP_403_FORBIDDEN)
+    
     if not user.is_staff:
-        return Response({'message': '无管理员权限'}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'message': '无管理员权限，请联系管理员开通'}, status=status.HTTP_403_FORBIDDEN)
     
     # 记录登录日志
     AdminOperationLog.log(
@@ -79,6 +96,17 @@ def admin_login(request):
     from rest_framework_simplejwt.tokens import RefreshToken
     refresh = RefreshToken.for_user(user)
     
+    # 获取用户权限
+    permissions = get_user_permissions(user)
+    
+    # 确定用户角色
+    if user.is_superuser:
+        role = 'super_admin'
+    elif hasattr(user, 'role'):
+        role = user.role
+    else:
+        role = 'merchant_admin' if user.is_staff else 'merchant'
+    
     return Response({
         'access_token': str(refresh.access_token),
         'refresh_token': str(refresh),
@@ -88,6 +116,9 @@ def admin_login(request):
             'phone': user.phone,
             'store_name': user.store_name,
             'is_superuser': user.is_superuser,
+            'role': role,
+            'merchant_id': user.id if not user.is_superuser else None,
+            'permissions': permissions,
         }
     })
 
@@ -101,7 +132,11 @@ class IsAdminUser(permissions.BasePermission):
 
 
 class MerchantAdminViewSet(viewsets.ModelViewSet):
-    """商家管理 - Admin"""
+    """商家管理 - Admin
+    
+    - 超级管理员：可以查看和管理所有商家
+    - 商家管理员：只能查看和管理自己的信息
+    """
     permission_classes = [IsAdminUser]
     queryset = Merchant.objects.all()
     
@@ -111,6 +146,12 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        
+        # 数据隔离：非超管只能查看自己的数据
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(id=self.request.user.id)
+        
+        # 筛选参数
         search = self.request.query_params.get('search')
         status_filter = self.request.query_params.get('status')
         
@@ -124,6 +165,11 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-created_at')
     
     def perform_create(self, serializer):
+        # 只有超管可以创建商家
+        if not self.request.user.is_superuser:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("只有超级管理员可以创建商家")
+        
         super().perform_create(serializer)
         merchant = serializer.instance
         AdminOperationLog.log(
@@ -136,6 +182,12 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
         )
     
     def perform_update(self, serializer):
+        # 商家只能修改自己的信息
+        if not self.request.user.is_superuser:
+            if serializer.instance.id != self.request.user.id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("无权修改其他商家信息")
+        
         super().perform_update(serializer)
         merchant = serializer.instance
         AdminOperationLog.log(
@@ -147,6 +199,11 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
         )
     
     def perform_destroy(self, instance):
+        # 只有超管可以删除商家
+        if not self.request.user.is_superuser:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("只有超级管理员可以删除商家")
+        
         AdminOperationLog.log(
             self.request,
             AdminOperationLog.ActionType.DELETE,
@@ -158,7 +215,10 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['patch'], url_path='quota')
     def adjust_quota(self, request, pk=None):
-        """调整商家配额"""
+        """调整商家配额 - 仅超管"""
+        if not request.user.is_superuser:
+            return Response({'message': '只有超级管理员可以调整配额'}, status=status.HTTP_403_FORBIDDEN)
+        
         merchant = self.get_object()
         serializer = QuotaAdjustSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -202,7 +262,10 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], url_path='reset-quota')
     def reset_quota(self, request, pk=None):
-        """重置商家配额"""
+        """重置商家配额 - 仅超管"""
+        if not request.user.is_superuser:
+            return Response({'message': '只有超级管理员可以重置配额'}, status=status.HTTP_403_FORBIDDEN)
+        
         merchant = self.get_object()
         serializer = QuotaResetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -247,6 +310,11 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='quota-history')
     def quota_history(self, request, pk=None):
         """获取商家配额变更历史"""
+        # 商家只能查看自己的配额历史
+        if not request.user.is_superuser:
+            if int(pk) != request.user.id:
+                return Response({'message': '无权查看其他商家的配额历史'}, status=status.HTTP_403_FORBIDDEN)
+        
         merchant = self.get_object()
         days = int(request.query_params.get('days', 30))
         since = timezone.now() - timedelta(days=days)
@@ -261,7 +329,10 @@ class MerchantAdminViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['patch'], url_path='status')
     def change_status(self, request, pk=None):
-        """更改商家状态"""
+        """更改商家状态 - 仅超管"""
+        if not request.user.is_superuser:
+            return Response({'message': '只有超级管理员可以更改商家状态'}, status=status.HTTP_403_FORBIDDEN)
+        
         merchant = self.get_object()
         new_status = request.data.get('status')
         
@@ -359,6 +430,68 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
         from apps.wardrobe.serializers import ClothingDetailSerializer
         return ClothingDetailSerializer
     
+    def _clean_oss_url(self, url):
+        """清理 OSS URL，去除签名参数
+        
+        存储时不带签名，读取时动态生成预签名 URL
+        """
+        if not url:
+            return url
+        
+        from urllib.parse import urlparse, urlunparse
+        
+        if 'OSSAccessKeyId' in url or 'Signature' in url:
+            parsed = urlparse(url)
+            path = parsed.path
+            if '?' in path:
+                path = path.split('?')[0]
+            clean_url = urlunparse((parsed.scheme, parsed.netloc, path, '', '', ''))
+            return clean_url
+        
+        return url
+    
+    def perform_create(self, serializer):
+        """创建服装时自动处理 merchant_id 和清理 image_url
+        
+        - 超级管理员：可以指定 merchant_id，不指定则使用自己的ID
+        - 普通管理员（商家）：只能创建自己的服装
+        - 自动清理 image_url 中的 OSS 签名参数
+        """
+        if self.request.user.is_superuser:
+            merchant_id = self.request.data.get('merchant_id', self.request.user.id)
+        else:
+            merchant_id = self.request.user.id
+        
+        image_url = self._clean_oss_url(self.request.data.get('image_url', ''))
+        image_thumb_url = self._clean_oss_url(self.request.data.get('image_thumb_url', ''))
+        
+        serializer.save(
+            merchant_id=merchant_id,
+            image_url=image_url,
+            image_thumb_url=image_thumb_url
+        )
+    
+    def perform_update(self, serializer):
+        """更新服装时自动处理 merchant_id 和清理 image_url
+        
+        - 超级管理员：可以修改 merchant_id
+        - 普通管理员（商家）：不能修改 merchant_id
+        - 自动清理 image_url 中的 OSS 签名参数
+        """
+        if self.request.user.is_superuser:
+            merchant_id = self.request.data.get('merchant_id', serializer.instance.merchant_id)
+        else:
+            merchant_id = self.request.user.id
+        
+        image_url = self._clean_oss_url(self.request.data.get('image_url', serializer.instance.image_url))
+        image_thumb_url = self._clean_oss_url(self.request.data.get('image_thumb_url', serializer.instance.image_thumb_url))
+        
+        serializer.save(
+            merchant_id=merchant_id,
+            image_url=image_url,
+            image_thumb_url=image_thumb_url
+        )
+    
     def perform_destroy(self, instance):
         """软删除"""
         instance.is_deleted = True
@@ -374,7 +507,7 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
         """
         from apps.wardrobe.models import Clothing
         from apps.wardrobe.serializers import ClothingUploadSerializer, ClothingSerializer
-        from apps.common.services.oss_service import oss_service
+        from apps.common.services.storage_service import storage_service
         import os
         
         serializer = ClothingUploadSerializer(data=request.data)
@@ -396,8 +529,8 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
         ext = os.path.splitext(image.name)[1]
         filename = f"clothing{ext}"
         
-        # 上传到 OSS (自动 MD5 去重，自动记录到 FileUploadRecord)
-        oss_key, image_url, is_duplicate, file_md5 = oss_service.upload_file(
+        # 上传到存储服务 (自动 MD5 去重，自动记录到 FileUploadRecord)
+        storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
             file_obj=image,
             filename=filename,
             folder='clothing',
@@ -409,7 +542,7 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
             source='admin_upload'
         )
         image_thumb_url = image_url  # TODO: 生成缩略图
-        file_hash = file_md5
+        file_hash = content_key  # 存储 content_key（格式: storage_type:md5），用于复用
         
         # 创建服装记录
         clothing = Clothing.objects.create(
@@ -435,6 +568,179 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
         )
         
         return Response(ClothingSerializer(clothing).data, status=status.HTTP_201_CREATED)
+
+
+class ModelPhotoAdminViewSet(viewsets.ModelViewSet):
+    """模特照片管理 - Admin
+    
+    - 超级管理员：查看和管理所有模特照片
+    - 普通管理员（商家）：查看和管理所有模特照片（模特照片是全局共享的）
+    """
+    permission_classes = [IsAdminUser]
+    queryset = ModelPhoto.objects.all()
+    
+    def get_serializer_class(self):
+        from apps.common.serializers import ModelPhotoSerializer
+        return ModelPhotoSerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # 筛选参数
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active == 'true')
+
+        return queryset.order_by('sort_order', 'id')
+    
+    def perform_create(self, serializer):
+        from apps.common.services.storage_service import storage_service
+        import os
+
+        if 'image' in self.request.FILES:
+            image = self.request.FILES['image']
+            sort_order = self.request.data.get('sort_order', 0)
+
+            ext = os.path.splitext(image.name)[1]
+            filename = f"model{ext}"
+
+            storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
+                file_obj=image,
+                filename=filename,
+                folder='models',
+                tenant_id=str(self.request.user.uuid),
+                content_type=image.content_type or 'image/jpeg',
+                file_category='model',
+                skip_duplicate=True,
+                ref_type='ModelPhoto',
+                source='admin_upload',
+                is_public=True
+            )
+
+            serializer.save(
+                image_url=image_url,
+                image_thumb_url=image_url,
+                image_key=content_key,
+                sort_order=int(sort_order) if sort_order else 0
+            )
+        else:
+            serializer.save()
+
+        model_photo = serializer.instance
+        AdminOperationLog.log(
+            self.request,
+            AdminOperationLog.ActionType.CREATE,
+            'ModelPhoto',
+            str(model_photo.id),
+            f'ModelPhoto({model_photo.id})'
+        )
+    
+    def perform_update(self, serializer):
+        from apps.common.services.storage_service import storage_service
+        import os
+
+        model_photo = serializer.instance
+
+        if 'image' in self.request.FILES:
+            image = self.request.FILES['image']
+
+            ext = os.path.splitext(image.name)[1]
+            filename = f"model_{model_photo.id}{ext}"
+
+            storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
+                file_obj=image,
+                filename=filename,
+                folder='models',
+                tenant_id=str(self.request.user.uuid),
+                content_type=image.content_type or 'image/jpeg',
+                file_category='model',
+                skip_duplicate=True,
+                ref_type='ModelPhoto',
+                source='admin_upload',
+                is_public=True
+            )
+
+            model_photo.image_url = image_url
+            model_photo.image_thumb_url = image_url
+            model_photo.image_key = content_key
+            model_photo.save(update_fields=['image_url', 'image_thumb_url', 'image_key', 'updated_at'])
+
+        super().perform_update(serializer)
+
+        AdminOperationLog.log(
+            self.request,
+            AdminOperationLog.ActionType.UPDATE,
+            'ModelPhoto',
+            str(model_photo.id),
+            f'ModelPhoto({model_photo.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AdminOperationLog.log(
+            self.request,
+            AdminOperationLog.ActionType.DELETE,
+            'ModelPhoto',
+            str(instance.id),
+            f'ModelPhoto({instance.id})'
+        )
+        super().perform_destroy(instance)
+    
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """上传模特照片
+        
+        - 支持直接上传图片文件
+        - 自动处理文件名和存储
+        """
+        from apps.common.services.storage_service import storage_service
+        import os
+
+        if 'image' not in request.FILES:
+            return Response({'message': '请选择要上传的图片'}, status=status.HTTP_400_BAD_REQUEST)
+
+        image = request.FILES['image']
+        sort_order = int(request.data.get('sort_order', 0))
+
+        # 生成文件名
+        ext = os.path.splitext(image.name)[1]
+        filename = f"model{ext}"
+
+        # 上传到存储服务 (自动 MD5 去重，自动记录到 FileUploadRecord)
+        storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
+            file_obj=image,
+            filename=filename,
+            folder='models',
+            tenant_id=str(request.user.uuid),
+            content_type=image.content_type or 'image/jpeg',
+            file_category='model',
+            skip_duplicate=True,
+            ref_type='ModelPhoto',
+            source='admin_upload',
+            is_public=True
+        )
+        image_thumb_url = image_url  # TODO: 生成缩略图
+
+        # 创建模特照片记录
+        model_photo = ModelPhoto.objects.create(
+            sort_order=sort_order,
+            is_active=True,
+            image_url=image_url,
+            image_thumb_url=image_thumb_url,
+            image_key=content_key
+        )
+
+        # 记录操作日志
+        AdminOperationLog.log(
+            request,
+            AdminOperationLog.ActionType.CREATE,
+            'ModelPhoto',
+            str(model_photo.id),
+            f'ModelPhoto({model_photo.id})'
+        )
+
+        from apps.common.serializers import ModelPhotoSerializer
+        serializer = ModelPhotoSerializer(model_photo)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class FileUploadAdminViewSet(viewsets.ModelViewSet):
@@ -843,6 +1149,7 @@ class SystemConfigViewSet(viewsets.ModelViewSet):
             'oss': ['oss_enabled', 'oss_type', 'oss_bucket', 'oss_endpoint', 'oss_access_key', 'oss_secret_key'],
             'storage': ['storage_type', 'storage_max_size_mb', 'storage_cleanup_days'],
             'quota': ['default_quota', 'quota_reset_day'],
+            'contact': ['admin_contact_name', 'admin_contact_phone', 'admin_contact_wechat', 'admin_contact_email'],
         }
         
         result = {}
@@ -1132,6 +1439,7 @@ router = routers.DefaultRouter()
 router.register(r'merchants', MerchantAdminViewSet, basename='admin-merchants')
 router.register(r'tryon-records', TryOnRecordAdminViewSet, basename='admin-tryon-records')
 router.register(r'clothing', ClothingAdminViewSet, basename='admin-clothing')
+router.register(r'model-photos', ModelPhotoAdminViewSet, basename='admin-model-photos')
 router.register(r'files', FileUploadAdminViewSet, basename='admin-files')
 router.register(r'admin-users', AdminUserViewSet, basename='admin-users')
 router.register(r'operation-logs', OperationLogViewSet, basename='operation-logs')

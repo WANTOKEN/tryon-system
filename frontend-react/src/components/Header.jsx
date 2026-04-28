@@ -2,18 +2,21 @@ import { useState, useRef, useEffect } from 'react'
 
 import { useI18n } from '../hooks/useI18n'
 
-export default function Header({
-  user,
-  sessionCustomer,
-  onOpenSettings,
-  onOpenStoreInfo,
-  onEndSession,
-}) {
+export default function Header({ user, sessionCustomer, onOpenSettings, onEndSession }) {
   const { t, locale, changeLocale, languages, currentLang } = useI18n()
   const [showLangDropdown, setShowLangDropdown] = useState(false)
   const langRef = useRef(null)
 
-  // 点击外部关闭语言下拉
+  const getAvatarText = () => {
+    if (user?.store_name) {
+      return user.store_name.charAt(0).toUpperCase()
+    }
+    if (user?.username) {
+      return user.username.charAt(0).toUpperCase()
+    }
+    return '?'
+  }
+
   useEffect(() => {
     const handler = e => {
       if (langRef.current && !langRef.current.contains(e.target)) {
@@ -29,18 +32,18 @@ export default function Header({
 
   return (
     <header
-      className='sticky top-0 z-50 bg-gradient-to-r from-[#1A1A1A] via-[#222222] to-[#1A1A1A] px-6 py-2.5 text-white shadow-lg shadow-black/10'
+      className='sticky top-0 z-50 bg-gradient-to-r from-[#1A1A1A] via-[#222222] to-[#1A1A1A] px-3 py-2 text-white shadow-lg shadow-black/10 md:px-5 md:py-2.5'
       role='banner'
     >
       <div className='mx-auto flex max-w-7xl items-center justify-between'>
         {/* Logo */}
-        <div className='flex items-center space-x-2.5'>
+        <div className='flex items-center space-x-2 md:space-x-2.5'>
           <div
-            className='flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-champagne to-yellow-600'
+            className='flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-champagne to-yellow-600 md:h-8 md:w-8'
             aria-hidden='true'
           >
             <svg
-              className='h-5 w-5 text-charcoal'
+              className='h-4 w-4 text-charcoal md:h-5 md:w-5'
               fill='none'
               stroke='currentColor'
               viewBox='0 0 24 24'
@@ -54,13 +57,16 @@ export default function Header({
             </svg>
           </div>
           <div>
-            <h1 id='site-title' className='text-lg font-semibold leading-tight tracking-wide'>
+            <h1
+              id='site-title'
+              className='text-base font-semibold leading-tight tracking-wide md:text-lg'
+            >
               <span className='text-champagne'>AI</span>{' '}
               {siteTitle.startsWith(aiStr) ? siteTitle.substring(aiStr.length) : siteTitle}
             </h1>
             <p
               id='site-subtitle'
-              className='text-[10px] leading-tight tracking-wider text-gray-400'
+              className='text-[9px] leading-tight tracking-wider text-gray-400 md:text-[10px]'
             >
               {t('siteSubtitle')}
             </p>
@@ -69,9 +75,9 @@ export default function Header({
 
         {/* 当前顾客标识 - 只显示尾号 */}
         {sessionCustomer && (
-          <div className='flex items-center gap-2 rounded-lg border border-champagne/30 bg-champagne/10 px-3 py-1.5'>
+          <div className='flex items-center gap-1.5 rounded-lg border border-champagne/30 bg-champagne/10 px-2 py-1 md:gap-2 md:px-3 md:py-1.5'>
             <svg
-              className='h-4 w-4 text-champagne'
+              className='h-3.5 w-3.5 text-champagne md:h-4 md:w-4'
               fill='none'
               stroke='currentColor'
               viewBox='0 0 24 24'
@@ -80,15 +86,17 @@ export default function Header({
                 strokeLinecap='round'
                 strokeLinejoin='round'
                 strokeWidth='2'
-                d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
+                d='M16 7a4 4 0 11-8 0a4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
               />
             </svg>
-            <span className='text-xs font-medium text-champagne'>{sessionCustomer.slice(-6)}</span>
+            <span className='text-[11px] font-medium text-champagne md:text-xs'>
+              {sessionCustomer.slice(-6)}
+            </span>
           </div>
         )}
 
         {/* Nav */}
-        <nav className='flex items-center space-x-4' aria-label='用户操作'>
+        <nav className='flex items-center gap-2 lg:gap-3' aria-label='用户操作'>
           {/* 语言切换 */}
           <div className='relative' ref={langRef}>
             <button
@@ -108,7 +116,7 @@ export default function Header({
                   strokeLinecap='round'
                   strokeLinejoin='round'
                   strokeWidth='2'
-                  d='M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9'
+                  d='M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0 3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9'
                 />
               </svg>
               <span className='header-btn-text text-[10px] font-medium text-gray-400'>
@@ -168,68 +176,40 @@ export default function Header({
             <span className='header-btn-text'>{t('endSession')}</span>
           </button>
 
-          {/* 设置 */}
+          {/* 商家信息头像 */}
           <div className='relative'>
             <button
               type='button'
-              className='touch-target flex items-center justify-center rounded-lg p-2 transition-colors hover:bg-white/10'
-              aria-label={t('settingsTitle')}
-              title={t('settingsTitle')}
+              className='flex items-center justify-center rounded-full transition-all hover:ring-2 hover:ring-champagne/40 hover:ring-offset-2 hover:ring-offset-[#1A1A1A] active:scale-[0.97]'
+              aria-label={
+                user ? user.store_name || t('settingsMerchantAccount') : t('storeNotLoggedIn')
+              }
+              title={user ? user.store_name || t('settingsMerchantAccount') : t('storeNotLoggedIn')}
               onClick={onOpenSettings}
             >
-              <svg
-                className='h-5 w-5 text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth='2'
-                  d='M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z'
+              {user?.avatar_url ? (
+                <img
+                  src={user.avatar_url}
+                  alt={user.store_name || 'Avatar'}
+                  className='h-9 w-9 rounded-full object-cover ring-2 ring-champagne/30 lg:h-10 lg:w-10'
                 />
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth='2'
-                  d='M15 12a3 3 0 11-6 0 3 3 0 016 0z'
-                />
-              </svg>
+              ) : (
+                <div
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold lg:h-10 lg:w-10 lg:text-sm ${
+                    user
+                      ? 'bg-gradient-to-br from-champagne to-yellow-600 text-charcoal ring-2 ring-champagne/30'
+                      : 'bg-gray-600 text-gray-300 ring-2 ring-gray-500/30'
+                  }`}
+                >
+                  {getAvatarText()}
+                </div>
+              )}
             </button>
             {/* 登录状态指示器 */}
             {user && (
-              <span className='absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-[#1A1A1A] bg-success' />
+              <span className='absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-[#1A1A1A] bg-success shadow-sm shadow-success/50 lg:h-3 lg:w-3' />
             )}
           </div>
-
-          {/* 门店名 */}
-          <button
-            type='button'
-            className='touch-target header-mobile-hide flex items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-white/10'
-            aria-label={t('settingsStoreLabel')}
-            title={t('settingsStoreLabel')}
-            onClick={onOpenStoreInfo}
-          >
-            <div className='flex h-6 w-6 items-center justify-center rounded-full border border-champagne/40 bg-gradient-to-br from-champagne/30 to-champagne/50'>
-              <svg
-                className='h-3.5 w-3.5 text-champagne'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth='2'
-                  d='M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'
-                />
-              </svg>
-            </div>
-            <span className='header-btn-text max-w-[80px] truncate text-xs font-medium text-gray-300'>
-              {user?.store_name || t('storeNotActivated')}
-            </span>
-          </button>
         </nav>
       </div>
     </header>

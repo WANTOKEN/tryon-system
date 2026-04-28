@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AI试衣 - 图标生成器</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+      padding: 40px 20px; 
+      max-width: 800px; 
+      margin: 0 auto; 
+      background: #f5f5f5;
+    }
+    h1 { color: #1A1A1A; margin-bottom: 8px; }
+    .subtitle { color: #666; margin-bottom: 30px; }
+    .preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; }
+    .preview-card { 
+      background: #fff; 
+      border-radius: 16px; 
+      padding: 24px; 
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .preview-card h3 { margin: 0 0 16px 0; color: #333; font-size: 14px; }
+    .preview-card canvas { 
+      border-radius: 20%; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .preview-card button {
+      margin-top: 16px;
+      padding: 10px 24px;
+      background: linear-gradient(135deg, #D4AF37, #B8962E);
+      color: #1A1A1A;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .preview-card button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+    }
+    .upload-area {
+      background: #fff;
+      border: 2px dashed #ddd;
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      margin-bottom: 30px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .upload-area:hover {
+      border-color: #D4AF37;
+      background: #FFFBF0;
+    }
+    .upload-area input { display: none; }
+    .upload-icon { font-size: 48px; margin-bottom: 12px; }
+    .tip { 
+      background: #fff3cd; 
+      border-radius: 8px; 
+      padding: 12px 16px; 
+      margin-top: 30px;
+      font-size: 14px;
+      color: #856404;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎨 AI试衣 App 图标生成器</h1>
+  <p class="subtitle">生成 iOS/Android 书签应用所需的图标文件</p>
+  
+  <label class="upload-area">
+    <input type="file" id="fileInput" accept="image/*">
+    <div class="upload-icon">📁</div>
+    <div>点击上传自定义图标，或使用下方默认设计</div>
+  </label>
+
+  <div class="preview-grid">
+    <div class="preview-card">
+      <h3>iOS/Android (192×192)</h3>
+      <canvas id="canvas192" width="192" height="192"></canvas>
+      <br>
+      <button onclick="download(192)">下载 icon-192.png</button>
+    </div>
+    <div class="preview-card">
+      <h3>高清版 (512×512)</h3>
+      <canvas id="canvas512" width="512" height="512"></canvas>
+      <br>
+      <button onclick="download(512)">下载 icon-512.png</button>
+    </div>
+  </div>
+
+  <div class="tip">
+    💡 <strong>使用方法：</strong>下载后将文件放到 <code>public/icons/</code> 目录，文件名保持为 <code>icon-192.png</code> 和 <code>icon-512.png</code>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    let currentImage = null;
+
+    // 默认 SVG 图标
+    const defaultSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+      <defs>
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#D4AF37"/>
+          <stop offset="50%" style="stop-color:#E5C158"/>
+          <stop offset="100%" style="stop-color:#B8962E"/>
+        </linearGradient>
+        <linearGradient id="dressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#2A2A2A"/>
+          <stop offset="100%" style="stop-color:#1A1A1A"/>
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="108" fill="url(#bgGrad)"/>
+      <circle cx="256" cy="256" r="180" fill="none" stroke="#fff" stroke-width="2" opacity="0.2"/>
+      <circle cx="256" cy="256" r="160" fill="none" stroke="#fff" stroke-width="1" opacity="0.1"/>
+      <path d="M256 100 L310 140 L295 200 L340 380 L256 420 L172 380 L217 200 L202 140 Z" fill="url(#dressGrad)"/>
+      <path d="M256 100 L280 130 L268 190 L256 200 L244 190 L232 130 Z" fill="#3A3A3A" opacity="0.5"/>
+      <ellipse cx="256" cy="115" rx="30" ry="15" fill="#D4AF37"/>
+      <g fill="#fff">
+        <path d="M380 130 L385 145 L400 150 L385 155 L380 170 L375 155 L360 150 L375 145 Z" opacity="0.9"/>
+        <path d="M340 90 L343 100 L353 103 L343 106 L340 116 L337 106 L327 103 L337 100 Z" opacity="0.7"/>
+        <path d="M400 180 L402 187 L409 189 L402 191 L400 198 L398 191 L391 189 L398 187 Z" opacity="0.5"/>
+      </g>
+      <text x="256" y="470" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#1A1A1A" opacity="0.8">AI</text>
+    </svg>`;
+
+    // 初始化默认图标
+    loadSVG(defaultSVG);
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            currentImage = img;
+            drawAll();
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    function loadSVG(svgString) {
+      const img = new Image();
+      img.onload = () => {
+        currentImage = img;
+        drawAll();
+      };
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
+    }
+
+    function drawAll() {
+      draw(192);
+      draw(512);
+    }
+
+    function draw(size) {
+      const canvas = document.getElementById('canvas' + size);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, size, size);
+      if (currentImage) {
+        ctx.drawImage(currentImage, 0, 0, size, size);
+      }
+    }
+
+    function download(size) {
+      const canvas = document.getElementById('canvas' + size);
+      const link = document.createElement('a');
+      link.download = 'icon-' + size + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+  </script>
+</body>
+</html>

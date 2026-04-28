@@ -28,6 +28,7 @@ class MockAIEngine(BaseAIEngine):
         avatar_url: str,
         clothing_urls: List[str],
         prompt: str = None,
+        clothing_info: Optional[List[Dict]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """提交试穿任务"""
@@ -36,6 +37,9 @@ class MockAIEngine(BaseAIEngine):
         # 可选：记录 prompt 信息用于调试
         if prompt:
                     logger.debug(f"[MockAIEngine] 收到 prompt: {prompt}")
+        
+        if clothing_info:
+            logger.debug(f"[MockAIEngine] 收到 clothing_info: {clothing_info}")
 
         with self._lock:
             self._tasks[task_id] = {
@@ -74,25 +78,19 @@ class MockAIEngine(BaseAIEngine):
             task = self._tasks[task_id]
             elapsed = time.time() - task['created_at']
 
-            # 模拟处理进度
+            # 模拟 30 秒处理进度
             if task['status'] == 'pending':
                 task['status'] = 'processing'
-                task['progress'] = min(50, int(elapsed * 10))
+                task['progress'] = min(33, int(elapsed * 1.1))  # 30 秒进度
 
             elif task['status'] == 'processing':
-                if elapsed < 5:
-                    task['progress'] = min(50, int(elapsed * 10))
+                if elapsed < 30:
+                    task['progress'] = min(99, int(elapsed * 3.3))  # 30 秒内进度
                 else:
-                    # 5 秒后随机成功或失败
-                    if random.random() > 0.1:  # 90% 成功率
-                        task['status'] = 'completed'
-                        task['progress'] = 100
-                        task['result_url'] = self._generate_mock_result(avatar_url=task['avatar_url'])
-                        task['processing_time'] = elapsed
-                    else:
-                        task['status'] = 'failed'
-                        task['progress'] = 0
-                        task['error_message'] = '模拟处理失败'
+                    task['status'] = 'completed'
+                    task['progress'] = 100
+                    task['result_url'] = self._generate_mock_result(avatar_url=task['avatar_url'])
+                    task['processing_time'] = elapsed
 
             task['updated_at'] = time.time()
             return {
@@ -116,18 +114,14 @@ class MockAIEngine(BaseAIEngine):
     def _start_mock_processing(self, task_id: str):
         """启动模拟处理（后台线程）"""
         def process():
-            time.sleep(random.uniform(3, 6))  # 3-6 秒后完成
+            time.sleep(30)  # 模拟 30 秒生成时间
             with self._lock:
                 if task_id in self._tasks:
                     task = self._tasks[task_id]
-                    if random.random() > 0.1:  # 90% 成功率
-                        task['status'] = 'completed'
-                        task['progress'] = 100
-                        task['result_url'] = self._generate_mock_result(avatar_url=task['avatar_url'])
-                        task['processing_time'] = time.time() - task['created_at']
-                    else:
-                        task['status'] = 'failed'
-                        task['error_message'] = '模拟处理失败'
+                    task['status'] = 'completed'
+                    task['progress'] = 100
+                    task['result_url'] = self._generate_mock_result(avatar_url=task['avatar_url'])
+                    task['processing_time'] = time.time() - task['created_at']
 
         thread = threading.Thread(target=process)
         thread.daemon = True

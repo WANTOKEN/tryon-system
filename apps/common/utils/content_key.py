@@ -182,7 +182,7 @@ class ContentKey:
             
             current_storage = os.getenv('STORAGE_TYPE', 'local').lower()
             
-            print(f"[ContentKey] 查询参数: md5={md5}, tenant_id={tenant_id}, storage_type={storage_type}, current_storage={current_storage}")
+            logger.debug(f"[ContentKey] 查询参数: md5={md5}, tenant_id={tenant_id}, storage_type={storage_type}, current_storage={current_storage}")
             
             # 1. 精确查找
             record = FileUploadRecord.get_by_md5(
@@ -191,7 +191,7 @@ class ContentKey:
                 storage_type=storage_type
             )
             
-            print(f"[ContentKey] 精确查找结果: record={record}")
+            logger.debug(f"[ContentKey] 精确查找结果: record={record}")
             
             if record:
                 # 找到记录，调用 get_full_url（会自动处理迁移）
@@ -205,14 +205,14 @@ class ContentKey:
                 storage_type=other_storage
             )
             
-            print(f"[ContentKey] 备选查找结果 (storage={other_storage}): record={record}")
+            logger.debug(f"[ContentKey] 备选查找结果 (storage={other_storage}): record={record}")
             
             if record:
                 # 找到记录，调用 get_full_url
                 return get_full_url(record.access_url)
             
             # 3. 都找不到，返回 None
-            print(f"[ContentKey] 未找到记录: md5={md5}")
+            logger.debug(f"[ContentKey] 未找到记录: md5={md5}")
             return None
                 
         except Exception as e:

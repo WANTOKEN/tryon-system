@@ -97,6 +97,11 @@ class FileUploadRecord(TimeStampedModel):
         default=FileCategory.OTHER,
         verbose_name='文件用途'
     )
+    is_public = models.BooleanField(
+        default=False,
+        verbose_name='是否公开',
+        help_text='公开文件不需要签名 URL，私有文件需要签名 URL'
+    )
     
     # ========== 文件属性 ==========
     file_size = models.PositiveIntegerField(
@@ -170,6 +175,21 @@ class FileUploadRecord(TimeStampedModel):
         verbose_name='客户端 IP'
     )
     
+    # ========== 签名 URL 缓存 ==========
+    signed_url = models.CharField(
+        max_length=2000,
+        blank=True,
+        default='',
+        verbose_name='缓存的签名 URL',
+        help_text='缓存的签名 URL，过期后重新生成'
+    )
+    signed_url_expires = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='签名 URL 过期时间',
+        help_text='签名 URL 的过期时间'
+    )
+
     # ========== 软删除 ==========
     is_deleted = models.BooleanField(
         default=False,
@@ -256,7 +276,8 @@ class FileUploadRecord(TimeStampedModel):
         ref_type: str = '',
         ref_id: str = '',
         source: str = '',
-        client_ip: str = ''
+        client_ip: str = '',
+        is_public: bool = False
     ):
         """
         创建上传记录
@@ -278,6 +299,7 @@ class FileUploadRecord(TimeStampedModel):
             ref_id: 关联 ID
             source: 上传来源
             client_ip: 客户端 IP
+            is_public: 是否公开文件
         """
         return cls.objects.create(
             md5_hash=md5,
@@ -296,6 +318,7 @@ class FileUploadRecord(TimeStampedModel):
             ref_id=ref_id,
             source=source,
             client_ip=client_ip,
+            is_public=is_public,
         )
 
     @classmethod
@@ -337,6 +360,30 @@ class FileUploadRecord(TimeStampedModel):
             'total_size': stats['total_size'] or 0,
             'total_hits': stats['total_hits'] or 0,
         }
+
+
+class ModelPhoto(TimeStampedModel):
+    """
+    模特照片模型
+
+    存储预设的模特照片，供用户选择使用
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    image_url = models.URLField(max_length=500, blank=True, verbose_name='模特照片URL')
+    image_thumb_url = models.URLField(max_length=500, blank=True, default='', verbose_name='缩略图URL')
+    image_key = models.CharField(max_length=100, blank=True, default='', verbose_name='图片Key', help_text='用于生成的图片唯一标识，格式: storage_type:md5')
+    sort_order = models.IntegerField(default=0, verbose_name='排序')
+    is_active = models.BooleanField(default=True, verbose_name='是否启用')
+
+    class Meta:
+        db_table = 'common_model_photo'
+        verbose_name = '模特照片'
+        verbose_name_plural = '模特照片管理'
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f"ModelPhoto({self.id})"
 
 
 # 兼容旧代码的别名

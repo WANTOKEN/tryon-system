@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Form, Input, Button, Checkbox, App } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Checkbox, App, Modal, Space, Typography } from 'antd';
+import { UserOutlined, LockOutlined, PhoneOutlined, WechatOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import JSEncrypt from 'jsencrypt';
 import { authApi } from '../api';
 import { useAuthStore } from '../stores/authStore';
+
+const { Text } = Typography;
 
 interface LoginForm {
   username: string;
@@ -14,9 +16,49 @@ interface LoginForm {
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [contactModalVisible, setContactModalVisible] = useState(false);
+  const [adminContact, setAdminContact] = useState<{
+    name?: string;
+    phone?: string;
+    wechat?: string;
+    email?: string;
+  }>({});
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
   const { message } = App.useApp();
+
+  const fetchAdminContact = async () => {
+    try {
+      const response = await fetch('/api/v1/auth/admin-contact/');
+      const data = await response.json();
+      if (data.success) {
+        setAdminContact(data.data || {});
+      }
+    } catch (error) {
+      console.error('Failed to fetch admin contact:', error);
+    }
+  };
+
+  const showContactModal = () => {
+    fetchAdminContact();
+    setContactModalVisible(true);
+  };
+
+  const maskPhone = (phone: string) => {
+    if (!phone || phone.length < 7) return phone;
+    return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+  };
+
+  const maskWechat = (wechat: string) => {
+    if (!wechat || wechat.length < 4) return wechat;
+    return `${wechat.slice(0, 2)}***${wechat.slice(-2)}`;
+  };
+
+  const maskEmail = (email: string) => {
+    if (!email || !email.includes('@')) return email;
+    const [name, domain] = email.split('@');
+    return `${name.slice(0, 2)}***@${domain}`;
+  };
 
   // RSA 加密密码
   const encryptPassword = async (password: string): Promise<string> => {
@@ -69,7 +111,8 @@ export default function LoginPage() {
         
         // 根据状态码提供更友好的提示
         if (err.response?.status === 403) {
-          errorMessage = err.response?.data?.message || '无管理员权限，请联系管理员';
+          errorMessage = err.response?.data?.message || '无管理员权限，请联系管理员开通';
+          showContactModal();
         } else if (err.response?.status === 401) {
           errorMessage = err.response?.data?.message || '用户名或密码错误';
         }
@@ -472,6 +515,63 @@ export default function LoginPage() {
           }
         }
       `}</style>
+      
+      <Modal
+        title="联系管理员"
+        open={contactModalVisible}
+        onCancel={() => setContactModalVisible(false)}
+        footer={null}
+        width={400}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">如需开通管理后台权限，请联系管理员</Text>
+        </div>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          {adminContact.name && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <UserOutlined style={{ fontSize: 20, color: '#667eea' }} />
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>管理员</Text>
+                <br />
+                <Text strong>{adminContact.name}</Text>
+              </div>
+            </div>
+          )}
+          {adminContact.phone && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <PhoneOutlined style={{ fontSize: 20, color: '#667eea' }} />
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>手机号</Text>
+                <br />
+                <Text strong>{maskPhone(adminContact.phone)}</Text>
+              </div>
+            </div>
+          )}
+          {adminContact.wechat && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <WechatOutlined style={{ fontSize: 20, color: '#667eea' }} />
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>微信号</Text>
+                <br />
+                <Text strong>{maskWechat(adminContact.wechat)}</Text>
+              </div>
+            </div>
+          )}
+          {adminContact.email && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <MailOutlined style={{ fontSize: 20, color: '#667eea' }} />
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>邮箱</Text>
+                <br />
+                <Text strong>{maskEmail(adminContact.email)}</Text>
+              </div>
+            </div>
+          )}
+          {!adminContact.phone && !adminContact.wechat && !adminContact.email && (
+            <Text type="secondary">暂无联系方式</Text>
+          )}
+        </Space>
+      </Modal>
     </div>
   );
 }
