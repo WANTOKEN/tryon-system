@@ -185,7 +185,6 @@ function CachedImage({
       onError={handleError}
       loading={lazy ? 'lazy' : 'eager'}
       decoding='async'
-      // eslint-disable-next-line react/jsx-props-no-spreading
       {...props}
     />
   )

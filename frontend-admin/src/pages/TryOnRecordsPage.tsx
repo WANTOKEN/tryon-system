@@ -163,7 +163,9 @@ export default function TryOnRecordsPage() {
               total: res.total,
               success: true,
             };
-          } catch {
+          } catch (error) {
+            const err = error as { response?: { data?: { message?: string } } };
+            message.error(err.response?.data?.message || '获取试穿记录失败');
             return { data: [], total: 0, success: false };
           }
         }}

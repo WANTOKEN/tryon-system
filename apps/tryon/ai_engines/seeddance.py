@@ -189,62 +189,7 @@ class SeedDanceEngine(BaseAIEngine):
 
         try:
             images = [avatar_url] + clothing_urls
-
-            CATEGORY_NAMES = {
-                'tops': '上装',
-                'bottoms': '下装',
-                'dresses': '连衣裙',
-                'outerwear': '外套',
-                'shoes': '鞋子',
-                'accessories': '配饰',
-            }
-
-            def build_smart_prompt(clothing_count: int, clothing_info_list: Optional[List[Dict]]) -> str:
-                if clothing_count == 1:
-                    return (
-                        "请根据图1中的人物姿态和背景，"
-                        "将图2的服装自然地穿在人物身上，"
-                        "确保服装贴合身体曲线、光影自然、褶皱真实，"
-                        "保持人物原有姿态、表情和背景不变。"
-                    )
-
-                if not clothing_info_list or len(clothing_info_list) < clothing_count:
-                    clothing_refs = "、".join([f"图{i+2}" for i in range(clothing_count)])
-                    return (
-                        f"请根据图1中的人物姿态和背景，"
-                        f"将{clothing_refs}的服装搭配穿在人物身上，"
-                        f"确保各服装单品风格统一、搭配协调，"
-                        f"服装贴合身体曲线、光影自然、褶皱真实，"
-                        f"保持人物原有姿态、表情和背景不变。"
-                    )
-
-                clothing_parts = []
-                for i, info in enumerate(clothing_info_list[:clothing_count]):
-                    category = info.get('category', '')
-                    cat_name = CATEGORY_NAMES.get(category, '服装')
-                    clothing_parts.append(f"图{i+2}的{cat_name}")
-
-                clothing_desc = "、".join(clothing_parts)
-
-                has_tops = any(info.get('category') == 'tops' for info in clothing_info_list[:clothing_count])
-                has_bottoms = any(info.get('category') == 'bottoms' for info in clothing_info_list[:clothing_count])
-
-                if has_tops and has_bottoms:
-                    position_hint = "上装穿在上半身，下装穿在下半身，注意上下装的衔接处要自然过渡。"
-                else:
-                    position_hint = ""
-
-                return (
-                    f"请根据图1中的人物姿态和背景，"
-                    f"将{clothing_desc}自然地穿在人物身上。"
-                    f"{position_hint}"
-                    f"确保各服装单品风格统一、搭配协调，"
-                    f"服装贴合身体曲线、光影自然、褶皱真实，"
-                    f"保持人物原有姿态、表情和背景不变。"
-                )
-
-            if not prompt:
-                prompt = build_smart_prompt(len(clothing_urls), clothing_info)
+            prompt = "保留人物原有姿态、表情与背景，将参考服装精准穿戴在对应身体部位，上下装衔接自然，衣物贴合身形，褶皱、光影真实自然，整体搭配协调。"
 
             # 获取可选参数
             biz_size = kwargs.get('size', '2K')
@@ -254,7 +199,7 @@ class SeedDanceEngine(BaseAIEngine):
             # 构建请求参数
             request_params = {
                 "model": self.model_id,
-                "prompt": "保留人物原有姿态、表情与背景，将参考服装精准穿戴在对应身体部位，上下装衔接自然，衣物贴合身形，褶皱、光影真实自然，整体搭配协调。",
+                "prompt": prompt,
                 "width": 1024,
                 "height": 1024,
                 "response_format": "url",
@@ -269,9 +214,6 @@ class SeedDanceEngine(BaseAIEngine):
             
             logger.info(f"[{self.name}] [{trace_id}] API 入参: {json.dumps(request_params, ensure_ascii=False, indent=2)}")
 
-            # Mock 模式：使用本地测试图片
-            MOCK_RESULT_URL = "https://test-9977.oss-cn-shenzhen.aliyuncs.com/results/mock_tryon_result.jpg"
-            
             # # 调用 API (同步返回结果)
             def _call_api():
                 response = self.client.images.generate(
@@ -294,23 +236,30 @@ class SeedDanceEngine(BaseAIEngine):
             )
             
             # 记录返回参数
+            result_url = ''
             if response.data and len(response.data) > 0:
+                result_url = response.data[0].url
                 response_info = {
-                    "url": response.data[0].url,
+                    "url": result_url,
                     "data_count": len(response.data)
                 }
             else:
                 response_info = {"data": None}
             logger.info(f"[{self.name}] [{trace_id}] API 返回: {json.dumps(response_info, ensure_ascii=False, indent=2)}")
 
-            # 提取结果 URL
-            if response.data and len(response.data) > 0:
-                result_url = response.data[0].url
-            
+            # 检查结果 URL
+            if not result_url:
+                return {
+                    'task_id': '',
+                    'success': False,
+                    'error_message': 'AI 引擎未返回结果图片',
+                    'result_url': '',
+                }
+
             # 生成任务 ID (用于追踪)
             task_id = f"seed_{uuid.uuid4().hex[:16]}_{int(time.time())}"
 
-            logger.info(f"[{self.name}] [{trace_id}] 任务完成 (MOCK): task_id={task_id}, result_url={result_url}")
+            logger.info(f"[{self.name}] [{trace_id}] 任务完成: task_id={task_id}, result_url={result_url}")
 
             # 立即返回原始 URL 给前端预览（不等待存储）
             # 后台异步存储结果图片

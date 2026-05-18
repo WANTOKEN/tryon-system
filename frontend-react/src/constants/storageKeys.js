@@ -16,7 +16,6 @@ export const STORAGE_KEYS = {
   CUSTOM_CLOTHING: 'tryon_custom_clothing',
   WARDROBE_CLOTHING: 'tryon_wardrobe_clothing',
   SELECTED_CLOTHING: 'tryon_selected_clothing',
-  REUSE_AVATAR_KEY: 'tryon_reuse_avatar_key', // 复用的头像 key
 
   // 设置相关
   LOCALE: 'tryon_locale',
@@ -26,6 +25,6 @@ export const STORAGE_KEYS = {
 }
 
 // 当前缓存版本号（修改此值会自动清除旧缓存）
-export const CURRENT_CACHE_VERSION = '2'
+export const CURRENT_CACHE_VERSION = '3'
 
 export default STORAGE_KEYS

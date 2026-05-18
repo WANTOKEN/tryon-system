@@ -136,9 +136,34 @@ SIMPLE_JWT = {
 }
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if not DEBUG else []
+# 开发环境允许所有来源，生产环境需要配置具体的允许来源
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'X-Request-ID',
+]
 
 # Redis / Celery
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
@@ -195,6 +220,9 @@ SMS_CODE_EXPIRY = 300  # 验证码有效期（秒）
 SMS_CODE_LENGTH = 6
 SMS_SEND_COOLDOWN = 60  # 同一手机号发送间隔（秒）
 IP_SMS_HOURLY_LIMIT = 10  # 同一IP每小时发送次数限制
+
+# 系统租户配置（用于访问预设资源如模特照片）
+SYSTEM_TENANT_ID = os.getenv('SYSTEM_TENANT_ID', 'system')
 
 # 数据加解密配置
 DATA_ENCRYPTION_ENABLED = os.getenv('DATA_ENCRYPTION_ENABLED', 'false').lower() == 'true'
@@ -276,6 +304,12 @@ LOGGING = {
         'tryon': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
+            'propagate': False,
+        },
+        # 异常日志
+        'exception': {
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
             'propagate': False,
         },
     },

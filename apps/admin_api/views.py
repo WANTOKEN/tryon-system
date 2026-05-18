@@ -375,21 +375,24 @@ class TryOnRecordAdminViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
-        
+
+        # 过滤已删除的记录
+        queryset = queryset.filter(is_deleted=False)
+
         # 数据隔离：非超管只能查看自己的数据
         if not self.request.user.is_superuser:
             queryset = queryset.filter(merchant_id=self.request.user.id)
-        
+
         # 筛选参数
         merchant_id = self.request.query_params.get('merchant_id')
         status_filter = self.request.query_params.get('status')
-        
+
         # 超管可以按 merchant_id 筛选
         if self.request.user.is_superuser and merchant_id:
             queryset = queryset.filter(merchant_id=merchant_id)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        
+
         return queryset.order_by('-created_at')
 
 
@@ -501,7 +504,7 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def upload(self, request):
         """上传服装图片 (Admin)
-        
+
         - 超级管理员：可以为任意商家上传服装
         - 普通管理员（商家）：只能为自己上传服装
         """
@@ -509,26 +512,28 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
         from apps.wardrobe.serializers import ClothingUploadSerializer, ClothingSerializer
         from apps.common.services.storage_service import storage_service
         import os
-        
+
         serializer = ClothingUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         image = serializer.validated_data['image']
         name = serializer.validated_data['name']
         category = serializer.validated_data['category']
         subcategory = serializer.validated_data['subcategory']
         color = serializer.validated_data.get('color', '#000000')
-        
+        price = serializer.validated_data.get('price', 0.00)
+        sizes = serializer.validated_data.get('sizes', '')
+
         # 数据隔离：非超管只能上传自己的服装
         if request.user.is_superuser:
             merchant_id = request.data.get('merchant_id', request.user.id)
         else:
             merchant_id = request.user.id  # 商家只能上传自己的服装
-        
+
         # 生成文件名
         ext = os.path.splitext(image.name)[1]
         filename = f"clothing{ext}"
-        
+
         # 上传到存储服务 (自动 MD5 去重，自动记录到 FileUploadRecord)
         storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
             file_obj=image,
@@ -543,7 +548,7 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
         )
         image_thumb_url = image_url  # TODO: 生成缩略图
         file_hash = content_key  # 存储 content_key（格式: storage_type:md5），用于复用
-        
+
         # 创建服装记录
         clothing = Clothing.objects.create(
             merchant_id=merchant_id,
@@ -551,12 +556,14 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
             category=category,
             subcategory=subcategory,
             color=color,
+            price=price,
+            sizes=sizes,
             image_url=image_url,
             image_thumb_url=image_thumb_url,
             source=Clothing.Source.WARDROBE,
             file_hash=file_hash
         )
-        
+
         # 记录操作日志
         AdminOperationLog.log(
             request,
@@ -564,9 +571,9 @@ class ClothingAdminViewSet(viewsets.ModelViewSet):
             'Clothing',
             str(clothing.id),
             clothing.name,
-            {'category': category, 'merchant_id': merchant_id}
+            {'category': category, 'merchant_id': merchant_id, 'price': str(price), 'sizes': sizes}
         )
-        
+
         return Response(ClothingSerializer(clothing).data, status=status.HTTP_201_CREATED)
 
 

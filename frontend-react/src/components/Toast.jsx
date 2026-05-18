@@ -34,28 +34,115 @@ const ICONS = {
 }
 
 const STYLES = {
-  success: 'bg-green-500 text-white',
-  error: 'bg-red-500 text-white',
-  warning: 'bg-yellow-500 text-white',
-  info: 'bg-blue-500 text-white',
+  success: 'bg-[#f0fdf4] text-[#166534] border-[#bbf7d0]',
+  error: 'bg-[#fef2f2] text-[#991b1b] border-[#fecaca]',
+  warning: 'bg-[#fffbeb] text-[#92400e] border-[#fde68a]',
+  info: 'bg-[#eff6ff] text-[#1e40af] border-[#bfdbfe]',
 }
 
-export default function Toast({ message, type = 'info' }) {
-  const [visible, setVisible] = useState(true)
+const SHADOWS = {
+  success: 'shadow-[#166534]/10',
+  error: 'shadow-[#991b1b]/10',
+  warning: 'shadow-[#92400e]/10',
+  info: 'shadow-[#1e40af]/10',
+}
+
+const ICON_BG_STYLES = {
+  success: 'bg-[#dcfce7] text-[#166534]',
+  error: 'bg-[#fee2e2] text-[#991b1b]',
+  warning: 'bg-[#fef3c7] text-[#92400e]',
+  info: 'bg-[#dbeafe] text-[#1e40af]',
+}
+
+const CLOSE_BTN_STYLES = {
+  success: 'text-[#166534]/60 hover:text-[#166534]',
+  error: 'text-[#991b1b]/60 hover:text-[#991b1b]',
+  warning: 'text-[#92400e]/60 hover:text-[#92400e]',
+  info: 'text-[#1e40af]/60 hover:text-[#1e40af]',
+}
+
+const PROGRESS_STYLES = {
+  success: 'bg-[#166534]/30',
+  error: 'bg-[#991b1b]/30',
+  warning: 'bg-[#92400e]/30',
+  info: 'bg-[#1e40af]/30',
+}
+
+export default function Toast({ message, type = 'info', duration = 3000, onClose }) {
+  const [visible, setVisible] = useState(false)
+  const [progress, setProgress] = useState(100)
 
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), 2800)
-    return () => clearTimeout(timer)
-  }, [])
+    // 入场动画
+    const enterTimer = setTimeout(() => setVisible(true), 10)
+
+    // 进度条动画
+    const progressInterval = setInterval(() => {
+      setProgress(prev => {
+        if (prev <= 0) {
+          clearInterval(progressInterval)
+          return 0
+        }
+        return prev - 100 / (duration / 100)
+      })
+    }, 100)
+
+    // 自动关闭
+    const closeTimer = setTimeout(() => {
+      setVisible(false)
+      setTimeout(() => onClose?.(), 300)
+    }, duration)
+
+    return () => {
+      clearTimeout(enterTimer)
+      clearTimeout(closeTimer)
+      clearInterval(progressInterval)
+    }
+  }, [duration, onClose])
+
+  const handleClose = () => {
+    setVisible(false)
+    setTimeout(() => onClose?.(), 300)
+  }
 
   return (
     <div
-      className={`fixed left-1/2 top-20 z-[200] flex -translate-x-1/2 items-center gap-3 rounded-xl px-5 py-3 shadow-lg transition-all ${
-        STYLES[type]
-      } ${visible ? '-translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}
+      className={`fixed left-1/2 top-24 z-[200] flex min-w-[320px] max-w-[480px] -translate-x-1/2 flex-col overflow-hidden rounded-xl border shadow-xl backdrop-blur-sm transition-all duration-300 ${STYLES[type]} ${SHADOWS[type]} ${
+        visible ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-4 scale-95 opacity-0'
+      }`}
+      role='alert'
+      aria-live='polite'
     >
-      {ICONS[type]}
-      <span className='font-medium'>{message}</span>
+      <div className='flex items-center gap-3 px-4 py-3'>
+        <div
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${ICON_BG_STYLES[type]}`}
+        >
+          {ICONS[type]}
+        </div>
+        <span className='flex-1 text-sm font-medium leading-relaxed'>{message}</span>
+        <button
+          type='button'
+          onClick={handleClose}
+          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/5 ${CLOSE_BTN_STYLES[type]}`}
+          aria-label='关闭'
+        >
+          <svg className='h-4 w-4' fill='none' viewBox='0 0 24 24' stroke='currentColor'>
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M6 18L18 6M6 6l12 12'
+            />
+          </svg>
+        </button>
+      </div>
+      {/* 进度条 */}
+      <div className='h-0.5 w-full bg-black/5'>
+        <div
+          className={`h-full transition-all duration-100 ease-linear ${PROGRESS_STYLES[type]}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
     </div>
   )
 }

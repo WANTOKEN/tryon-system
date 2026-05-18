@@ -18,7 +18,7 @@ class ClothingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Clothing
         fields = [
-            'uuid', 'category', 'subcategory', 'name', 'color',
+            'uuid', 'category', 'subcategory', 'name', 'color', 'price', 'sizes',
             'image_url', 'image_thumb_url', 'image_key', 'source', 'sort_order'
         ]
     
@@ -70,7 +70,7 @@ class ClothingDetailSerializer(ClothingSerializer):
     class Meta(ClothingSerializer.Meta):
         fields = [
             'id', 'uuid', 'merchant_id', 'category', 'category_text', 'subcategory',
-            'name', 'color', 'image_url', 'image_thumb_url', 'image_key',
+            'name', 'color', 'price', 'sizes', 'image_url', 'image_thumb_url', 'image_key',
             'sort_order', 'is_active', 'source', 'source_text', 'created_at', 'updated_at'
         ]
         read_only_fields = ['uuid', 'created_at', 'updated_at']
@@ -98,6 +98,8 @@ class ClothingUploadSerializer(serializers.Serializer):
     category = serializers.ChoiceField(choices=Clothing.Category.choices)
     subcategory = serializers.CharField(max_length=30)
     color = serializers.CharField(max_length=30, required=False, default='#000000')
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, default=0.00)
+    sizes = serializers.CharField(max_length=100, required=False, default='', allow_blank=True)
 
     def validate_image(self, value):
         """验证图片"""

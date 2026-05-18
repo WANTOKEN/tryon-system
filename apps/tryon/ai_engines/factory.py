@@ -7,7 +7,8 @@ import os
 import logging
 from typing import Dict, Optional
 
-from .base import BaseAIEngine, MockAIEngine
+from .base import BaseAIEngine
+from .mock_engine import MockAIEngine
 from .circuit_breaker import get_fallback_engine
 
 logger = logging.getLogger('ai_engines')

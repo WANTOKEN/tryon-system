@@ -13,16 +13,29 @@ class CustomPageNumberPagination(PageNumberPagination):
     page_query_param = 'page'
 
     def get_paginated_response(self, data):
-        return Response({
-            'success': True,
-            'data': {
-                'items': data,
-                'total': self.page.paginator.count,
-                'page': self.page.number,
-                'page_size': self.get_page_size(self.request),
-                'total_pages': self.page.paginator.num_pages,
-            }
-        })
+        if hasattr(self, 'page') and self.page is not None:
+            return Response({
+                'success': True,
+                'data': {
+                    'items': data,
+                    'total': self.page.paginator.count,
+                    'page': self.page.number,
+                    'page_size': self.get_page_size(self.request),
+                    'total_pages': self.page.paginator.num_pages,
+                }
+            })
+        else:
+            # 处理空结果的情况
+            return Response({
+                'success': True,
+                'data': {
+                    'items': data,
+                    'total': 0,
+                    'page': 1,
+                    'page_size': self.get_page_size(self.request),
+                    'total_pages': 0,
+                }
+            })
 
     def get_paginated_response_schema(self, schema):
         return {

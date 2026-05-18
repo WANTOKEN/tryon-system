@@ -202,6 +202,7 @@ function AppContent() {
   const [toast, setToast] = useState(null)
   const [avatarFile, setAvatarFile] = useState(null)
   const [avatarPreview, setAvatarPreview] = useState(null)
+  const [avatarSource, setAvatarSource] = useState('user')
   const [_showUploadModal] = useState(false)
   const [quota, setQuota] = useState({ total: 100, used: 0, remaining: 100 })
   const [hasResult, setHasResult] = useState(false)
@@ -233,6 +234,7 @@ function AppContent() {
   const [showAdminContactModal, setShowAdminContactModal] = useState(false)
   const [adminContactInfo, setAdminContactInfo] = useState(null)
   const [adminContactLoading, setAdminContactLoading] = useState(false)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
 
   // 防止 StrictMode 下重复初始化
   const initRef = useRef(false)
@@ -341,11 +343,10 @@ function AppContent() {
 
   const handleTryOnComplete = useCallback(
     ({ resultUrl: _url }) => {
-      showToast(t('n_genSuccess'), 'success')
       setHasResult(true)
       refreshUserInfo()
     },
-    [showToast, refreshUserInfo, t]
+    [refreshUserInfo]
   )
 
   const handleTryOnError = useCallback(
@@ -370,10 +371,11 @@ function AppContent() {
     clearResult,
     startGenerating,
     cancelGenerating,
+    updateHistoryRecord,
   } = useTryOn({
     sessionId: sessionCustomer,
     onComplete: handleTryOnComplete,
-    onError: handleTryOnError
+    onError: handleTryOnError,
   })
 
   const {
@@ -397,110 +399,115 @@ function AppContent() {
       const startTime = Date.now()
       const MIN_LOADING_TIME = 2000
 
-      // 检查缓存版本，版本不匹配时清除旧缓存
-      const cachedVersion = localStorage.getItem(STORAGE_KEYS.CACHE_VERSION)
-      if (cachedVersion !== CURRENT_CACHE_VERSION) {
-        console.log('[Cache] 版本不匹配，清除旧缓存')
-        safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
-        safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-        safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-        safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-        localStorage.setItem(STORAGE_KEYS.CACHE_VERSION, CURRENT_CACHE_VERSION)
-      }
+      try {
+        // 检查缓存版本，版本不匹配时清除旧缓存
+        const cachedVersion = localStorage.getItem(STORAGE_KEYS.CACHE_VERSION)
+        if (cachedVersion !== CURRENT_CACHE_VERSION) {
+          console.log('[Cache] 版本不匹配，清除旧缓存')
+          safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
+          safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
+          safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
+          safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
+          localStorage.setItem(STORAGE_KEYS.CACHE_VERSION, CURRENT_CACHE_VERSION)
+        }
 
-      if (TokenManager.isAuthenticated()) {
-        const cachedUserInfo = localStorage.getItem(STORAGE_KEYS.USER_INFO)
-        if (cachedUserInfo) {
+        if (TokenManager.isAuthenticated()) {
+          const cachedUserInfo = localStorage.getItem(STORAGE_KEYS.USER_INFO)
+          if (cachedUserInfo) {
+            try {
+              const parsed = JSON.parse(cachedUserInfo)
+              setUserInfo(parsed)
+              setIsLoggedIn(true)
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+
           try {
-            const parsed = JSON.parse(cachedUserInfo)
-            setUserInfo(parsed)
-            setIsLoggedIn(true)
+            const response = await api.get(API_ENDPOINTS.AUTH.ME)
+            if (response.success) {
+              const userData = response.data?.data || response.data
+              setIsLoggedIn(true)
+              setUserInfo(userData)
+              localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userData))
+            } else {
+              TokenManager.clearTokens()
+              localStorage.removeItem(STORAGE_KEYS.USER_INFO)
+              setIsLoggedIn(false)
+              setUserInfo(null)
+            }
+          } catch (error) {
+            if (!cachedUserInfo) {
+              setIsLoggedIn(true)
+              setUserInfo({ store_name: t('settingsLoggedIn') })
+            }
+          }
+        }
+
+        const cachedAvatar = await safeStorage.getItem(STORAGE_KEYS.AVATAR_PREVIEW)
+        if (cachedAvatar) {
+          setAvatarPreview(cachedAvatar)
+        }
+
+        const cachedCustomClothing = await safeStorage.getItem(STORAGE_KEYS.CUSTOM_CLOTHING)
+        if (cachedCustomClothing) {
+          try {
+            const parsed =
+              typeof cachedCustomClothing === 'string'
+                ? JSON.parse(cachedCustomClothing)
+                : cachedCustomClothing
+            setCustomClothing(parsed)
           } catch (e) {
             // 忽略解析错误
           }
         }
 
-        try {
-          const response = await api.get(API_ENDPOINTS.AUTH.ME)
-          if (response.success) {
-            const userData = response.data?.data || response.data
-            setIsLoggedIn(true)
-            setUserInfo(userData)
-            localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userData))
-          } else {
-            TokenManager.clearTokens()
-            localStorage.removeItem(STORAGE_KEYS.USER_INFO)
-            setIsLoggedIn(false)
-            setUserInfo(null)
-          }
-        } catch (error) {
-          if (!cachedUserInfo) {
-            setIsLoggedIn(true)
-            setUserInfo({ store_name: t('settingsLoggedIn') })
+        const cachedWardrobeClothing = await safeStorage.getItem(STORAGE_KEYS.WARDROBE_CLOTHING)
+        if (cachedWardrobeClothing) {
+          try {
+            const parsed =
+              typeof cachedWardrobeClothing === 'string'
+                ? JSON.parse(cachedWardrobeClothing)
+                : cachedWardrobeClothing
+            setWardrobeClothing(parsed)
+          } catch (e) {
+            // 忽略解析错误
           }
         }
-      }
 
-      const cachedAvatar = await safeStorage.getItem(STORAGE_KEYS.AVATAR_PREVIEW)
-      if (cachedAvatar) {
-        setAvatarPreview(cachedAvatar)
-      }
-
-      const cachedCustomClothing = await safeStorage.getItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-      if (cachedCustomClothing) {
-        try {
-          const parsed =
-            typeof cachedCustomClothing === 'string'
-              ? JSON.parse(cachedCustomClothing)
-              : cachedCustomClothing
-          setCustomClothing(parsed)
-        } catch (e) {
-          // 忽略解析错误
-        }
-      }
-
-      const cachedWardrobeClothing = await safeStorage.getItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-      if (cachedWardrobeClothing) {
-        try {
-          const parsed =
-            typeof cachedWardrobeClothing === 'string'
-              ? JSON.parse(cachedWardrobeClothing)
-              : cachedWardrobeClothing
-          setWardrobeClothing(parsed)
-        } catch (e) {
-          // 忽略解析错误
-        }
-      }
-
-      const cachedSelected = await safeStorage.getItem(STORAGE_KEYS.SELECTED_CLOTHING)
-      if (cachedSelected) {
-        try {
-          const parsed =
-            typeof cachedSelected === 'string' ? JSON.parse(cachedSelected) : cachedSelected
-          console.log('[Cache] 读取已选服装缓存:', parsed)
-          // 检查是否有图片 URL
-          if (parsed.length > 0 && !parsed[0].image_url) {
-            console.log('[Cache] 缓存数据缺少 image_url，清除旧缓存')
-            safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
-          } else {
-            setSelected(parsed)
+        const cachedSelected = await safeStorage.getItem(STORAGE_KEYS.SELECTED_CLOTHING)
+        if (cachedSelected) {
+          try {
+            const parsed =
+              typeof cachedSelected === 'string' ? JSON.parse(cachedSelected) : cachedSelected
+            console.log('[Cache] 读取已选服装缓存:', parsed)
+            // 检查是否有图片 URL
+            if (parsed.length > 0 && !parsed[0].image_url) {
+              console.log('[Cache] 缓存数据缺少 image_url，清除旧缓存')
+              safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
+            } else {
+              setSelected(parsed)
+            }
+          } catch (e) {
+            console.error('[Cache] 解析已选服装缓存失败:', e)
           }
-        } catch (e) {
-          console.error('[Cache] 解析已选服装缓存失败:', e)
         }
-      }
 
-      // 获取模特照片
-      await fetchModelPhotos()
+        // 获取模特照片
+        await fetchModelPhotos()
 
-      const elapsed = Date.now() - startTime
-      const waitTime = MIN_LOADING_TIME - elapsed
-      if (waitTime > 0) {
-        await new Promise(resolve => {
-          setTimeout(resolve, waitTime)
-        })
+        const elapsed = Date.now() - startTime
+        const waitTime = MIN_LOADING_TIME - elapsed
+        if (waitTime > 0) {
+          await new Promise(resolve => {
+            setTimeout(resolve, waitTime)
+          })
+        }
+      } catch (error) {
+        console.error('[Init] 初始化失败:', error)
+      } finally {
+        setAppLoading(false)
       }
-      setAppLoading(false)
     }
 
     initApp()
@@ -546,10 +553,10 @@ function AppContent() {
         }
 
         setAvatarFile(file)
+        setAvatarSource('user')
 
         const objectUrl = URL.createObjectURL(file)
         setAvatarPreview(objectUrl)
-        safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
 
         const reader = new FileReader()
         reader.onload = ev => {
@@ -566,8 +573,8 @@ function AppContent() {
       } else if (e.target.files === null) {
         setAvatarFile(null)
         setAvatarPreview(null)
+        setAvatarSource('user')
         safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-        safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
       }
     },
     [showToast, t]
@@ -620,15 +627,13 @@ function AppContent() {
       // 忽略解析错误，继续执行
     }
 
-    const reuseAvatarKey = await safeStorage.getItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
     let fileToSubmit = null
-    let keyToReuse = null
+    const keyToReuse = null
+    let submitAvatarSource = avatarSource || 'user'
 
-    if (reuseAvatarKey) {
-      keyToReuse = reuseAvatarKey
-      safeStorage.removeItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
-    } else if (avatarFile) {
+    if (avatarFile) {
       fileToSubmit = avatarFile
+      submitAvatarSource = 'user'
     } else if (avatarPreview) {
       try {
         const response = await fetch(avatarPreview)
@@ -643,6 +648,7 @@ function AppContent() {
         if (!avatarPreview.startsWith('/images/')) {
           setAvatarFile(fileToSubmit)
         }
+        submitAvatarSource = 'user'
       } catch (e) {
         cancelGenerating()
         showToast(t('n_imgReadFail'), 'error')
@@ -650,7 +656,7 @@ function AppContent() {
       }
     }
 
-    await submitTask(fileToSubmit, selected, keyToReuse)
+    await submitTask(fileToSubmit, selected, keyToReuse, submitAvatarSource)
 
     if (window.innerWidth < 1024) {
       setTimeout(() => {
@@ -664,6 +670,7 @@ function AppContent() {
     isLoggedIn,
     avatarPreview,
     avatarFile,
+    avatarSource,
     selected,
     quota,
     submitTask,
@@ -816,27 +823,32 @@ function AppContent() {
   }, [])
 
   const handleToggleHistorySaved = useCallback(
-    async uuid => {
+    async (uuid, newSavedState) => {
       if (!isLoggedIn) {
         showToast(t('n_needLogin'), 'warning')
         setShowLoginModal(true)
         return
       }
 
-      const record = tryOnHistory?.find(r => r.uuid === uuid)
-      const newSavedState = record ? !record.is_saved : true
-
       try {
+        console.log(`[收藏] 尝试收藏: uuid=${uuid}, is_saved=${newSavedState}`)
         const response = await api.post(API_ENDPOINTS.TRYON.SAVE(uuid), { is_saved: newSavedState })
+        console.log(`[收藏] 响应:`, response)
+        
         if (response.success) {
-          fetchHistory()
+          // 实时更新本地状态
+          updateHistoryRecord(uuid, { is_saved: newSavedState })
           showToast(newSavedState ? t('n_saved') : t('n_unsaved'), 'success')
+        } else {
+          console.error(`[收藏] 操作失败: ${response.error}`)
+          showToast(response.error || t('n_saveFail'), 'error')
         }
       } catch (error) {
+        console.error(`[收藏] 异常:`, error)
         showToast(t('n_saveFail'), 'error')
       }
     },
-    [isLoggedIn, tryOnHistory, fetchHistory, showToast, t]
+    [isLoggedIn, fetchHistory, showToast, t, updateHistoryRecord]
   )
 
   const handleDeleteHistory = useCallback(
@@ -860,34 +872,6 @@ function AppContent() {
       }
     },
     [isLoggedIn, fetchHistory, showToast, t]
-  )
-
-  const handleReuseAvatarFromHistory = useCallback(
-    recordUuid => {
-      const record = tryOnHistory?.find(r => r.uuid === recordUuid)
-      if (!record) {
-        showToast(t('n_notFound'), 'error')
-        return
-      }
-
-      const keyToReuse = record.avatar_key || record.uuid
-
-      if (!keyToReuse) {
-        showToast(t('n_noAvatar'), 'warning')
-        return
-      }
-
-      if (record.avatar_url) {
-        setAvatarPreview(record.avatar_url)
-        safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, record.avatar_url)
-        setAvatarFile(null)
-      }
-
-      safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_KEY, keyToReuse)
-
-      showToast(t('n_avatarReused'), 'success')
-    },
-    [tryOnHistory, showToast, t]
   )
 
   useEffect(() => {
@@ -1339,6 +1323,8 @@ function AppContent() {
               category: item.category,
               subcategory: item.subcategory,
               color: item.color || dominantColor,
+              price: item.price,
+              sizes: item.sizes,
               image: item.image_thumb_url || item.image_url,
               imageFull: item.image_url,
               image_key: item.image_key,
@@ -1474,6 +1460,8 @@ function AppContent() {
               category: item.category,
               subcategory: item.subcategory,
               color: item.color || dominantColor,
+              price: item.price,
+              sizes: item.sizes,
               image: item.image_thumb_url || item.image_url,
               imageFull: item.image_url,
               image_key: item.image_key,
@@ -1594,9 +1582,12 @@ function AppContent() {
           sessionCustomer={sessionCustomer}
           onOpenSettings={() => setShowSettingsModal(true)}
           onEndSession={handleEndSession}
+          onOpenHistory={() => setShowHistoryModal(true)}
+          history={tryOnHistory}
         />
         <MainLayout
           avatarPreview={avatarPreview}
+          avatarSource={avatarSource}
           onAvatarChange={handleAvatarChange}
           onSetAvatarPreview={preview => {
             setAvatarPreview(preview)
@@ -1606,11 +1597,13 @@ function AppContent() {
               safeStorage.removeItem(STORAGE_KEYS.AVATAR_FILE)
             }
           }}
-          onModelSelect={(imageUrl, imageKey) => {
+          onModelSelect={(imageUrl, imageKey, source = 'system') => {
             setAvatarPreview(imageUrl)
             safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, imageUrl)
+            setAvatarSource(source)
             if (imageKey) {
               safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_KEY, imageKey)
+              safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_SOURCE, source)
             }
             setAvatarFile(null)
             safeStorage.removeItem(STORAGE_KEYS.AVATAR_FILE)
@@ -1641,7 +1634,6 @@ function AppContent() {
           onOpenPreviewModal={openPreviewModal}
           onToggleHistorySaved={handleToggleHistorySaved}
           onDeleteHistory={handleDeleteHistory}
-          onReuseAvatarFromHistory={handleReuseAvatarFromHistory}
           onClearSelection={handleClearSelection}
           hasResult={hasResult}
           setHasResult={setHasResult}
@@ -1657,6 +1649,8 @@ function AppContent() {
           modelPhotosLoading={modelPhotosLoading}
           fetchModelPhotos={fetchModelPhotos}
           remainingTime={remainingTime}
+          showHistoryModal={showHistoryModal}
+          onCloseHistoryModal={() => setShowHistoryModal(false)}
         />
         {toast && <Toast message={toast.message} type={toast.type} />}
 

@@ -6,6 +6,8 @@ export default function UploadModal({ categories, onClose, onUpload }) {
     category: categories[0]?.id || 'tops',
     subcategory: '',
     color: '',
+    price: '',
+    sizes: '',
     image: null,
   })
   const [preview, setPreview] = useState(null)
@@ -179,6 +181,46 @@ export default function UploadModal({ categories, onClose, onUpload }) {
               placeholder='例如：深蓝色'
               className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
             />
+          </div>
+
+          {/* Price & Sizes */}
+          <div className='grid grid-cols-2 gap-4'>
+            <div>
+              <label
+                htmlFor='clothing-price'
+                className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+              >
+                价格 (¥)
+              </label>
+              <input
+                id='clothing-price'
+                type='number'
+                name='price'
+                value={formData.price}
+                onChange={handleChange}
+                placeholder='0.00'
+                min='0'
+                step='0.01'
+                className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+              />
+            </div>
+            <div>
+              <label
+                htmlFor='clothing-sizes'
+                className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+              >
+                尺码
+              </label>
+              <input
+                id='clothing-sizes'
+                type='text'
+                name='sizes'
+                value={formData.sizes}
+                onChange={handleChange}
+                placeholder='如: S,M,L,XL'
+                className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+              />
+            </div>
           </div>
 
           {/* Actions */}

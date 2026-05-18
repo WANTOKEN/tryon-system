@@ -100,11 +100,12 @@ def get_key_from_url(url):
 
 def get_full_url(url, use_presigned=True):
     """
-    获取完整的 URL
+    获取完整的可访问 URL
     
-    如果 URL 已经是完整的 URL (以 http 开头),直接返回
-    如果是相对路径,拼接后端域名
-    如果是 OSS 存储且 use_presigned=True,生成预签名 URL
+    根据 URL 的实际存储类型动态处理：
+    - 本地 URL：拼接后端域名返回完整 URL
+    - OSS URL：生成预签名 URL 或公共读 URL
+    - 相对路径：拼接后端域名
     
     Args:
         url: 图片 URL,可以是完整 URL 或相对路径
@@ -119,71 +120,18 @@ def get_full_url(url, use_presigned=True):
     # 检查缓存
     cache_key = f"{url}:{use_presigned}"
     if cache_key in _url_cache:
-        # 命中缓存，直接返回
         return _url_cache[cache_key]
     
     # 获取 base_url
     base_url = getattr(settings, 'BACKEND_URL', 'http://localhost:8888')
     
-    # 调试日志（追踪调用来源）
-    # import traceback
-    # caller = traceback.extract_stack()[-3]  # 获取调用者信息
-    # print(f"[get_full_url] url={url[:50]}... called from {caller.filename}:{caller.lineno}")
-    
-    # 如果已经是完整 URL
-    if url.startswith('http://') or url.startswith('https://'):
-        from urllib.parse import urlparse, urlunparse
-        parsed = urlparse(url)
-        backend_parsed = urlparse(base_url)
+    # 如果是相对路径，拼接后端域名
+    if not url.startswith('http://') and not url.startswith('https://'):
+        if not url.startswith('/'):
+            url = f'/{url}'
+        result = f"{base_url.rstrip('/')}{url}"
         
-        # 判断是否是本地服务的 URL
-        is_local_url = (
-            parsed.netloc == backend_parsed.netloc or
-            parsed.netloc.startswith('localhost:') or
-            parsed.netloc == 'localhost' or
-            parsed.netloc.startswith('127.0.0.1:')
-        )
-        
-        storage_type = os.getenv('STORAGE_TYPE', 'local').lower()
-        result = None
-        
-        if storage_type == 'local':
-            # 本地存储模式
-            if is_local_url:
-                # 本地存储 URL：替换域名部分为 BACKEND_URL
-                result = urlunparse((
-                    backend_parsed.scheme,
-                    backend_parsed.netloc,
-                    parsed.path,
-                    parsed.params,
-                    parsed.query,
-                    parsed.fragment
-                ))
-            else:
-                # 外部 URL（如火山引擎 TOS），直接返回
-                result = url
-        
-        else:
-            # OSS 存储模式
-            if is_local_url:
-                # 本地 URL 但系统配置为 OSS：尝试迁移到 OSS
-                oss_url = _migrate_local_url_to_oss(url)
-                if oss_url:
-                    if use_presigned:
-                        result = _get_presigned_url_if_oss(oss_url)
-                    else:
-                        result = oss_url
-                else:
-                    # 迁移失败，返回原 URL
-                    result = url
-            else:
-                # 检查是否需要生成预签名 URL
-                if use_presigned:
-                    result = _get_presigned_url_if_oss(url)
-                else:
-                    result = url
-        
-        # 保存到缓存并返回
+        # 保存到缓存
         if len(_url_cache) >= _cache_max_size:
             keys_to_remove = list(_url_cache.keys())[:_cache_max_size // 2]
             for k in keys_to_remove:
@@ -191,23 +139,44 @@ def get_full_url(url, use_presigned=True):
         _url_cache[cache_key] = result
         return result
     
-    # 如果是相对路径,拼接后端域名
-    base_url = getattr(settings, 'BACKEND_URL', 'http://localhost:8888')
+    # 完整 URL：根据实际类型处理
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    backend_parsed = urlparse(base_url)
     
-    # 确保路径以 / 开头
-    if not url.startswith('/'):
-        url = f'/{url}'
+    # 判断是否是本地 URL
+    is_local_url = (
+        parsed.netloc == backend_parsed.netloc or
+        parsed.netloc.startswith('localhost:') or
+        parsed.netloc == 'localhost' or
+        parsed.netloc.startswith('127.0.0.1:')
+    )
     
-    result = f"{base_url.rstrip('/')}{url}"
+    result = None
+    
+    if is_local_url:
+        # 本地 URL：替换域名部分为 BACKEND_URL
+        result = urlunparse((
+            backend_parsed.scheme,
+            backend_parsed.netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment
+        ))
+    else:
+        # 外部 URL（OSS 或其他）：使用 _get_presigned_url_if_oss 处理
+        # use_presigned=True 时，use_public_read=None（自动判断）
+        # use_presigned=False 时，use_public_read=True（使用公共读）
+        use_public_read = not use_presigned if use_presigned is not None else None
+        result = _get_presigned_url_if_oss(url, use_public_read=use_public_read)
     
     # 保存到缓存
     if len(_url_cache) >= _cache_max_size:
-        # 清空一半缓存
         keys_to_remove = list(_url_cache.keys())[:_cache_max_size // 2]
         for k in keys_to_remove:
             del _url_cache[k]
     _url_cache[cache_key] = result
-    
     return result
 
 
@@ -304,9 +273,68 @@ def _migrate_local_url_to_oss(url: str) -> Optional[str]:
         return None
 
 
+def _migrate_oss_url_to_local(url: str) -> Optional[str]:
+    """
+    将 OSS URL 迁移到本地存储
+    
+    当系统配置为本地存储时，如果遇到 OSS URL（旧数据），
+    尝试从数据库找到对应的本地记录并返回本地 URL。
+    
+    Args:
+        url: OSS URL，如 "https://bucket.oss-cn-shanghai.aliyuncs.com/wardrobe/xxx.png"
+        
+    Returns:
+        本地 URL 或 None（找不到记录）
+    """
+    try:
+        from urllib.parse import urlparse
+        from apps.common.models import FileUploadRecord
+        
+        parsed = urlparse(url)
+        path = parsed.path
+        
+        # 提取文件名中的 MD5
+        filename = os.path.basename(path)
+        if '.' in filename:
+            md5 = os.path.splitext(filename)[0]
+        else:
+            md5 = filename
+        
+        # 验证 MD5 格式
+        if len(md5) != 32 or not all(c in '0123456789abcdefABCDEF' for c in md5):
+            print(f"[_migrate_oss_url_to_local] 无效的 MD5 格式: {md5}")
+            return None
+        
+        print(f"[_migrate_oss_url_to_local] 开始查找: md5={md5}")
+        
+        # 在数据库中查找该 MD5 的本地存储记录
+        record = FileUploadRecord.objects.filter(
+            md5_hash=md5,
+            storage_type='local'
+        ).first()
+        
+        if record and record.access_url:
+            print(f"[_migrate_oss_url_to_local] 找到本地记录: {record.access_url}")
+            # 返回本地 URL（使用 get_full_url 处理）
+            return get_full_url(record.access_url)
+        
+        print(f"[_migrate_oss_url_to_local] 未找到本地记录: md5={md5}")
+        return None
+        
+    except Exception as e:
+        print(f"[_migrate_oss_url_to_local] 查找失败: {e}")
+        return None
+
+
 def _get_presigned_url_if_oss(url, use_public_read=None, expires=604800):
     """
-    如果是 OSS URL,根据配置返回公共读 URL 或预签名 URL
+    根据图片原始存储类型返回可访问的 URL
+    
+    动态判断 URL 的存储类型：
+    - OSS URL：生成预签名 URL 或公共读 URL
+    - 本地 URL：拼接后端域名返回完整 URL
+    
+    注意：不根据当前系统配置强制转换，而是根据图片实际存储位置返回对应 URL
     
     Args:
         url: 完整的 URL
@@ -314,22 +342,42 @@ def _get_presigned_url_if_oss(url, use_public_read=None, expires=604800):
         expires: 预签名 URL 过期时间（秒），默认 7 天
         
     Returns:
-        公共读 URL 或预签名 URL
+        可访问的 URL（预签名 OSS URL 或完整本地 URL）
     """
-    storage_type = os.getenv('STORAGE_TYPE', 'local').lower()
-    if storage_type != 'oss':
-        return url
+    if not url:
+        return None
     
+    # 如果已经有签名参数，直接返回
     if 'OSSAccessKeyId' in url or 'Signature' in url or 'X-Tos' in url:
         return url
     
+    # 判断是否是本地 URL
+    base_url = getattr(settings, 'BACKEND_URL', 'http://localhost:8888')
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    backend_parsed = urlparse(base_url)
+    
+    is_local_url = (
+        parsed.netloc == backend_parsed.netloc or
+        parsed.netloc.startswith('localhost:') or
+        parsed.netloc == 'localhost' or
+        parsed.netloc.startswith('127.0.0.1:')
+    )
+    
+    # 本地 URL：拼接后端域名返回完整 URL
+    if is_local_url or not (url.startswith('http://') or url.startswith('https://')):
+        return get_full_url(url)
+    
+    # OSS URL：尝试生成预签名 URL
     try:
         from apps.common.services.oss_service import oss_service
         
         if not oss_service.enabled:
+            # OSS 服务未启用，但 URL 是 OSS 格式，直接返回原 URL（可能无法访问）
             return url
         
         if not oss_service._is_oss_url(url):
+            # 不是 OSS URL，按外部 URL 处理
             return url
         
         oss_key = oss_service._extract_oss_key(url)
@@ -345,7 +393,7 @@ def _get_presigned_url_if_oss(url, use_public_read=None, expires=604800):
             return oss_service.get_signed_url(oss_key, expires=expires)
             
     except Exception as e:
-        print(f"[URL] 生成 URL 失败: {e}")
+        print(f"[URL] 生成 OSS URL 失败: {e}")
     
     return url
 

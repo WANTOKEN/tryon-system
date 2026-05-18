@@ -1,11 +1,23 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 
 import { useI18n } from '../hooks/useI18n'
 
-export default function Header({ user, sessionCustomer, onOpenSettings, onEndSession }) {
+export default function Header({
+  user,
+  sessionCustomer,
+  onOpenSettings,
+  onEndSession,
+  onOpenHistory,
+  history = [],
+}) {
   const { t, locale, changeLocale, languages, currentLang } = useI18n()
   const [showLangDropdown, setShowLangDropdown] = useState(false)
   const langRef = useRef(null)
+
+  const savedCount = useMemo(
+    () => (history || []).filter(r => r.is_saved || r.saved).length,
+    [history]
+  )
 
   const getAvatarText = () => {
     if (user?.store_name) {
@@ -97,6 +109,37 @@ export default function Header({ user, sessionCustomer, onOpenSettings, onEndSes
 
         {/* Nav */}
         <nav className='flex items-center gap-2 lg:gap-3' aria-label='用户操作'>
+          {/* 历史记录按钮 */}
+          <button
+            type='button'
+            className='touch-target relative flex items-center justify-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-white/10'
+            aria-label={t('tryOnHistory')}
+            title={t('tryOnHistory')}
+            onClick={onOpenHistory}
+          >
+            <svg
+              className='h-4 w-4 text-gray-400'
+              fill='none'
+              stroke='currentColor'
+              viewBox='0 0 24 24'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth='2'
+                d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
+              />
+            </svg>
+            <span className='header-btn-text hidden text-[10px] font-medium text-gray-400 sm:inline'>
+              {t('history')}
+            </span>
+            {savedCount > 0 && (
+              <span className='absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[9px] font-bold text-white shadow-sm'>
+                {savedCount}
+              </span>
+            )}
+          </button>
+
           {/* 语言切换 */}
           <div className='relative' ref={langRef}>
             <button

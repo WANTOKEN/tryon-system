@@ -1,6 +1,6 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, Form, Input, message, Tag, Image, Switch, Select, Upload, Radio, Space, Tooltip, Progress, Table } from 'antd';
+import { Button, Modal, Form, Input, InputNumber, message, Tag, Image, Switch, Select, Upload, Radio, Space, Tooltip, Progress, Table } from 'antd';
 import type { UploadFile } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, LinkOutlined, EyeInvisibleOutlined, PictureOutlined, CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useState, useRef } from 'react';
@@ -66,6 +66,8 @@ interface ClothingFormData {
   category: string;
   subcategory: string;
   color: string;
+  price: number;
+  sizes: string;
   is_active: boolean;
 }
 
@@ -256,6 +258,33 @@ export default function ClothingPage() {
       hideInSearch: true,
     },
     {
+      title: '价格',
+      dataIndex: 'price',
+      hideInSearch: true,
+      width: 100,
+      render: (_, record) => {
+        const price = record.price || 0;
+        return price > 0 ? `¥${parseFloat(price).toFixed(2)}` : '未定价';
+      },
+    },
+    {
+      title: '尺码',
+      dataIndex: 'sizes',
+      hideInSearch: true,
+      width: 150,
+      render: (_, record) => {
+        if (!record.sizes) return '-';
+        const sizes = record.sizes.split(',').filter((s: string) => s.trim());
+        return sizes.length > 0 ? (
+          <Space size={4} wrap>
+            {sizes.map((size: string, index: number) => (
+              <Tag key={index} color="blue">{size.trim()}</Tag>
+            ))}
+          </Space>
+        ) : '-';
+      },
+    },
+    {
       title: '来源',
       dataIndex: 'source',
       hideInSearch: true,
@@ -302,7 +331,7 @@ export default function ClothingPage() {
   const handleAdd = () => {
     setEditingClothing(null);
     form.resetFields();
-    form.setFieldsValue({ is_active: true, color: '#000000' });
+    form.setFieldsValue({ is_active: true, color: '#000000', price: 0, sizes: '' });
     setImageSource('upload');
     setFileList([]);
     setModalVisible(true);
@@ -316,6 +345,8 @@ export default function ClothingPage() {
       category: clothing.category,
       subcategory: clothing.subcategory,
       color: clothing.color || '#000000',
+      price: clothing.price || 0,
+      sizes: clothing.sizes || '',
       is_active: clothing.is_active,
     });
     // 编辑模式默认使用 URL 方式
@@ -626,6 +657,23 @@ export default function ClothingPage() {
                 placeholder="请选择子分类"
                 allowClear
               />
+            </Form.Item>
+          </Space>
+          
+          <Space style={{ width: '100%' }} size="large">
+            <Form.Item name="price" label="价格" style={{ width: 200 }}>
+              <Space.Compact style={{ width: '100%' }}>
+                <span>¥</span>
+                <InputNumber
+                  min={0}
+                  precision={2}
+                  placeholder="请输入价格"
+                  style={{ width: '100%' }}
+                />
+              </Space.Compact>
+            </Form.Item>
+            <Form.Item name="sizes" label="尺码" style={{ width: 200 }} extra="多个尺码用逗号分隔，如：S,M,L,XL">
+              <Input placeholder="如：S,M,L,XL" />
             </Form.Item>
           </Space>
           

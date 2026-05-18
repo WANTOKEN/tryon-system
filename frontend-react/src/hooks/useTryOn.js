@@ -33,11 +33,22 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
       const response = await api.get(`${API_ENDPOINTS.TRYON.RECORDS}?${params}`)
 
       if (response.success) {
-        const results = response.data?.results || response.data?.data?.results || []
+        const results =
+          response.data?.items ||
+          response.data?.data?.items ||
+          response.data?.results ||
+          response.data?.data?.results ||
+          []
         const processedResults = results.map(item => ({
           ...item,
+          result_url: item.result_url,
+          result_thumb_url: item.result_thumb_url,
+          avatar_url: item.avatar_url,
+          avatar_key: item.avatar_key,
+          avatar_source: item.avatar_source,
           result_image: getMediaUrl(item.result_url),
-          avatar_image: getMediaUrl(item.avatar_image),
+          avatar_image: getMediaUrl(item.avatar_url),
+          clothing: item.clothing || [],
         }))
         setHistory(processedResults)
       }
@@ -67,7 +78,7 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
 
   // 轮询任务状态
   const pollStatus = useCallback(
-    async recordUuid => {
+    async (recordUuid, countdownInterval = null) => {
       setStatus('processing')
 
       const poll = async () => {
@@ -76,24 +87,50 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
 
           if (response.success) {
             const data = response.data?.data || response.data
-            setProgress(data.progress || 0)
+            // 使用后端返回的进度（如果比模拟进度高）
+            const backendProgress = data.progress || 0
+            setProgress(prev => Math.max(prev, backendProgress))
 
             if (data.status === 'completed') {
-              const fullUrl = getMediaUrl(data.result_url)
-              setResultUrl(fullUrl)
-              setStatus('completed')
-              setProgress(100)
-
-              // 刷新历史
-              fetchHistory()
-
-              if (onComplete) {
-                onComplete({ resultUrl: fullUrl })
+              // 清理倒计时
+              if (countdownInterval) {
+                clearInterval(countdownInterval)
               }
+
+              // 先显示100%进度，让用户看到完成状态
+              setProgress(100)
+              setRemainingTime(0)
+
+              // 延迟500ms后再显示结果，让用户看到100%
+              setTimeout(() => {
+                // 检查 result_url 是否为空
+                if (!data.result_url) {
+                  setStatus('failed')
+                  if (onError) {
+                    onError('生成失败，未获取到结果图片')
+                  }
+                  return
+                }
+
+                const fullUrl = getMediaUrl(data.result_url)
+                setResultUrl(fullUrl)
+                setStatus('completed')
+
+                // 刷新历史
+                fetchHistory()
+
+                if (onComplete) {
+                  onComplete({ resultUrl: fullUrl })
+                }
+              }, 500)
               return
             }
 
             if (data.status === 'failed') {
+              // 清理倒计时
+              if (countdownInterval) {
+                clearInterval(countdownInterval)
+              }
               setStatus('failed')
               if (onError) {
                 onError(data.error_message || '处理失败')
@@ -143,84 +180,103 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
   // 提交试穿任务
   const submitTask = useCallback(
     /**
-     * 提交试穿任务（全部使用 key/uuid 方式）
+     * 提交试穿任务（新逻辑）
      * @param {File|null} avatarFile - 头像文件（新上传）
-     * @param {Array} clothingItems - 服装列表
-     * @param {string|null} avatarKeyToReuse - 复用的头像 key
+     * @param {Array} clothingItems - 服装列表（每个item必须有uuid，即服装ID）
+     * @param {string|null} keyToReuse - 复用的 key（avatar_key 或 model_key）
+     * @param {string} avatarSource - 头像来源：system/user/history
      */
-    async (avatarFile, clothingItems, avatarKeyToReuse = null) => {
+    async (avatarFile, clothingItems, keyToReuse = null, avatarSource = 'user') => {
       setStatus('pending')
       setProgress(0)
 
       try {
-        // 1. 上传头像（如果没有复用的 key）
-        let finalAvatarKey = avatarKeyToReuse
+        // 1. 处理头像参数
+        let finalAvatarKey = ''
+        let finalModelKey = ''
+        let finalAvatarSource = avatarSource
 
-        if (!finalAvatarKey && avatarFile) {
+        // 根据来源设置对应的 key
+        if (avatarSource === 'system') {
+          // 系统模特：使用 model_key
+          finalModelKey = keyToReuse || ''
+        } else if (!keyToReuse && avatarFile) {
+          // 用户上传：新上传头像
           const uploadResult = await uploadImage(avatarFile, 'avatar')
           finalAvatarKey = uploadResult.imageKey
+          finalAvatarSource = 'user'
+          // eslint-disable-next-line no-console
+          console.log('Avatar uploaded, key:', finalAvatarKey)
+        } else {
+          // 用户上传或历史记录：使用传入的 key
+          finalAvatarKey = keyToReuse || ''
         }
 
-        if (!finalAvatarKey) {
-          throw new Error('请提供头像文件或头像 key')
+        // 验证参数
+        if (finalAvatarSource === 'system' && !finalModelKey) {
+          throw new Error('请提供模特key')
+        }
+        if (finalAvatarSource !== 'system' && !finalAvatarKey) {
+          throw new Error('请提供头像文件或头像key')
         }
 
-        // 2. 处理服装列表
-        // 过滤掉正在上传的服装
-        const validClothingItems = clothingItems.filter(item => !item.isUploading)
-
-        // 分离已有 key 的服装和需要上传的服装
-        const itemsWithKey = validClothingItems.filter(item => item.image_key)
-        const itemsNeedUpload = validClothingItems.filter(
-          item =>
-            !item.image_key &&
-            !(
-              item.uuid &&
-              !item.uuid.startsWith('custom_') &&
-              !item.uuid.startsWith('wardrobe_') &&
-              !item.isCustom
-            ) &&
-            item.imageFile
+        // eslint-disable-next-line no-console
+        console.log(
+          'Using avatarSource:',
+          finalAvatarSource,
+          'avatarKey:',
+          finalAvatarKey,
+          'modelKey:',
+          finalModelKey
         )
 
-        // 上传需要上传的服装
-        const uploadResults = await Promise.all(
-          itemsNeedUpload.map(item => uploadImage(item.imageFile, 'clothing'))
+        // 等待一小段时间确保 OSS 文件可用
+        // eslint-disable-next-line no-promise-executor-return
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // 2. 处理服装列表 - 新逻辑：只传服装ID（uuid）
+        // 过滤掉正在上传的服装和没有uuid的服装
+        const validClothingItems = clothingItems.filter(
+          item => !item.isUploading && item.uuid && !item.uuid.startsWith('custom_')
         )
 
-        // 合并所有服装 UUID
-        const clothingUuids = [
-          // 已有 key 的服装
-          ...itemsWithKey.map(item => `key:${item.image_key}`),
-          // 数据库服装
-          ...validClothingItems
-            .filter(
-              item =>
-                !item.image_key &&
-                item.uuid &&
-                !item.uuid.startsWith('custom_') &&
-                !item.uuid.startsWith('wardrobe_') &&
-                !item.isCustom
-            )
-            .map(item => item.uuid),
-          // 新上传的服装
-          ...uploadResults.map(result => `key:${result.imageKey}`),
-        ]
+        // 提取服装ID列表
+        const clothingIds = validClothingItems.map(item => item.uuid)
 
-        if (clothingUuids.length === 0) {
+        if (clothingIds.length === 0) {
           throw new Error('请至少选择一件服装')
         }
 
-        // 3. 提交试穿任务
+        // 构建服装详细信息列表（用于后端存储）
+        const clothingInfoList = validClothingItems.map(item => ({
+          uuid: item.uuid,
+          name: item.name || '未知服装',
+          category: item.category || 'custom',
+          subcategory: item.subcategory || 'custom',
+          color: item.color || '#000000',
+          is_custom: false, // 从数据库选择的服装都不是自定义的
+        }))
+
+        // 3. 提交试穿任务 - 新参数格式
         const formData = new FormData()
-        formData.append('avatar_key', finalAvatarKey)
-        formData.append('clothing_uuids', clothingUuids.join(','))
+        formData.append('avatar_source', finalAvatarSource)
+        if (finalAvatarKey) {
+          formData.append('avatar_key', finalAvatarKey)
+        }
+        if (finalModelKey) {
+          formData.append('model_key', finalModelKey)
+        }
+        formData.append('clothing_ids', clothingIds.join(','))
+        formData.append('clothing_info', JSON.stringify(clothingInfoList))
         formData.append('session_id', sessionId || `session_${Date.now()}`)
 
         const response = await api.upload(API_ENDPOINTS.TRYON.GENERATE, formData)
 
         if (response.success) {
           const data = response.data?.data || response.data
+          
+          console.log('[useTryOn] 响应数据:', data)
+          console.log('[useTryOn] estimated_time:', data.estimated_time)
 
           // 缓存返回的 avatar_key
           if (data.avatar_key) {
@@ -230,21 +286,37 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
           // 开始轮询状态
           if (data.record_uuid) {
             const estimated = data.estimated_time || 30
+            console.log('[useTryOn] 设置预计时间:', estimated)
             setEstimatedTime(estimated)
             setRemainingTime(estimated)
 
-            // 启动倒计时
+            // 启动倒计时和进度模拟
+            const startTime = Date.now()
             const countdownInterval = setInterval(() => {
-              setRemainingTime(prev => {
-                if (prev <= 1) {
-                  clearInterval(countdownInterval)
-                  return 0
-                }
-                return prev - 1
-              })
-            }, 1000)
+              const elapsed = (Date.now() - startTime) / 1000
+              const remaining = Math.max(0, estimated - elapsed)
+              const remainingCeil = Math.ceil(remaining)
+              console.log('[useTryOn] 倒计时:', remainingCeil)
+              setRemainingTime(remainingCeil)
 
-            pollStatus(data.record_uuid)
+              // 根据时间计算进度
+              let timeProgress
+              if (elapsed <= estimated) {
+                // 前90%按时间比例
+                timeProgress = (elapsed / estimated) * 90
+              } else {
+                // 超过预计时间后，从90%缓慢增加到99%
+                const overtime = elapsed - estimated
+                timeProgress = Math.min(99, 90 + (overtime / 10) * 9) // 10秒内从90%到99%
+              }
+
+              setProgress(prev =>
+                // 如果后端返回的进度更高，使用后端进度
+                Math.max(prev, Math.floor(timeProgress))
+              )
+            }, 500)
+
+            pollStatus(data.record_uuid, countdownInterval)
           }
 
           return {
@@ -298,6 +370,12 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
     setRemainingTime(0)
   }, [])
 
+  const updateHistoryRecord = useCallback((uuid, updates) => {
+    setHistory(prev => prev.map(record =>
+      record.uuid === uuid ? { ...record, ...updates } : record
+    ))
+  }, [])
+
   return {
     status,
     progress,
@@ -316,6 +394,7 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
     fetchModelPhotos,
     uploadImage,
     startGenerating,
+    updateHistoryRecord,
     cancelGenerating,
   }
 }

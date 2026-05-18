@@ -28,6 +28,8 @@ class Clothing(models.Model):
     subcategory = models.CharField(max_length=30)
     name = models.CharField(max_length=100)
     color = models.CharField(max_length=30, default='#000000')
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='服装价格')
+    sizes = models.CharField(max_length=100, default='', blank=True, help_text='可用尺码，逗号分隔，如：S,M,L,XL')
     image_url = models.URLField(max_length=500, default='')
     image_thumb_url = models.URLField(max_length=500, default='')
     sort_order = models.IntegerField(default=0)

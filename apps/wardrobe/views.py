@@ -1,6 +1,7 @@
 """
 衣橱视图
 """
+from io import BytesIO
 from django.utils import timezone
 from django.db.models import Count
 from rest_framework.views import APIView
@@ -146,10 +147,33 @@ class ClothingUploadView(APIView):
         category = serializer.validated_data['category']
         subcategory = serializer.validated_data['subcategory']
         color = serializer.validated_data.get('color', '#000000')
+        price = serializer.validated_data.get('price', 0.00)
+        sizes = serializer.validated_data.get('sizes', '')
 
         # 上传图片到存储服务
         from apps.common.services.storage_service import storage_service
+        from apps.common.services.ai_image_service import ai_image_service
         import os
+
+        # 读取图片数据
+        image_data = image.read()
+        
+        # 使用 AI 自动修图
+        try:
+            processed_image_data = ai_image_service.process_clothing_image(
+                image_data,
+                remove_background=True,
+                enhance=True,
+                output_size=(800, 800)
+            )
+            # 使用处理后的图片
+            image_file = BytesIO(processed_image_data)
+        except Exception as e:
+            # 如果处理失败，使用原始图片
+            import logging
+            logger = logging.getLogger('wardrobe')
+            logger.warning(f'[Wardrobe] AI 图片处理失败，使用原始图片: {e}')
+            image_file = image
 
         # 生成文件名
         ext = os.path.splitext(image.name)[1]
@@ -157,7 +181,7 @@ class ClothingUploadView(APIView):
 
         # 上传到存储服务 (自动 MD5 去重，自动记录到 FileUploadRecord)
         storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
-            file_obj=image,
+            file_obj=image_file,
             filename=filename,
             folder='clothing',
             tenant_id=str(request.user.uuid),
@@ -177,6 +201,8 @@ class ClothingUploadView(APIView):
             category=category,
             subcategory=subcategory,
             color=color,
+            price=price,
+            sizes=sizes,
             image_url=image_url,
             image_thumb_url=image_thumb_url,
             source=Clothing.Source.WARDROBE,

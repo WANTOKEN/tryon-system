@@ -153,17 +153,19 @@ class ContentKey:
         return md5
     
     @classmethod
-    def resolve_to_url(cls, key: str, tenant_id: str = None) -> Optional[str]:
+    def resolve_to_url(cls, key: str, tenant_id: str = None, allow_system_fallback: bool = True) -> Optional[str]:
         """
         解析 Key 为可访问的 URL
         
         支持跨存储类型查找：
         - 如果 key 是 local:xxx，但系统配置为 OSS，会尝试迁移
         - 如果精确查找失败，会尝试另一种存储类型
+        - 如果当前租户找不到，会尝试系统租户（用于访问预设资源如模特照片）
         
         Args:
             key: 带前缀的 Key
             tenant_id: 租户 ID
+            allow_system_fallback: 是否允许回退到系统租户查找（用于访问预设资源）
             
         Returns:
             可访问的 URL，找不到返回 None
@@ -178,13 +180,12 @@ class ContentKey:
         try:
             from apps.common.models import FileUploadRecord
             from apps.common.utils.url_utils import get_full_url
-            import os
             
             current_storage = os.getenv('STORAGE_TYPE', 'local').lower()
             
             logger.debug(f"[ContentKey] 查询参数: md5={md5}, tenant_id={tenant_id}, storage_type={storage_type}, current_storage={current_storage}")
             
-            # 1. 精确查找
+            # 1. 精确查找（当前租户）
             record = FileUploadRecord.get_by_md5(
                 md5,
                 tenant_id=tenant_id,
@@ -211,8 +212,34 @@ class ContentKey:
                 # 找到记录，调用 get_full_url
                 return get_full_url(record.access_url)
             
-            # 3. 都找不到，返回 None
-            logger.debug(f"[ContentKey] 未找到记录: md5={md5}")
+            # 3. 当前租户找不到，尝试系统租户（用于访问预设资源如模特照片）
+            if allow_system_fallback:
+                from django.conf import settings
+                # 尝试使用系统默认租户 ID（从配置读取，默认为 'system'）
+                system_tenant_id = getattr(settings, 'SYSTEM_TENANT_ID', 'system')
+                
+                if system_tenant_id != tenant_id:
+                    logger.debug(f"[ContentKey] 尝试系统租户查找: system_tenant_id={system_tenant_id}")
+                    
+                    record = FileUploadRecord.get_by_md5(
+                        md5,
+                        tenant_id=system_tenant_id,
+                        storage_type=storage_type
+                    )
+                    
+                    if not record:
+                        record = FileUploadRecord.get_by_md5(
+                            md5,
+                            tenant_id=system_tenant_id,
+                            storage_type=other_storage
+                        )
+                    
+                    if record:
+                        logger.info(f"[ContentKey] 通过系统租户找到记录: key={key}, system_tenant_id={system_tenant_id}")
+                        return get_full_url(record.access_url)
+            
+            # 4. 都找不到，返回 None
+            logger.warning(f"[ContentKey] 未找到记录: md5={md5}, tenant_id={tenant_id}")
             return None
                 
         except Exception as e:

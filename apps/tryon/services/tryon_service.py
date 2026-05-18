@@ -146,6 +146,7 @@ class TryOnService:
         prompt: Optional[str] = None,
         skip_duplicate: bool = True,
         clothing_info: Optional[List[Dict]] = None,
+        avatar_source: str = 'user',
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -158,6 +159,7 @@ class TryOnService:
             prompt: 自定义提示词
             skip_duplicate: 是否跳过重复文件（MD5 去重）
             clothing_info: 服装信息列表，每项包含 category, subcategory 等
+            avatar_source: 头像来源 (system/user/history)
             **kwargs: 额外参数传递给引擎
 
         Returns:
@@ -266,6 +268,7 @@ class TryOnService:
                 session_id=kwargs.get('session_id', ''),
                 avatar_url=avatar_url,
                 avatar_key=avatar_content_key,  # 人物照片存储 key
+                avatar_source=avatar_source,  # 头像来源
                 clothes_urls=clothes_urls,
                 clothes_keys=clothes_keys,  # 服装图片存储 key 列表
                 result=result,
@@ -273,6 +276,7 @@ class TryOnService:
                 ip_address=kwargs.get('ip_address', ''),
                 device_info=kwargs.get('device_info', ''),
                 user_agent=kwargs.get('user_agent', ''),
+                clothing_info=clothing_info,  # 服装详细信息
             )
 
             # 添加 URL 信息到返回结果
@@ -316,6 +320,7 @@ class TryOnService:
             session_id: str,
             avatar_url: str,
             avatar_key: str,
+            avatar_source: str,
             clothes_urls: List[str],
             clothes_keys: List[str],
             result: Dict[str, Any],
@@ -323,15 +328,17 @@ class TryOnService:
             ip_address: str = '',
             device_info: str = '',
             user_agent: str = '',
+            clothing_info: Optional[List[Dict]] = None,
     ) -> Optional[TryOnRecord]:
         """
         保存试穿记录到数据库
-        
+
         Args:
             merchant_id: 商户 ID
             session_id: 会话 ID
             avatar_url: 人物照片 URL
             avatar_key: 人物照片存储 key
+            avatar_source: 头像来源 (system/user/history)
             clothes_urls: 服装图片 URL 列表
             clothes_keys: 服装图片存储 key 列表
             result: AI 引擎返回结果
@@ -339,30 +346,36 @@ class TryOnService:
             ip_address: IP 地址
             device_info: 设备信息
             user_agent: User Agent
-        
+            clothing_info: 服装信息列表，每项包含 name, category, subcategory, color 等
+
         Returns:
             TryOnRecord 实例
         """
         try:
             with transaction.atomic():
                 # 确定状态
+                # 如果返回了 task_id 且状态是 pending，说明是异步任务
                 if result.get('success'):
-                    status = TryOnRecord.Status.COMPLETED
+                    if result.get('status') == 'pending' or result.get('task_id'):
+                        status = TryOnRecord.Status.PROCESSING
+                    else:
+                        status = TryOnRecord.Status.COMPLETED
                 else:
                     status = TryOnRecord.Status.FAILED
-                
+
                 # 确定引擎类型
                 engine_map = {
                     'seeddance': TryOnRecord.AIEngine.SEEDDANCE,
                 }
                 ai_engine = engine_map.get(self.engine_name, TryOnRecord.AIEngine.SEEDDANCE)
-                
+
                 # 创建主记录
                 record = TryOnRecord.objects.create(
                     merchant_id=merchant_id,
                     session_id=session_id,
                     avatar_url=avatar_url,
                     avatar_key=avatar_key,  # 人物照片存储 key
+                    avatar_source=avatar_source,  # 头像来源
                     result_url=result.get('result_url', ''),  # 存储后的 URL
                     result_key=result.get('result_key', ''),  # 结果图存储 key
                     result_original_url=result.get('original_url', ''),  # AI 原始返回的 URL
@@ -375,28 +388,37 @@ class TryOnService:
                     device_info=device_info,
                     user_agent=user_agent,
                 )
-                
+
                 # 创建服装关联记录
+                logger.info(f"[_save_record] 开始保存服装信息: record_id={record.id}, clothes_count={len(clothes_urls)}, clothing_info_count={len(clothing_info) if clothing_info else 0}, clothing_info={clothing_info}")
                 for i, clothing_url in enumerate(clothes_urls):
                     clothing_key = clothes_keys[i] if i < len(clothes_keys) else ''
-                    TryOnClothing.objects.create(
-                        record_id=record.id,
-                        clothing_id=f'custom_{i}',
-                        is_custom=True,
-                        category='custom',
-                        subcategory='custom',
-                        clothing_name=f'服装 {i + 1}',
-                        clothing_image=clothing_url,
-                        clothing_key=clothing_key,  # 服装图片存储 key
-                    )
-                
+                    # 获取服装详细信息
+                    info = clothing_info[i] if clothing_info and i < len(clothing_info) else {}
+                    logger.info(f"[_save_record] 保存服装 {i}: info={info}")
+                    try:
+                        tc = TryOnClothing.objects.create(
+                            record_id=record.id,
+                            clothing_id=info.get('uuid') or info.get('id') or f'custom_{i}',
+                            is_custom=info.get('is_custom', True),
+                            category=info.get('category', 'custom'),
+                            subcategory=info.get('subcategory', 'custom'),
+                            clothing_name=info.get('name') or info.get('clothing_name') or f'服装 {i + 1}',
+                            clothing_color=info.get('color', ''),
+                            clothing_image=clothing_url,
+                            clothing_key=clothing_key,  # 服装图片存储 key
+                        )
+                        logger.info(f"[_save_record] 服装 {i} 保存成功: id={tc.id}")
+                    except Exception as e:
+                        logger.error(f"[_save_record] 服装 {i} 保存失败: {e}")
+
                 logger.info(
                     f"[TryOnService] 记录已保存: record_id={record.id}, "
                     f"uuid={record.uuid}, status={status}"
                 )
-                
+
                 return record
-                
+
         except Exception as e:
             logger.error(f"[TryOnService] 保存记录失败: {e}")
             return None

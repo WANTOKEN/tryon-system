@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Dropdown, Avatar, Button, theme, message, Badge, Tag } from 'antd';
+import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, message } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,

@@ -163,7 +163,7 @@ class MockAIEngine(BaseAIEngine):
             'clothing_urls': clothing_urls,
             'prompt': prompt,
             'progress': 0,
-            'result_url': '',
+            'result_url': avatar_url,
             'error_message': '',
             'processing_time': 0,
             'created_at': __import__('time').time()

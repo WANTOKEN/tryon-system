@@ -171,7 +171,7 @@ class OSSService:
             # CORS 规则配置
             cors_rules = [
                 {
-                    'allowed_origins': ['http://localhost:5173', 'http://localhost:3000', 'https://your-production-domain.com'],
+                    'allowed_origins': ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000', 'https://your-production-domain.com'],
                     'allowed_methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
                     'allowed_headers': ['*'],
                     'expose_headers': ['ETag', 'Content-Length'],
@@ -196,6 +196,8 @@ class OSSService:
                     'localhost',
                     '127.0.0.1',
                     'localhost:5173',
+                    'localhost:5174',
+                    'localhost:5175',
                     'localhost:3000',
                     'yourdomain.com',
                     '*.yourdomain.com'

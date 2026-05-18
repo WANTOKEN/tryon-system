@@ -74,6 +74,8 @@ export interface Clothing {
   subcategory: string;
   name: string;
   color: string;
+  price: number;
+  sizes: string;
   image_url: string;
   image_thumb_url: string;
   sort_order: number;

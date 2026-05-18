@@ -17,6 +17,11 @@ class TryOnRecord(models.Model):
     class AIEngine(models.TextChoices):
         SEEDDANCE = 'seeddance', 'SeedDance'
 
+    class AvatarSource(models.TextChoices):
+        SYSTEM = 'system', '系统模特'
+        USER = 'user', '用户上传'
+        HISTORY = 'history', '历史记录'
+
     id = models.BigAutoField(primary_key=True)
     uuid = models.CharField(max_length=42, unique=True, default=generate_tryon_uuid, editable=False)
     merchant_id = models.BigIntegerField(db_index=True)
@@ -25,6 +30,12 @@ class TryOnRecord(models.Model):
     # 图片
     avatar_url = models.URLField(max_length=500)
     avatar_key = models.CharField(max_length=255, default='', blank=True)  # OSS key，用于复用
+    avatar_source = models.CharField(
+        max_length=20,
+        choices=AvatarSource.choices,
+        default=AvatarSource.USER,
+        help_text='头像来源：system-系统模特, user-用户上传, history-历史记录'
+    )
     result_url = models.URLField(max_length=500, default='')  # 存储后的结果图 URL（本地或 OSS）
     result_key = models.CharField(max_length=255, default='', blank=True)  # 结果图存储 key
     result_original_url = models.URLField(max_length=1000, default='', blank=True)  # AI 原始返回的 URL（如火山引擎 TOS）
