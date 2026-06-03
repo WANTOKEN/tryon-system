@@ -1,92 +1,67 @@
 """
-衣橱模型
+服装模型 - 重构版
+
+核心设计原则：
+1. 使用外键关联 FileRecord，不直接存储 URL
+2. 移除冗余字段
+3. 简化分类结构
 """
+
+import uuid
 from django.db import models
-from apps.common.utils.crypto import generate_clothing_uuid
 
 
 class Clothing(models.Model):
-    """服装表"""
+    """
+    服装商品
 
-    class Category(models.TextChoices):
-        TOPS = 'tops', '上装'
-        BOTTOMS = 'bottoms', '下装'
-        DRESSES = 'dresses', '连衣裙'
-        OUTERWEAR = 'outerwear', '外套'
-        SHOES = 'shoes', '鞋'
-        ACCESSORIES = 'accessories', '配饰'
+    简化设计：
+    - 移除 file_hash（通过 FileRecord 管理）
+    - 移除 file_id（使用外键关联）
+    - 使用外键关联文件记录
+    """
 
     class Source(models.TextChoices):
-        PRESET = 'preset', '预设'
-        CUSTOM = 'custom', '自定义'
-        WARDROBE = 'wardrobe', '衣橱上传'
+        WARDROBE = "wardrobe", "衣橱"
+        UPLOAD = "upload", "临时上传"
 
-    id = models.BigAutoField(primary_key=True)
-    uuid = models.CharField(max_length=42, unique=True, default=generate_clothing_uuid, editable=False)
-    merchant_id = models.BigIntegerField(db_index=True)
-    category = models.CharField(max_length=30, choices=Category.choices)
-    subcategory = models.CharField(max_length=30)
-    name = models.CharField(max_length=100)
-    color = models.CharField(max_length=30, default='#000000')
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='服装价格')
-    sizes = models.CharField(max_length=100, default='', blank=True, help_text='可用尺码，逗号分隔，如：S,M,L,XL')
-    image_url = models.URLField(max_length=500, default='')
-    image_thumb_url = models.URLField(max_length=500, default='')
-    sort_order = models.IntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    source = models.CharField(max_length=20, choices=Source.choices, default=Source.PRESET)
-    file_hash = models.CharField(max_length=64, default='')
-    is_deleted = models.BooleanField(default=False)
-    deleted_at = models.DateTimeField(null=True, blank=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    merchant_id = models.BigIntegerField(db_index=True, verbose_name="商家ID")
+
+    # 基本信息
+    name = models.CharField(max_length=200, verbose_name="服装名称")
+    category = models.CharField(max_length=50, verbose_name="分类")
+    subcategory = models.CharField(max_length=50, verbose_name="子分类")
+    color = models.CharField(max_length=50, default="#000000", verbose_name="颜色")
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="价格")
+    sizes = models.JSONField(default=list, verbose_name="尺码列表")
+
+    # 文件关联
+    file = models.ForeignKey(
+        "common.FileRecord", on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联文件"
+    )
+
+    # 来源标识
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.WARDROBE, verbose_name="来源")
+
+    # 状态
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    is_deleted = models.BooleanField(default=False, verbose_name="是否删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
+
+    # 时间戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'clothing'
-        verbose_name = '服装'
-        verbose_name_plural = '服装管理'
-        ordering = ['-sort_order', '-created_at']
+        db_table = "wardrobe_clothing"
+        verbose_name = "服装"
+        verbose_name_plural = "服装管理"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['merchant_id', 'category', 'is_active']),
-            models.Index(fields=['merchant_id', 'category', 'subcategory', 'is_active']),
-            models.Index(fields=['merchant_id', 'sort_order']),
+            models.Index(fields=["merchant_id", "category"]),
+            models.Index(fields=["merchant_id", "is_active"]),
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.category})"
-
-
-class PresetClothing(models.Model):
-    """预设服装模板"""
-
-    class Category(models.TextChoices):
-        TOPS = 'tops', '上装'
-        BOTTOMS = 'bottoms', '下装'
-        DRESSES = 'dresses', '连衣裙'
-        OUTERWEAR = 'outerwear', '外套'
-        SHOES = 'shoes', '鞋'
-        ACCESSORIES = 'accessories', '配饰'
-
-    id = models.BigAutoField(primary_key=True)
-    category = models.CharField(max_length=30, choices=Category.choices)
-    subcategory = models.CharField(max_length=30)
-    name_i18n = models.JSONField(default=dict)  # {"zh-CN": "T恤", "zh-TW": "T恤", "en": "T-Shirts"}
-    color = models.CharField(max_length=30, default='#000000')
-    image_url = models.URLField(max_length=500, default='')
-    sort_order = models.IntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'preset_clothing'
-        verbose_name = '预设服装'
-        verbose_name_plural = '预设服装管理'
-        ordering = ['category', 'sort_order']
-
-    def __str__(self):
-        return f"{self.subcategory} ({self.category})"
-
-    def get_name(self, lang: str = 'zh-CN') -> str:
-        """获取指定语言的名称"""
-        return self.name_i18n.get(lang, self.name_i18n.get('zh-CN', self.subcategory))
+        return f"Clothing({self.id} - {self.name})"

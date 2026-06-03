@@ -38,6 +38,15 @@ export const API_ENDPOINTS = {
   COMMON: {
     MODEL_PHOTOS: `${API_BASE}/common/model-photos/`,
   },
+  // 文件
+  FILE: {
+    ACCESS: fileId => `${API_BASE}/file/${fileId}/`,
+    INFO: fileId => `${API_BASE}/file/${fileId}/info/`,
+    BY_KEY: storageKey => `${API_BASE}/file/by-key/${storageKey}/`,
+    LIST: `${API_BASE}/file/list/`,
+    SECURE_URL: `${API_BASE}/file/secure-url/`,
+    BULK_SECURE_URL: `${API_BASE}/file/bulk-secure-url/`,
+  },
 }
 
 export { API_BASE }

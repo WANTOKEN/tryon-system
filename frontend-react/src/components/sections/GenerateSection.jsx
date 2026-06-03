@@ -17,11 +17,11 @@ export default function GenerateSection({
 }) {
   const handleTryOn = () => {
     if (!hasClothing) {
-      showToast?.('请先选择至少一件服装', 'warning')
+      showToast?.(t('selectClothingFirst') || '请先选择至少一件服装', 'warning')
       return
     }
     if (!userConsent) {
-      showToast?.('请先勾选同意免责声明', 'warning')
+      showToast?.(t('pleaseCheckTryOnConsent') || '请先勾选同意免责声明', 'warning')
       return
     }
     onTryOn()
@@ -56,7 +56,7 @@ export default function GenerateSection({
     return tryOnBtnText
   }
 
-  const isDisabled = isGenerating || (!canTryOn && hasImage && hasClothing && userConsent)
+  const isDisabled = isGenerating || !userConsent || !hasImage || !hasClothing || !canTryOn
 
   return (
     <div className='border-t border-gray-100 bg-gray-50/50 p-3'>

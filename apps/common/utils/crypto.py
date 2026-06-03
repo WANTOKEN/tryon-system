@@ -1,6 +1,7 @@
 """
 加解密工具
 """
+
 from django.conf import settings
 import base64
 import hashlib
@@ -9,6 +10,7 @@ import uuid
 
 try:
     from cryptography.fernet import Fernet
+
     HAS_FERNET = True
 except ImportError:
     Fernet = None
@@ -26,7 +28,7 @@ def get_encryption_key():
 
 def xor_encrypt(data: str, key: str) -> str:
     """XOR 加密"""
-    encrypted = ''
+    encrypted = ""
     for i, char in enumerate(data):
         encrypted += chr(ord(char) ^ ord(key[i % len(key)]))
     return encrypted
@@ -55,7 +57,7 @@ def encrypt_data(data) -> str:
         if isinstance(data, dict):
             return json.dumps(data, ensure_ascii=False)
         return str(data)
-    
+
     try:
         if isinstance(data, dict):
             data = json.dumps(data, ensure_ascii=False)
@@ -63,6 +65,7 @@ def encrypt_data(data) -> str:
         return base64.b64encode(encrypted.encode()).decode()
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).warning(f"Encryption error: {e}")
         return str(data) if not isinstance(data, dict) else json.dumps(data, ensure_ascii=False)
 
@@ -78,7 +81,7 @@ def decrypt_data(encrypted_data: str):
             return json.loads(encrypted_data)
         except:
             return encrypted_data
-    
+
     try:
         decoded = base64.b64decode(encrypted_data.encode()).decode()
         decrypted = xor_decrypt(decoded, _get_encryption_key())
@@ -88,6 +91,7 @@ def decrypt_data(encrypted_data: str):
             return decrypted
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).warning(f"Decryption error: {e}")
         try:
             return json.loads(encrypted_data)
@@ -100,29 +104,29 @@ def is_encryption_enabled() -> bool:
     return settings.DATA_ENCRYPTION_ENABLED
 
 
-def generate_uuid(prefix: str = '') -> str:
+def generate_uuid(prefix: str = "") -> str:
     """生成带业务前缀的 UUID"""
     return f"{prefix}{uuid.uuid4()}"
 
 
 def generate_merchant_uuid() -> str:
     """生成商家 UUID"""
-    return generate_uuid('mcht_')
+    return generate_uuid("mcht_")
 
 
 def generate_clothing_uuid() -> str:
     """生成服装 UUID"""
-    return generate_uuid('cloth_')
+    return generate_uuid("cloth_")
 
 
 def generate_tryon_uuid() -> str:
     """生成试穿记录 UUID"""
-    return generate_uuid('tryon_')
+    return generate_uuid("tryon_")
 
 
 def generate_task_uuid() -> str:
     """生成 AI 任务 ID"""
-    return generate_uuid('task_')
+    return generate_uuid("task_")
 
 
 def mask_phone(phone: str) -> str:
@@ -150,7 +154,7 @@ class PhoneEncryptor:
         if not HAS_FERNET:
             raise RuntimeError("cryptography package not installed")
         if cls._fernet is None:
-            key = settings.SECRET_KEY.encode()[:32].ljust(32, b'=')
+            key = settings.SECRET_KEY.encode()[:32].ljust(32, b"=")
             cls._fernet = Fernet(Fernet.generate_key())
         return cls._fernet
 

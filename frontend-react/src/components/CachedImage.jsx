@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react'
+import { getFileUrl } from '../utils/request'
 
 // 内存缓存：存储已加载的图片 URL
 const imageCache = new Map()
@@ -44,17 +45,22 @@ function CachedImage({
   onError,
   ...props
 }) {
-  const [loaded, setLoaded] = useState(() => imageCache.has(src))
+  const fileUrl = getFileUrl(src)
+  const thumbFileUrl = thumbUrl ? getFileUrl(thumbUrl) : null
+  
+  const [loaded, setLoaded] = useState(() => imageCache.has(fileUrl))
   const [inView, setInView] = useState(!lazy)
-  const [currentSrc, setCurrentSrc] = useState(thumbUrl || src)
+  const [currentSrc, setCurrentSrc] = useState(thumbFileUrl || fileUrl)
   const [hasError, setHasError] = useState(false)
   const imgRef = useRef(null)
   const observerRef = useRef(null)
 
   useEffect(() => {
-    if (src !== currentSrc) {
-      setCurrentSrc(thumbUrl || src)
-      setLoaded(imageCache.has(src))
+    const newFileUrl = getFileUrl(src)
+    const newThumbUrl = thumbUrl ? getFileUrl(thumbUrl) : null
+    if (newFileUrl !== currentSrc) {
+      setCurrentSrc(newThumbUrl || newFileUrl)
+      setLoaded(imageCache.has(newFileUrl))
       setHasError(false)
     }
   }, [src, thumbUrl, currentSrc])
@@ -98,8 +104,8 @@ function CachedImage({
     setHasError(false)
     imageCache.set(currentSrc, true)
     // 如果当前是缩略图，加载完成后切换到高清图
-    if (thumbUrl && currentSrc === thumbUrl && src !== thumbUrl) {
-      setCurrentSrc(src)
+    if (thumbFileUrl && currentSrc === thumbFileUrl && fileUrl !== thumbFileUrl) {
+      setCurrentSrc(fileUrl)
     }
     onLoad?.()
   }

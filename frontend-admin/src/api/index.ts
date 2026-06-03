@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type { 
-  PaginatedResponse, Merchant, TryOnRecord, Clothing, FileUploadRecord, 
+  PaginatedResponse, Merchant, TryOnRecord, Clothing, FileRecord, 
   DashboardStats, AdminUser, AdminUserItem, OperationLog, QuotaHistoryItem, 
   SystemConfigItem, GroupedConfig, ModelPhoto 
 } from '../types';
@@ -208,17 +208,17 @@ export const tryonApi = {
     return handlePaginatedResponse(response);
   },
 
-  createClothing: async (data: Partial<Clothing>): Promise<Clothing> => {
+  createClothing: async (data: Partial<Clothing> & { sizes?: string[] }): Promise<Clothing> => {
     const response = await api.post<Clothing>('/clothing/', data);
     return response.data;
   },
 
-  updateClothing: async (id: number, data: Partial<Clothing>): Promise<Clothing> => {
+  updateClothing: async (id: string, data: Partial<Clothing> & { sizes?: string[] }): Promise<Clothing> => {
     const response = await api.put<Clothing>(`/clothing/${id}/`, data);
     return response.data;
   },
 
-  deleteClothing: async (id: number): Promise<void> => {
+  deleteClothing: async (id: string): Promise<void> => {
     await api.delete(`/clothing/${id}/`);
   },
 
@@ -228,6 +228,24 @@ export const tryonApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
+  },
+
+  // 更新服装并上传新图片 (FormData)
+  updateClothingWithImage: async (id: string, formData: FormData): Promise<Clothing> => {
+    const response = await api.put<Clothing>(`/clothing/${id}/update_image/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  // 获取分类和子分类翻译 (从后端 wardrobe API)
+  getCategories: async (): Promise<Array<{
+    id: string;
+    name: string;
+    subcategories: Array<{ id: string; name: string }>;
+  }>> => {
+    const response = await api.get('/wardrobe/categories/');
+    return response.data?.data || [];
   },
 };
 
@@ -242,25 +260,25 @@ export const fileApi = {
     folder?: string;
     is_deleted?: string;
     search?: string;
-  }): Promise<{ items: FileUploadRecord[]; total: number }> => {
-    const response = await api.get<PaginatedResponse<FileUploadRecord>>('/files/', { params });
+  }): Promise<{ items: FileRecord[]; total: number }> => {
+    const response = await api.get<PaginatedResponse<FileRecord>>('/files/', { params });
     return handlePaginatedResponse(response);
   },
 
-  get: async (id: number): Promise<FileUploadRecord> => {
-    const response = await api.get<FileUploadRecord>(`/files/${id}/`);
+  get: async (id: string): Promise<FileRecord> => {
+    const response = await api.get<FileRecord>(`/files/${id}/`);
     return response.data;
   },
 
-  delete: async (id: number): Promise<void> => {
+  delete: async (id: string): Promise<void> => {
     await api.delete(`/files/${id}/`);
   },
 
   /** 批量操作 */
-  batchAction: async (ids: number[], action: 'soft_delete' | 'restore' | 'hard_delete'): Promise<{
+  batchAction: async (ids: string[], action: 'soft_delete' | 'restore' | 'hard_delete'): Promise<{
     success: boolean;
     message: string;
-    affected_ids: number[];
+    affected_ids: string[];
     action: string;
     storage_result?: { deleted: number; failed: number };
   }> => {

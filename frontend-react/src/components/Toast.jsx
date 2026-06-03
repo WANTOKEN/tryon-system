@@ -68,7 +68,7 @@ const PROGRESS_STYLES = {
   info: 'bg-[#1e40af]/30',
 }
 
-export default function Toast({ message, type = 'info', duration = 3000, onClose }) {
+export default function Toast({ message, type = 'info', duration = 2000, onClose }) {
   const [visible, setVisible] = useState(false)
   const [progress, setProgress] = useState(100)
 

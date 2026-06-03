@@ -1,5 +1,12 @@
 /**
  * HTTP 请求封装
+ * 
+ * 功能特性：
+ * - JWT Token 自动管理和刷新
+ * - 请求重试机制（指数退避）
+ * - 请求超时配置
+ * - 数据加密支持（可选）
+ * - 标准化响应处理
  */
 import { STORAGE_KEYS } from '../constants/storageKeys'
 
@@ -38,10 +45,8 @@ export function setSessionId(sessionId) {
 // 生成请求 ID（直接使用 session_id，方便追踪同一顾客的所有请求）
 function generateRequestId() {
   if (currentSessionId) {
-    // 将下划线替换为连字符
     return currentSessionId.replace(/_/g, '-')
   }
-  // 没有 session_id 时使用默认格式
   const timestamp = Date.now().toString(36)
   const random = Math.random().toString(36).substring(2, 6)
   return `app-${timestamp}-${random}`
@@ -109,7 +114,6 @@ export function decryptData(encrypted) {
 }
 
 // 从 Django ErrorDetail 字符串中提取错误信息
-// 格式: "ErrorDetail(string='验证码错误', code='invalid')"
 function parseErrorDetail(str) {
   if (typeof str !== 'string') {
     return str
@@ -124,18 +128,14 @@ function extractError(data) {
     return '请求失败'
   }
 
-  // 直接的错误字符串
   if (typeof data === 'string') {
     return parseErrorDetail(data)
   }
 
-  // 后端统一响应格式: { code, message, error_code, data }
-  // 优先使用 message 字段
   if (data.message) {
     return parseErrorDetail(data.message)
   }
 
-  // 兼容其他格式
   if (data.error) {
     if (typeof data.error === 'string') {
       return parseErrorDetail(data.error)
@@ -149,7 +149,6 @@ function extractError(data) {
     return parseErrorDetail(data.detail)
   }
 
-  // 处理 non_field_errors 数组
   if (
     data.non_field_errors &&
     Array.isArray(data.non_field_errors) &&
@@ -158,7 +157,6 @@ function extractError(data) {
     return parseErrorDetail(data.non_field_errors[0])
   }
 
-  // 处理其他字段错误（如 {'phone': ['该手机号不存在']}）
   const fieldErrors = Object.entries(data)
     .filter(([key]) => !['success', 'error_code', 'code', 'data', 'message'].includes(key))
     .filter(([, value]) => Array.isArray(value) && value.length > 0)
@@ -171,18 +169,32 @@ function extractError(data) {
   return '请求失败'
 }
 
-function handleResponse(response, data) {
-  if (response.ok) {
-    return { success: true, data }
-  }
-  return {
-    success: false,
-    error: extractError(data),
-    status: response.status,
-  }
+// 请求重试配置
+const DEFAULT_RETRY_CONFIG = {
+  maxRetries: 3,
+  retryDelay: 1000,
+  retryDelayMultiplier: 2,
+  retryOnStatusCodes: [429, 500, 502, 503, 504],
+  timeout: 30000,
 }
 
-// 刷新 Token（定义在 request 之前）
+// 指数退避延迟计算
+function calculateRetryDelay(retryCount, baseDelay, multiplier) {
+  const delay = baseDelay * Math.pow(multiplier, retryCount)
+  const jitter = Math.random() * baseDelay
+  return delay + jitter
+}
+
+// 创建带超时的 Promise
+function createTimeoutPromise(timeoutMs) {
+  return new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('请求超时'))
+    }, timeoutMs)
+  })
+}
+
+// 刷新 Token
 async function refreshToken() {
   const refresh = TokenManager.getRefreshToken()
   if (!refresh) {
@@ -207,10 +219,8 @@ async function refreshToken() {
   }
 }
 
-// 通用请求方法
-async function request(url, options = {}) {
-  const { method = 'GET', body, requiresAuth = true, headers = {} } = options
-
+// 构建请求配置
+function buildRequestConfig(method, body, headers, requiresAuth) {
   const config = {
     method,
     headers: {
@@ -220,7 +230,6 @@ async function request(url, options = {}) {
     },
   }
 
-  // 添加认证 Token
   if (requiresAuth) {
     const token = TokenManager.getAccessToken()
     if (token) {
@@ -228,80 +237,148 @@ async function request(url, options = {}) {
     }
   }
 
-  // 处理 body
   if (body) {
     if (body instanceof FormData) {
       delete config.headers['Content-Type']
       config.body = body
     } else {
-      // 加密请求体（如果启用）
       const bodyData = dataEncryptionEnabled ? { encrypted: encryptData(body) } : body
       config.body = JSON.stringify(bodyData)
     }
   }
 
-  try {
-    const response = await fetch(url, config)
+  return config
+}
 
-    // 安全解析 JSON
-    let data
-    const contentType = response.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) {
-      data = await response.json()
-      // 解密响应（如果启用）
-      if (data && data.encrypted && dataEncryptionEnabled) {
-        data = decryptData(data.encrypted)
-      }
-    } else {
-      data = { detail: `服务器返回非预期格式 (HTTP ${response.status})` }
+// 解析响应数据
+async function parseResponse(response) {
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    const data = await response.json()
+    if (data && data.encrypted && dataEncryptionEnabled) {
+      return decryptData(data.encrypted)
     }
-
-    // Token 过期，尝试刷新
-    if (response.status === 401 && requiresAuth) {
-      const refreshed = await refreshToken()
-      if (refreshed) {
-        config.headers.Authorization = `Bearer ${TokenManager.getAccessToken()}`
-        const retryResponse = await fetch(url, config)
-        let retryData
-        const retryContentType = retryResponse.headers.get('content-type') || ''
-        if (retryContentType.includes('application/json')) {
-          retryData = await retryResponse.json()
-          if (retryData && retryData.encrypted && dataEncryptionEnabled) {
-            retryData = decryptData(retryData.encrypted)
-          }
-        } else {
-          retryData = { detail: `服务器返回非预期格式 (HTTP ${retryResponse.status})` }
-        }
-        return handleResponse(retryResponse, retryData)
-      }
-      TokenManager.clearTokens()
-      localStorage.removeItem(STORAGE_KEYS.USER_INFO)
-      window.dispatchEvent(new Event('auth:logout'))
-    }
-
-    return handleResponse(response, data)
-  } catch (error) {
-    return { success: false, error: error.message || '网络请求失败' }
+    return data
   }
+  return { detail: `服务器返回非预期格式 (HTTP ${response.status})` }
+}
+
+// 处理响应
+function handleResponse(response, data) {
+  if (response.ok) {
+    return { success: true, data }
+  }
+  return {
+    success: false,
+    error: extractError(data),
+    status: response.status,
+    errorCode: data?.error_code,
+  }
+}
+
+// 执行单次请求
+async function executeRequest(url, config, timeout) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(url, { ...config, signal: controller.signal })
+    clearTimeout(timeoutId)
+    const data = await parseResponse(response)
+    return { response, data }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error.name === 'AbortError') {
+      throw new Error('请求超时')
+    }
+    throw error
+  }
+}
+
+// 通用请求方法（带重试）
+async function request(url, options = {}) {
+  const {
+    method = 'GET',
+    body,
+    requiresAuth = true,
+    headers = {},
+    retry: retryOptions = {},
+  } = options
+
+  // 合并重试配置
+  const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryOptions }
+  const { maxRetries, retryDelay, retryDelayMultiplier, retryOnStatusCodes, timeout } = retryConfig
+
+  // 构建初始请求配置
+  let config = buildRequestConfig(method, body, headers, requiresAuth)
+
+  for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
+    try {
+      const { response, data } = await executeRequest(url, config, timeout)
+
+      // Token 过期处理
+      if (response.status === 401 && requiresAuth && retryCount === 0) {
+        const refreshed = await refreshToken()
+        if (refreshed) {
+          config.headers.Authorization = `Bearer ${TokenManager.getAccessToken()}`
+          const { response: retryResponse, data: retryData } = await executeRequest(url, config, timeout)
+          return handleResponse(retryResponse, retryData)
+        }
+        TokenManager.clearTokens()
+        localStorage.removeItem(STORAGE_KEYS.USER_INFO)
+        window.dispatchEvent(new Event('auth:logout'))
+      }
+
+      // 检查是否需要重试
+      if (retryOnStatusCodes.includes(response.status) && retryCount < maxRetries) {
+        const delay = calculateRetryDelay(retryCount, retryDelay, retryDelayMultiplier)
+        console.warn(`请求失败，准备重试 (${retryCount + 1}/${maxRetries})，延迟 ${delay.toFixed(0)}ms`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        continue
+      }
+
+      return handleResponse(response, data)
+    } catch (error) {
+      // 网络错误或超时，尝试重试
+      if (retryCount < maxRetries) {
+        const delay = calculateRetryDelay(retryCount, retryDelay, retryDelayMultiplier)
+        console.warn(`请求异常，准备重试 (${retryCount + 1}/${maxRetries})，延迟 ${delay.toFixed(0)}ms: ${error.message}`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        continue
+      }
+      return { success: false, error: error.message || '网络请求失败' }
+    }
+  }
+
+  return { success: false, error: '请求失败，已达到最大重试次数' }
 }
 
 // 便捷方法
 export const api = {
-  get: (url, params) => {
+  get: (url, params, options = {}) => {
     const queryString = params ? `?${new URLSearchParams(params).toString()}` : ''
-    return request(url + queryString)
+    return request(url + queryString, { method: 'GET', ...options })
   },
 
-  post: (url, body, options) => request(url, { method: 'POST', body, ...options }),
+  post: (url, body, options = {}) => request(url, { method: 'POST', body, ...options }),
 
-  put: (url, body, options) => request(url, { method: 'PUT', body, ...options }),
+  put: (url, body, options = {}) => request(url, { method: 'PUT', body, ...options }),
 
-  patch: (url, body, options) => request(url, { method: 'PATCH', body, ...options }),
+  patch: (url, body, options = {}) => request(url, { method: 'PATCH', body, ...options }),
 
-  delete: (url, options) => request(url, { method: 'DELETE', ...options }),
+  delete: (url, options = {}) => request(url, { method: 'DELETE', ...options }),
 
-  upload: (url, formData, options) =>
+  upload: (url, formData, options = {}) =>
     request(url, { method: 'POST', body: formData, requiresAuth: true, ...options }),
+
+  // 禁用重试的请求
+  getNoRetry: (url, params) => {
+    const queryString = params ? `?${new URLSearchParams(params).toString()}` : ''
+    return request(url + queryString, { retry: { maxRetries: 0 } })
+  },
+
+  postNoRetry: (url, body, options = {}) =>
+    request(url, { method: 'POST', body, retry: { maxRetries: 0 }, ...options }),
 }
 
 // 获取完整的媒体文件 URL
@@ -314,4 +391,60 @@ export function getMediaUrl(path) {
   }
   const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
   return `${baseUrl}${path}`
+}
+
+// 获取支持 WebP 格式的图片 URL
+export function getWebpUrl(path) {
+  if (!path) {
+    return ''
+  }
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    // 替换扩展名
+    return path.replace(/\.(jpg|jpeg|png|gif)$/i, '.webp')
+  }
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+  const webpPath = path.replace(/\.(jpg|jpeg|png|gif)$/i, '.webp')
+  return `${baseUrl}${webpPath}`
+}
+
+const FILE_API_BASE = '/api/v1/file'
+
+export function getFileUrl(fileIdOrUrl) {
+  if (!fileIdOrUrl) {
+    return ''
+  }
+  if (typeof fileIdOrUrl !== 'string') {
+    console.warn('[getFileUrl] 参数必须是字符串')
+    return ''
+  }
+  if (fileIdOrUrl.startsWith('/file/') || fileIdOrUrl.startsWith(`${FILE_API_BASE}/`)) {
+    return fileIdOrUrl
+  }
+  if (fileIdOrUrl.startsWith('http://') || fileIdOrUrl.startsWith('https://')) {
+    if (fileIdOrUrl.includes('/file/')) {
+      const match = fileIdOrUrl.match(/\/file\/([^/]+)/)
+      if (match) {
+        return `${FILE_API_BASE}/${match[1]}/`
+      }
+    }
+    return fileIdOrUrl
+  }
+  if (fileIdOrUrl.includes('-') && fileIdOrUrl.length > 30) {
+    return `${FILE_API_BASE}/${fileIdOrUrl}/`
+  }
+  return fileIdOrUrl
+}
+
+export function parseFileIdFromUrl(url) {
+  if (!url) return null
+  if (url.includes('/file/')) {
+    const match = url.match(/\/file\/([^/]+)/)
+    return match ? match[1] : null
+  }
+  return null
+}
+
+export function isFileUrl(url) {
+  if (!url) return false
+  return url.startsWith('/file/') || url.startsWith(`${FILE_API_BASE}/`)
 }

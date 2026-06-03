@@ -21,4 +21,5 @@ ALLOWED_EXTENSIONS = set(FileExtension.ALL)
 
 class UploadValidationError(Exception):
     """上传验证错误"""
+
     pass

@@ -1,9 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button, Space, Table, Tag, Upload, message, Popconfirm, Modal, Form, InputNumber, Switch, Checkbox, Image, Tooltip } from 'antd';
+import { Button, Space, Tag, Upload, message, Popconfirm, Modal, Form, InputNumber, Switch, Checkbox, Image, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined, EyeOutlined } from '@ant-design/icons';
 
-import type { UploadProps } from 'antd/es/upload/interface';
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
 import { modelPhotoApi } from '../api';
@@ -12,30 +10,25 @@ import { PERMISSIONS } from '../types';
 import { usePermission } from '../hooks/usePermission';
 
 const ModelPhotosPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<ModelPhoto[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [isActive, setIsActive] = useState<boolean | undefined>(undefined);
   const [modalVisible, setModalVisible] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [form] = Form.useForm();
   const [editingRecord, setEditingRecord] = useState<ModelPhoto | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<{ file: File; url: string } | null>(null);
   const [showImages, setShowImages] = useState(true);
+  const [data, setData] = useState<ModelPhoto[]>([]);
+  const [page] = useState(1);
+  const [pageSize] = useState(10);
+  const [isActive] = useState<boolean | undefined>(undefined);
   const actionRef = useRef<ActionType>();
 
   const { hasPermission } = usePermission();
   const canManage = hasPermission(PERMISSIONS.SUPER_ADMIN) || hasPermission(PERMISSIONS.CLOTHING_MANAGE);
 
   const fetchData = useCallback(async (params?: { current?: number; pageSize?: number }) => {
-    setLoading(true);
     try {
       const result = await modelPhotoApi.list({
         page: params?.current || page,
@@ -43,7 +36,6 @@ const ModelPhotosPage: React.FC = () => {
         is_active: isActive,
       });
       setData(result.items);
-      setTotal(result.total);
       return {
         data: result.items,
         total: result.total,
@@ -53,8 +45,6 @@ const ModelPhotosPage: React.FC = () => {
       message.error('获取模特照片失败');
       console.error('Failed to fetch model photos:', error);
       return { data: [], total: 0, success: false };
-    } finally {
-      setLoading(false);
     }
   }, [page, pageSize, isActive]);
 
@@ -163,46 +153,6 @@ const ModelPhotosPage: React.FC = () => {
     setPreviewVisible(true);
   };
 
-  const uploadProps: UploadProps = {
-    name: 'image',
-    multiple: false,
-    showUploadList: false,
-    beforeUpload: (file) => {
-      const isJpgOrPng = file.type === 'image/jpeg' || file.type === 'image/png';
-      if (!isJpgOrPng) {
-        message.error('只能上传 JPG 或 PNG 格式的图片!');
-        return false;
-      }
-      const isLt5M = file.size / 1024 / 1024 < 5;
-      if (!isLt5M) {
-        message.error('图片大小不能超过 5MB!');
-        return false;
-      }
-      return true;
-    },
-    onChange: async (info) => {
-      if (info.file.status === 'uploading') {
-        setUploading(true);
-        return;
-      }
-      if (info.file.status === 'done') {
-        const formData = new FormData();
-        formData.append('image', info.file.originFileObj!);
-        
-        try {
-          const response = await modelPhotoApi.upload(formData);
-          message.success('上传成功');
-          actionRef.current?.reload();
-        } catch (error) {
-          message.error('上传失败');
-          console.error('Failed to upload model photo:', error);
-        } finally {
-          setUploading(false);
-        }
-      }
-    },
-  };
-
   const handleSortOrder = async (id: number, direction: 'up' | 'down') => {
     try {
       const record = data.find(item => item.id === id);
@@ -274,38 +224,41 @@ const ModelPhotosPage: React.FC = () => {
       key: 'image_url',
       width: 120,
       hideInSearch: true,
-      render: (imageUrl: string) => (
-        <div>
-          {showImages ? (
-            <img 
-              src={imageUrl} 
-              alt="Model" 
-              style={{ 
+      render: (_, record: ModelPhoto) => {
+        const imageUrl = record.image_url;
+        return (
+          <div>
+            {showImages ? (
+              <img 
+                src={imageUrl} 
+                alt="Model" 
+                style={{ 
+                  width: 80, 
+                  height: 100, 
+                  objectFit: 'cover', 
+                  borderRadius: 8, 
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                }}
+                onClick={() => handleImagePreview(imageUrl)}
+              />
+            ) : (
+              <div style={{ 
                 width: 80, 
                 height: 100, 
-                objectFit: 'cover', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                border: '1px solid #d9d9d9', 
                 borderRadius: 8, 
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              }}
-              onClick={() => handleImagePreview(imageUrl)}
-            />
-          ) : (
-            <div style={{ 
-              width: 80, 
-              height: 100, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              border: '1px solid #d9d9d9', 
-              borderRadius: 8, 
-              backgroundColor: '#f5f5f5',
-            }}>
-              <span style={{ color: '#999', fontSize: 12 }}>图片已隐藏</span>
-            </div>
-          )}
-        </div>
-      ),
+                backgroundColor: '#f5f5f5',
+              }}>
+                <span style={{ color: '#999', fontSize: 12 }}>图片已隐藏</span>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: '排序',
@@ -570,19 +523,9 @@ const ModelPhotosPage: React.FC = () => {
             ) : null}
             <div style={{ marginTop: 8 }}>
               <Upload
-                accept="image/jpeg,image/png"
+                accept="image/*"
                 showUploadList={false}
                 beforeUpload={(file) => {
-                  const isJpgOrPng = file.type === 'image/jpeg' || file.type === 'image/png';
-                  if (!isJpgOrPng) {
-                    message.error('只能上传 JPG 或 PNG 格式的图片!');
-                    return false;
-                  }
-                  const isLt5M = file.size / 1024 / 1024 < 5;
-                  if (!isLt5M) {
-                    message.error('图片大小不能超过 5MB!');
-                    return false;
-                  }
                   setUploadedImage({
                     file,
                     url: URL.createObjectURL(file),

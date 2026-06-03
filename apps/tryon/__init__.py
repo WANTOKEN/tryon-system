@@ -1,2 +1,2 @@
 # Tryon module
-default_app_config = 'apps.tryon.apps.TryonConfig'
+default_app_config = "apps.tryon.apps.TryonConfig"

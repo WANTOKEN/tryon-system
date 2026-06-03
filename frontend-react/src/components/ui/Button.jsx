@@ -30,7 +30,7 @@ export default function Button({
   const variantClass = VARIANTS[variant] || VARIANTS.primary
   const sizeClass = SIZES[size] || SIZES.md
   const stateClass =
-    disabled || loading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md active:scale-95'
+    disabled || loading ? 'btn-disabled opacity-50 cursor-not-allowed' : 'hover:shadow-md active:scale-95'
 
   return (
     <button

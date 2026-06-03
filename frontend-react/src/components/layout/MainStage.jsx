@@ -115,7 +115,7 @@ export default function MainStage({
             type='button'
             className={`generate-btn-simple ${isGenerating ? 'loading' : ''}`}
             onClick={onTryOn}
-            disabled={!canTryOn || isGenerating}
+            disabled={!canTryOn || isGenerating || !userConsent}
           >
             {isGenerating ? (
               <>

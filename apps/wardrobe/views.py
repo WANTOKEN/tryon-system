@@ -1,6 +1,7 @@
 """
-衣橱视图
+衣橱视图 - 重构版
 """
+
 from io import BytesIO
 from django.utils import timezone
 from django.db.models import Count
@@ -10,112 +11,94 @@ from rest_framework.response import Response
 
 from apps.common.utils.response import ApiResponse
 from apps.common.utils.pagination import CustomPageNumberPagination
-from .models import Clothing, PresetClothing
-from .serializers import (
-    ClothingSerializer, ClothingUploadSerializer,
-    PresetClothingSerializer
-)
+from .models import Clothing
+from .serializers import ClothingSerializer, ClothingUploadSerializer
 
-
-# 分类配置
+# 分类配置 - 与前端保持一致
 CATEGORIES_CONFIG = {
-    'tops': {'name_zh': '上装', 'name_tw': '上裝', 'name_en': 'Tops',
-             'subcategories': ['t-shirt', 'shirt', 'blouse', 'sweater', 'hoodie']},
-    'bottoms': {'name_zh': '下装', 'name_tw': '下裝', 'name_en': 'Bottoms',
-                'subcategories': ['jeans', 'pants', 'shorts', 'skirt', 'leggings']},
-    'dresses': {'name_zh': '连衣裙', 'name_tw': '連衣裙', 'name_en': 'Dresses',
-                'subcategories': ['mini', 'midi', 'maxi', 'casual', 'formal']},
-    'outerwear': {'name_zh': '外套', 'name_tw': '外套', 'name_en': 'Outerwear',
-                  'subcategories': ['jacket', 'coat', 'blazer', 'cardigan', 'vest']},
-    'shoes': {'name_zh': '鞋', 'name_tw': '鞋', 'name_en': 'Shoes',
-              'subcategories': ['sneakers', 'heels', 'boots', 'sandals', 'loafers']},
-    'accessories': {'name_zh': '配饰', 'name_tw': '配飾', 'name_en': 'Accessories',
-                    'subcategories': ['hat', 'scarf', 'bag', 'belt', 'jewelry']},
+    "tops": {"name_zh": "上装", "name_en": "Upper", "name_tw": "上裝"},
+    "bottoms": {"name_zh": "下装", "name_en": "Lower", "name_tw": "下裝"},
+    "dresses": {"name_zh": "连衣裙", "name_en": "Dress", "name_tw": "連衣裙"},
+    "outerwear": {"name_zh": "外套", "name_en": "Outerwear", "name_tw": "外套"},
+    "shoes": {"name_zh": "鞋履", "name_en": "Shoes", "name_tw": "鞋履"},
+    "accessories": {"name_zh": "配饰", "name_en": "Accessories", "name_tw": "配飾"},
 }
 
-# 二级分类多语言映射
 SUBCATEGORY_I18N = {
     # 上装
-    't-shirt': {'zh-CN': 'T恤', 'zh-TW': 'T恤', 'en': 'T-Shirts'},
-    'shirt': {'zh-CN': '衬衫', 'zh-TW': '襯衫', 'en': 'Shirts'},
-    'blouse': {'zh-CN': '女衬衫', 'zh-TW': '女襯衫', 'en': 'Blouses'},
-    'sweater': {'zh-CN': '针织衫', 'zh-TW': '針織衫', 'en': 'Sweaters'},
-    'hoodie': {'zh-CN': '卫衣', 'zh-TW': '衛衣', 'en': 'Hoodies'},
+    "t-shirt": {"zh-CN": "T恤", "zh-TW": "T恤", "en": "T-shirts"},
+    "shirt": {"zh-CN": "衬衫", "zh-TW": "襯衫", "en": "Shirts"},
+    "blouse": {"zh-CN": "雪纺衫", "zh-TW": "雪紡衫", "en": "Blouses"},
+    "sweater": {"zh-CN": "毛衣", "zh-TW": "毛衣", "en": "Sweaters"},
+    "hoodie": {"zh-CN": "卫衣", "zh-TW": "衛衣", "en": "Hoodies"},
     # 下装
-    'jeans': {'zh-CN': '牛仔裤', 'zh-TW': '牛仔褲', 'en': 'Jeans'},
-    'pants': {'zh-CN': '休闲裤', 'zh-TW': '休閒褲', 'en': 'Pants'},
-    'shorts': {'zh-CN': '短裤', 'zh-TW': '短褲', 'en': 'Shorts'},
-    'skirt': {'zh-CN': '半身裙', 'zh-TW': '半身裙', 'en': 'Skirts'},
-    'leggings': {'zh-CN': '打底裤', 'zh-TW': '打底褲', 'en': 'Leggings'},
+    "pants": {"zh-CN": "长裤", "zh-TW": "長褲", "en": "Pants"},
+    "shorts": {"zh-CN": "短裤", "zh-TW": "短褲", "en": "Shorts"},
+    "skirt": {"zh-CN": "半身裙", "zh-TW": "半身裙", "en": "Skirts"},
+    "jeans": {"zh-CN": "牛仔裤", "zh-TW": "牛仔褲", "en": "Jeans"},
     # 连衣裙
-    'mini': {'zh-CN': '迷你裙', 'zh-TW': '迷你裙', 'en': 'Mini'},
-    'midi': {'zh-CN': '中长裙', 'zh-TW': '中長裙', 'en': 'Midi'},
-    'maxi': {'zh-CN': '长裙', 'zh-TW': '長裙', 'en': 'Maxi'},
-    'casual': {'zh-CN': '休闲裙', 'zh-TW': '休閒裙', 'en': 'Casual'},
-    'formal': {'zh-CN': '礼服裙', 'zh-TW': '禮服裙', 'en': 'Formal'},
+    "casual-dress": {"zh-CN": "休闲连衣裙", "zh-TW": "休閒連衣裙", "en": "Casual Dresses"},
+    "formal-dress": {"zh-CN": "正式连衣裙", "zh-TW": "正式連衣裙", "en": "Formal Dresses"},
+    "maxi-dress": {"zh-CN": "长裙", "zh-TW": "長裙", "en": "Maxi Dresses"},
     # 外套
-    'jacket': {'zh-CN': '夹克', 'zh-TW': '夾克', 'en': 'Jackets'},
-    'coat': {'zh-CN': '大衣', 'zh-TW': '大衣', 'en': 'Coats'},
-    'blazer': {'zh-CN': '西装', 'zh-TW': '西裝', 'en': 'Blazers'},
-    'cardigan': {'zh-CN': '开衫', 'zh-TW': '開衫', 'en': 'Cardigans'},
-    'vest': {'zh-CN': '马甲', 'zh-TW': '馬甲', 'en': 'Vests'},
-    # 鞋
-    'sneakers': {'zh-CN': '运动鞋', 'zh-TW': '運動鞋', 'en': 'Sneakers'},
-    'heels': {'zh-CN': '高跟鞋', 'zh-TW': '高跟鞋', 'en': 'Heels'},
-    'boots': {'zh-CN': '靴子', 'zh-TW': '靴子', 'en': 'Boots'},
-    'sandals': {'zh-CN': '凉鞋', 'zh-TW': '涼鞋', 'en': 'Sandals'},
-    'loafers': {'zh-CN': '乐福鞋', 'zh-TW': '樂福鞋', 'en': 'Loafers'},
+    "coat": {"zh-CN": "大衣", "zh-TW": "大衣", "en": "Coats"},
+    "jacket": {"zh-CN": "夹克", "zh-TW": "夾克", "en": "Jackets"},
+    "blazer": {"zh-CN": "西装外套", "zh-TW": "西裝外套", "en": "Blazers"},
+    "cardigan": {"zh-CN": "开衫", "zh-TW": "開衫", "en": "Cardigans"},
+    # 鞋履
+    "sneakers": {"zh-CN": "运动鞋", "zh-TW": "運動鞋", "en": "Sneakers"},
+    "heels": {"zh-CN": "高跟鞋", "zh-TW": "高跟鞋", "en": "Heels"},
+    "boots": {"zh-CN": "靴子", "zh-TW": "靴子", "en": "Boots"},
+    "sandals": {"zh-CN": "凉鞋", "zh-TW": "涼鞋", "en": "Sandals"},
+    "loafers": {"zh-CN": "乐福鞋", "zh-TW": "樂福鞋", "en": "Loafers"},
     # 配饰
-    'hat': {'zh-CN': '帽子', 'zh-TW': '帽子', 'en': 'Hats'},
-    'scarf': {'zh-CN': '围巾', 'zh-TW': '圍巾', 'en': 'Scarves'},
-    'bag': {'zh-CN': '包袋', 'zh-TW': '包袋', 'en': 'Bags'},
-    'belt': {'zh-CN': '腰带', 'zh-TW': '腰帶', 'en': 'Belts'},
-    'jewelry': {'zh-CN': '首饰', 'zh-TW': '首飾', 'en': 'Jewelry'},
+    "hat": {"zh-CN": "帽子", "zh-TW": "帽子", "en": "Hats"},
+    "scarf": {"zh-CN": "围巾", "zh-TW": "圍巾", "en": "Scarves"},
+    "bag": {"zh-CN": "包袋", "zh-TW": "包袋", "en": "Bags"},
+    "belt": {"zh-CN": "腰带", "zh-TW": "腰帶", "en": "Belts"},
+    "jewelry": {"zh-CN": "首饰", "zh-TW": "首飾", "en": "Jewelry"},
 }
 
 
-def get_subcategory_name(subcategory_id: str, lang: str = 'zh-CN') -> str:
+def get_subcategory_name(subcategory_id: str, lang: str = "zh-CN") -> str:
     """获取二级分类的本地化名称"""
     i18n = SUBCATEGORY_I18N.get(subcategory_id, {})
-    return i18n.get(lang, i18n.get('zh-CN', subcategory_id))
+    return i18n.get(lang, i18n.get("zh-CN", subcategory_id))
 
 
-def get_category_name(category_id: str, lang: str = 'zh-CN') -> str:
+def get_category_name(category_id: str, lang: str = "zh-CN") -> str:
     """获取分类名称"""
     config = CATEGORIES_CONFIG.get(category_id, {})
-    if lang == 'zh-TW':
-        return config.get('name_tw', category_id)
-    elif lang == 'en':
-        return config.get('name_en', category_id)
-    return config.get('name_zh', category_id)
+    if lang == "zh-TW":
+        return config.get("name_tw", category_id)
+    elif lang == "en":
+        return config.get("name_en", category_id)
+    return config.get("name_zh", category_id)
 
 
 def get_language(request) -> str:
     """获取请求语言"""
-    accept_language = request.META.get('HTTP_ACCEPT_LANGUAGE', 'zh-CN')
-    if 'zh-TW' in accept_language:
-        return 'zh-TW'
-    elif 'en' in accept_language:
-        return 'en'
-    return 'zh-CN'
+    accept_language = request.META.get("HTTP_ACCEPT_LANGUAGE", "zh-CN")
+    if "zh-TW" in accept_language:
+        return "zh-TW"
+    elif "en" in accept_language:
+        return "en"
+    return "zh-CN"
 
 
 class ClothingListView(APIView):
     """服装列表"""
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        queryset = Clothing.objects.filter(
-            merchant_id=request.user.id,
-            is_active=True,
-            is_deleted=False
-        )
+        queryset = Clothing.objects.filter(merchant_id=request.user.id, is_active=True, is_deleted=False)
 
         # 筛选参数
-        category = request.query_params.get('category')
-        subcategory = request.query_params.get('subcategory')
-        source = request.query_params.get('source')
-        is_active = request.query_params.get('is_active', 'true').lower() == 'true'
+        category = request.query_params.get("category")
+        subcategory = request.query_params.get("subcategory")
+        source = request.query_params.get("source")
+        is_active = request.query_params.get("is_active", "true").lower() == "true"
 
         if category:
             queryset = queryset.filter(category=category)
@@ -136,63 +119,44 @@ class ClothingListView(APIView):
 
 class ClothingUploadView(APIView):
     """上传服装"""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = ClothingUploadSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return ApiResponse.error(serializer.errors)
 
-        image = serializer.validated_data['image']
-        name = serializer.validated_data['name']
-        category = serializer.validated_data['category']
-        subcategory = serializer.validated_data['subcategory']
-        color = serializer.validated_data.get('color', '#000000')
-        price = serializer.validated_data.get('price', 0.00)
-        sizes = serializer.validated_data.get('sizes', '')
+        data = serializer.validated_data
+        image = data.get("image")
+        name = data.get("name", "未命名服装")
+        category = data.get("category", "upper")
+        subcategory = data.get("subcategory", "t-shirt")
+        color = data.get("color", "#000000")
+        price = data.get("price", 0)
+        sizes = data.get("sizes", [])
 
-        # 上传图片到存储服务
+        if not image:
+            return ApiResponse.error("请上传服装图片")
+
+        # 读取图片文件
+        image_file = BytesIO(image.read())
+        filename = image.name
+
+        # 获取存储服务
         from apps.common.services.storage_service import storage_service
-        from apps.common.services.ai_image_service import ai_image_service
-        import os
 
-        # 读取图片数据
-        image_data = image.read()
-        
-        # 使用 AI 自动修图
-        try:
-            processed_image_data = ai_image_service.process_clothing_image(
-                image_data,
-                remove_background=True,
-                enhance=True,
-                output_size=(800, 800)
-            )
-            # 使用处理后的图片
-            image_file = BytesIO(processed_image_data)
-        except Exception as e:
-            # 如果处理失败，使用原始图片
-            import logging
-            logger = logging.getLogger('wardrobe')
-            logger.warning(f'[Wardrobe] AI 图片处理失败，使用原始图片: {e}')
-            image_file = image
-
-        # 生成文件名
-        ext = os.path.splitext(image.name)[1]
-        filename = f"clothing{ext}"
-
-        # 上传到存储服务 (自动 MD5 去重，自动记录到 FileUploadRecord)
-        storage_key, image_url, is_duplicate, content_key = storage_service.upload_file(
+        # 上传到存储服务
+        storage_key, image_url, is_duplicate, content_key, file_id = storage_service.upload_file(
             file_obj=image_file,
             filename=filename,
-            folder='clothing',
+            folder="clothing",
             tenant_id=str(request.user.uuid),
-            content_type=image.content_type or 'image/jpeg',
-            file_category='clothing',
+            content_type=image.content_type or "image/jpeg",
+            file_category="clothing",
             skip_duplicate=True,
-            ref_type='Clothing',
-            source='merchant_upload'
+            source="merchant_upload",
         )
-        image_thumb_url = image_url  # TODO: 生成缩略图
-        file_hash = content_key  # 存储 content_key（格式: storage_type:md5），用于复用
 
         # 创建服装记录
         clothing = Clothing.objects.create(
@@ -203,99 +167,122 @@ class ClothingUploadView(APIView):
             color=color,
             price=price,
             sizes=sizes,
-            image_url=image_url,
-            image_thumb_url=image_thumb_url,
             source=Clothing.Source.WARDROBE,
-            file_hash=file_hash
         )
 
-        return ApiResponse.success(ClothingSerializer(clothing).data, message='上传成功')
+        # 关联文件记录
+        if file_id:
+            from apps.common.models import FileRecord
+
+            try:
+                file_record = FileRecord.objects.get(id=file_id)
+                clothing.file = file_record
+                clothing.save()
+            except FileRecord.DoesNotExist:
+                pass
+
+        return ApiResponse.success(ClothingSerializer(clothing).data, message="上传成功")
 
 
-class ClothingDeleteView(APIView):
-    """删除服装"""
+class ClothingDetailView(APIView):
+    """服装详情、更新"""
+
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, uuid):
+        try:
+            clothing = Clothing.objects.get(id=uuid, merchant_id=request.user.id, is_deleted=False)
+        except Clothing.DoesNotExist:
+            return ApiResponse.not_found("服装不存在")
+
+        serializer = ClothingSerializer(clothing)
+        return ApiResponse.success(serializer.data)
+
+    def put(self, request, uuid):
+        try:
+            clothing = Clothing.objects.get(id=uuid, merchant_id=request.user.id, is_deleted=False)
+        except Clothing.DoesNotExist:
+            return ApiResponse.not_found("服装不存在")
+
+        serializer = ClothingDetailSerializer(clothing, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return ApiResponse.error(serializer.errors)
+
+        serializer.save()
+        return ApiResponse.success(serializer.data, message="更新成功")
 
     def delete(self, request, uuid):
         try:
-            clothing = Clothing.objects.get(uuid=uuid, merchant_id=request.user.id)
+            clothing = Clothing.objects.get(id=uuid, merchant_id=request.user.id)
         except Clothing.DoesNotExist:
-            return ApiResponse.not_found('服装不存在')
+            return ApiResponse.not_found("服装不存在")
 
-        # 预设服装不可删除
-        if clothing.source == Clothing.Source.PRESET:
-            return ApiResponse.error('预设服装不可删除')
-
-        # 软删除
         clothing.is_deleted = True
         clothing.deleted_at = timezone.now()
-        clothing.save(update_fields=['is_deleted', 'deleted_at'])
+        clothing.save(update_fields=["is_deleted", "deleted_at"])
 
-        return ApiResponse.success(message='已删除')
+        return ApiResponse.success(message="已删除")
 
 
-class PresetsView(APIView):
-    """获取预设模板"""
+class ClothingCreateView(APIView):
+    """创建服装（通过URL）"""
+
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        lang = get_language(request)
+    def post(self, request):
+        serializer = ClothingDetailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return ApiResponse.error(serializer.errors)
 
-        # 获取预设服装
-        presets = PresetClothing.objects.filter(is_active=True)
+        data = serializer.validated_data
+        clothing = Clothing.objects.create(
+            merchant_id=request.user.id,
+            name=data.get("name", "未命名服装"),
+            category=data.get("category", "tops"),
+            subcategory=data.get("subcategory", "t-shirt"),
+            color=data.get("color", "#000000"),
+            price=data.get("price", 0),
+            sizes=data.get("sizes", []),
+            source=Clothing.Source.WARDROBE,
+            is_active=data.get("is_active", True),
+        )
 
-        # 按分类分组
-        result = {}
-        for preset in presets:
-            cat = preset.category
-            if cat not in result:
-                result[cat] = []
-            result[cat].append({
-                'id': preset.subcategory,
-                'name': preset.get_name(lang),
-                'color': preset.color,
-                'image_url': preset.image_url,
-            })
-
-        return ApiResponse.success(result)
+        return ApiResponse.success(ClothingSerializer(clothing).data, message="创建成功")
 
 
 class CategoriesView(APIView):
-    """获取分类配置"""
+    """获取分类列表"""
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         lang = get_language(request)
 
-        # 获取用户服装数量
-        clothing_counts = Clothing.objects.filter(
-            merchant_id=request.user.id,
-            is_active=True,
-            is_deleted=False
-        ).values('category', 'subcategory').annotate(count=Count('id'))
-
-        # 构建统计字典
-        count_dict = {}
-        for item in clothing_counts:
-            key = (item['category'], item['subcategory'])
-            count_dict[key] = item['count']
-
-        # 构建分类结构
-        categories = []
-        for cat_id, cat_config in CATEGORIES_CONFIG.items():
+        result = []
+        for category_id, config in CATEGORIES_CONFIG.items():
+            # 获取该分类下的二级分类
             subcategories = []
-            for subcat in cat_config['subcategories']:
-                count = count_dict.get((cat_id, subcat), 0)
-                subcategories.append({
-                    'id': subcat,
-                    'name': get_subcategory_name(subcat, lang),  # 使用多语言名称
-                    'count': count
-                })
+            for sub_id, i18n in SUBCATEGORY_I18N.items():
+                # 判断二级分类属于哪个一级分类
+                if category_id == "tops" and sub_id in ["t-shirt", "shirt", "blouse", "sweater", "hoodie"]:
+                    subcategories.append({"id": sub_id, "name": i18n.get(lang, i18n.get("zh-CN", sub_id))})
+                elif category_id == "bottoms" and sub_id in ["pants", "shorts", "skirt", "jeans"]:
+                    subcategories.append({"id": sub_id, "name": i18n.get(lang, i18n.get("zh-CN", sub_id))})
+                elif category_id == "dresses" and sub_id in ["casual-dress", "formal-dress", "maxi-dress"]:
+                    subcategories.append({"id": sub_id, "name": i18n.get(lang, i18n.get("zh-CN", sub_id))})
+                elif category_id == "outerwear" and sub_id in ["coat", "jacket", "blazer", "cardigan"]:
+                    subcategories.append({"id": sub_id, "name": i18n.get(lang, i18n.get("zh-CN", sub_id))})
+                elif category_id == "shoes" and sub_id in ["sneakers", "heels", "boots", "sandals", "loafers"]:
+                    subcategories.append({"id": sub_id, "name": i18n.get(lang, i18n.get("zh-CN", sub_id))})
+                elif category_id == "accessories" and sub_id in ["hat", "scarf", "bag", "belt", "jewelry"]:
+                    subcategories.append({"id": sub_id, "name": i18n.get(lang, i18n.get("zh-CN", sub_id))})
 
-            categories.append({
-                'id': cat_id,
-                'name': get_category_name(cat_id, lang),
-                'subcategories': subcategories
-            })
+            result.append(
+                {
+                    "id": category_id,
+                    "name": get_category_name(category_id, lang),
+                    "subcategories": subcategories,
+                }
+            )
 
-        return ApiResponse.success(categories)
+        return ApiResponse.success(result)

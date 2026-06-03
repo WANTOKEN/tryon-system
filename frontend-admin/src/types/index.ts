@@ -29,15 +29,13 @@ export interface TryOnRecord {
   id: number;
   uuid: string;
   merchant_id: number;
-  user_id?: number;
   merchant_name?: string;
   session_id: string;
   avatar_url: string;
-  avatar_key: string;
-  source_image_url?: string;
+  avatar_file_id?: string;
+  avatar_source: 'system' | 'user' | 'history';
   result_url: string;
-  result_key: string;
-  result_original_url: string;
+  result_file_id?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   status_text: string;
   ai_engine: string;
@@ -51,22 +49,9 @@ export interface TryOnRecord {
   updated_at: string;
 }
 
-// 服装 (TryOnClothing)
-export interface TryOnClothing {
-  id: number;
-  name: string;
-  image_url: string;
-  category: string;
-  price: number | null;
-  is_active: boolean;
-  clothing_key: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// 服装 (旧接口兼容)
+// 服装
 export interface Clothing {
-  id: number;
+  id: string; // UUID
   uuid: string;
   merchant_id: number;
   category: string;
@@ -75,9 +60,10 @@ export interface Clothing {
   name: string;
   color: string;
   price: number;
-  sizes: string;
+  sizes: string[];
   image_url: string;
   image_thumb_url: string;
+  file_id?: string;
   sort_order: number;
   is_active: boolean;
   source: string;
@@ -86,25 +72,9 @@ export interface Clothing {
   updated_at: string;
 }
 
-// 预设服装
-export interface PresetClothing {
-  id: number;
-  category: string;
-  category_text: string;
-  subcategory: string;
-  name_i18n: Record<string, string>;
-  color: string;
-  image_url: string;
-  sort_order: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-// 文件上传记录
-export interface FileUploadRecord {
-  id: number;
-  filename?: string;
+// 文件记录
+export interface FileRecord {
+  id: string; // UUID
   md5_hash: string;
   storage_type: 'local' | 'oss';
   storage_type_text?: string;
@@ -116,20 +86,15 @@ export interface FileUploadRecord {
   file_category_text?: string;
   file_size: number;
   content_type: string;
-  file_type?: string; // 别名
+  file_type?: string;
   file_ext: string;
   width: number;
   height: number;
-  hit_count: number;
-  ref_type: string;
-  ref_id: string;
-  source: string;
-  client_ip: string;
+  is_public: boolean;
   is_deleted: boolean;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
-  last_accessed_at: string;
 }
 
 // 统计数据
@@ -204,33 +169,25 @@ export interface AdminUser {
   phone?: string;
   store_name?: string;
   is_superuser: boolean;
-  role: UserRole; // 用户角色
-  merchant_id?: number; // 如果是商家管理员，关联的商家ID
+  role: UserRole;
+  merchant_id?: number;
   permissions?: string[];
 }
 
 // 权限码定义
 export const PERMISSIONS = {
-  // 超管权限
   SUPER_ADMIN: 'super_admin',
-  // 商家管理
   MERCHANT_VIEW: 'merchant_view',
   MERCHANT_MANAGE: 'merchant_manage',
-  // 试穿记录
   TRYON_VIEW: 'tryon_view',
   TRYON_MANAGE: 'tryon_manage',
-  // 服装管理
   CLOTHING_VIEW: 'clothing_view',
   CLOTHING_MANAGE: 'clothing_manage',
-  // 文件管理
   FILE_VIEW: 'file_view',
   FILE_MANAGE: 'file_manage',
-  // 系统设置
   SYSTEM_SETTINGS: 'system_settings',
-  // 管理员管理
   ADMIN_VIEW: 'admin_view',
   ADMIN_MANAGE: 'admin_manage',
-  // 操作日志
   LOG_VIEW: 'log_view',
 } as const;
 
@@ -245,8 +202,6 @@ export const MENU_PERMISSIONS: Record<string, string[]> = {
   '/operation-logs': [PERMISSIONS.LOG_VIEW],
   '/settings': [PERMISSIONS.SYSTEM_SETTINGS],
 };
-
-// ============ 新增类型 ============
 
 // 管理员用户
 export interface AdminUserItem {
@@ -321,9 +276,23 @@ export interface ModelPhoto {
   id: number;
   image_url: string;
   image_thumb_url: string;
-  image_key: string;
+  file_id?: string;
   sort_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// 试穿服装关联
+export interface TryOnClothing {
+  id: number;
+  category: string;
+  subcategory: string;
+  clothing_name: string;
+  clothing_color: string;
+  clothing_image: string;
+  is_custom: boolean;
+  name: string;
+  color: string;
+  is_available: boolean;
 }

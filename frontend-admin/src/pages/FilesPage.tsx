@@ -3,7 +3,7 @@ import type { ProColumns, ActionType } from '@ant-design/pro-components';
 import { Button, Modal, message, Tag, Space, Popconfirm, Statistic, Card, Row, Col, Dropdown } from 'antd';
 import { DeleteOutlined, UndoOutlined, ReloadOutlined, MoreOutlined } from '@ant-design/icons';
 import { useRef, useState, useEffect } from 'react';
-import type { FileUploadRecord } from '../types';
+import type { FileRecord } from '../types';
 import { fileApi } from '../api';
 import type { MenuProps } from 'antd';
 
@@ -49,7 +49,7 @@ export default function FilesPage() {
     return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
   };
 
-  const columns: ProColumns<FileUploadRecord>[] = [
+  const columns: ProColumns<FileRecord>[] = [
     {
       title: 'ID',
       dataIndex: 'id',
@@ -126,14 +126,14 @@ export default function FilesPage() {
       hideInSearch: true,
     },
     {
-      title: '命中次数',
-      dataIndex: 'hit_count',
+      title: '是否公开',
+      dataIndex: 'is_public',
       hideInSearch: true,
       width: 80,
       render: (_, record) => (
-        <span style={{ color: record.hit_count > 0 ? '#52c41a' : undefined }}>
-          {record.hit_count}
-        </span>
+        <Tag color={record.is_public ? 'blue' : 'default'}>
+          {record.is_public ? '公开' : '私有'}
+        </Tag>
       ),
     },
     {
@@ -182,7 +182,7 @@ export default function FilesPage() {
   ];
 
   // 批量操作
-  const handleBatchAction = (ids: number[], action: 'soft_delete' | 'restore' | 'hard_delete') => {
+  const handleBatchAction = (ids: string[], action: 'soft_delete' | 'restore' | 'hard_delete') => {
     const actionText = {
       soft_delete: '软删除',
       restore: '恢复',
@@ -250,7 +250,7 @@ export default function FilesPage() {
       message.warning('请先选择要操作的文件');
       return;
     }
-    handleBatchAction(selectedRowKeys as number[], key as 'soft_delete' | 'restore' | 'hard_delete');
+    handleBatchAction(selectedRowKeys as string[], key as 'soft_delete' | 'restore' | 'hard_delete');
   };
 
   return (
@@ -287,7 +287,7 @@ export default function FilesPage() {
         </Card>
       )}
 
-      <ProTable<FileUploadRecord>
+      <ProTable<FileRecord>
         columns={columns}
         actionRef={actionRef}
         request={async (params) => {
@@ -301,7 +301,7 @@ export default function FilesPage() {
               search: params.search,
             });
             return {
-              data: res.items as FileUploadRecord[],
+              data: res.items as FileRecord[],
               total: res.total,
               success: true,
             };

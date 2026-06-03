@@ -516,7 +516,12 @@ function AppContent() {
   useEffect(() => {
     if (isLoggedIn) {
       fetchHistory()
-      fetchClothing()
+      fetchClothing().then(items => {
+        if (items.length > 0) {
+          setWardrobeClothing(items)
+          safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, items)
+        }
+      })
       fetchCategories()
     }
   }, [isLoggedIn, fetchHistory, fetchClothing, fetchCategories])

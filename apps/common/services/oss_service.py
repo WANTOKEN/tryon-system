@@ -16,18 +16,16 @@
 
 文档: https://help.aliyun.com/zh/oss/developer-reference/getting-started-with-oss-sdk-for-python
 """
+
 import os
 import uuid
-import hashlib
 import logging
-from datetime import datetime
-from typing import Optional, Tuple, BinaryIO, Union
+from typing import Optional, Tuple, BinaryIO
 from io import BytesIO
 
 import oss2
 
 from apps.common.constants import (
-    StorageType,
     FileType,
     FileExtension,
     FileSizeLimit,
@@ -37,7 +35,7 @@ from apps.common.exceptions import OssException
 from apps.common.services.upload_config import UploadValidationError
 from apps.common.utils.content_key import ContentKey
 
-logger = logging.getLogger('oss')
+logger = logging.getLogger("oss")
 
 
 # 从 storage_service 导入 MD5 计算函数
@@ -50,13 +48,13 @@ _hash_cache = None
 class OSSService:
     """
     阿里云 OSS 存储服务 (单例模式)
-    
+
     功能:
     - 上传文件到 OSS
     - 生成签名 URL (临时访问)
     - 删除文件
     - 批量操作
-    
+
     配置环境变量:
     - OSS_ACCESS_KEY_ID: 阿里云 AccessKey ID
     - OSS_ACCESS_KEY_SECRET: 阿里云 AccessKey Secret
@@ -64,35 +62,35 @@ class OSSService:
     - OSS_ENDPOINT: OSS 端点 (如: oss-cn-shanghai.aliyuncs.com)
     - OSS_DOMAIN: 自定义域名 (可选，用于生成访问 URL)
     """
-    
+
     _instance = None
-    
+
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
             cls._instance = object.__new__(cls)
         return cls._instance
-    
+
     def __init__(self):
-        if hasattr(self, 'initialized'):
+        if hasattr(self, "initialized"):
             return
-        
-        self.access_key_id = os.getenv('OSS_ACCESS_KEY_ID', '')
-        self.access_key_secret = os.getenv('OSS_ACCESS_KEY_SECRET', '')
-        self.bucket_name = os.getenv('OSS_BUCKET_NAME', '')
-        self.endpoint = os.getenv('OSS_ENDPOINT', 'oss-cn-shanghai.aliyuncs.com')
-        self.domain = os.getenv('OSS_DOMAIN', '')
-        
-        self.public_read = os.getenv('OSS_PUBLIC_READ', 'false').lower() == 'true'
-        
+
+        self.access_key_id = os.getenv("OSS_ACCESS_KEY_ID", "")
+        self.access_key_secret = os.getenv("OSS_ACCESS_KEY_SECRET", "")
+        self.bucket_name = os.getenv("OSS_BUCKET_NAME", "")
+        self.endpoint = os.getenv("OSS_ENDPOINT", "oss-cn-shanghai.aliyuncs.com")
+        self.domain = os.getenv("OSS_DOMAIN", "")
+
+        self.public_read = os.getenv("OSS_PUBLIC_READ", "false").lower() == "true"
+
         self._auth = None
         self._bucket = None
         self.enabled = self._check_config()
-        
+
         if self.enabled:
             self._init_client()
-        
+
         self.initialized = True
-    
+
     def _check_config(self) -> bool:
         """检查配置是否完整"""
         if not all([self.access_key_id, self.access_key_secret, self.bucket_name]):
@@ -108,15 +106,15 @@ class OSSService:
     def _validate_upload(self, content: bytes, filename: str, content_type: str) -> str:
         """
         验证上传文件
-        
+
         Args:
             content: 文件内容
             filename: 原始文件名
             content_type: 内容类型
-            
+
         Returns:
             文件扩展名
-            
+
         Raises:
             UploadValidationError: 验证失败
         """
@@ -124,107 +122,47 @@ class OSSService:
         file_size = len(content)
         if file_size > FileSizeLimit.MAX_FILE_SIZE:
             raise UploadValidationError(
-                f'{ErrorMessage.FILE_TOO_LARGE}（最大 {FileSizeLimit.MAX_FILE_SIZE // 1024 // 1024}MB，当前 {file_size // 1024 // 1024}MB）'
+                f"{ErrorMessage.FILE_TOO_LARGE}（最大 {FileSizeLimit.MAX_FILE_SIZE // 1024 // 1024}MB，当前 {file_size // 1024 // 1024}MB）"
             )
-        
+
         if file_size == 0:
             raise UploadValidationError(ErrorMessage.FILE_EMPTY)
-        
+
         # 2. 验证文件类型
-        ext = ''
-        
+        ext = ""
+
         # 优先从 content_type 获取扩展名
         if FileType.is_supported(content_type):
             ext = FileType.get_extension(content_type)
         else:
             # 从文件名获取扩展名
-            if '.' in filename:
+            if "." in filename:
                 ext = os.path.splitext(filename)[1].lower()
             if not FileExtension.is_supported(ext):
                 raise UploadValidationError(
                     f'{ErrorMessage.FILE_TYPE_NOT_SUPPORTED}，仅支持：{", ".join(FileExtension.ALL)}'
                 )
-        
+
         return ext
-    
+
     def _init_client(self):
         """初始化 OSS 客户端"""
         try:
             self._auth = oss2.Auth(self.access_key_id, self.access_key_secret)
-            self._bucket = oss2.Bucket(
-                self._auth,
-                self.endpoint,
-                self.bucket_name
-            )
+            self._bucket = oss2.Bucket(self._auth, self.endpoint, self.bucket_name)
             logger.info(f"[OSS] 初始化成功: bucket={self.bucket_name}, endpoint={self.endpoint}")
-            # 配置 CORS
-            self._setup_cors()
-            # 配置 Referer
-            self._setup_referer()
         except Exception as e:
             logger.error(f"[OSS] 初始化失败: {e}")
             self.enabled = False
-    
-    def _setup_cors(self):
-        """设置 OSS 存储桶的 CORS 规则"""
-        try:
-            # CORS 规则配置
-            cors_rules = [
-                {
-                    'allowed_origins': ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000', 'https://your-production-domain.com'],
-                    'allowed_methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-                    'allowed_headers': ['*'],
-                    'expose_headers': ['ETag', 'Content-Length'],
-                    'max_age_seconds': 3600
-                }
-            ]
-            
-            # 应用 CORS 规则
-            self.bucket.put_bucket_cors(cors_rules)
-            logger.info("[OSS] CORS 配置成功")
-        except Exception as e:
-            logger.warning(f"[OSS] CORS 配置失败: {e}")
-            # CORS 配置失败不影响其他功能
-    
-    def _setup_referer(self):
-        """设置 OSS 存储桶的防盗链规则"""
-        try:
-            # Referer 白名单配置
-            referer_config = {
-                'allow_empty_referer': True,  # 允许空 Referer
-                'referers': [
-                    'localhost',
-                    '127.0.0.1',
-                    'localhost:5173',
-                    'localhost:5174',
-                    'localhost:5175',
-                    'localhost:3000',
-                    'yourdomain.com',
-                    '*.yourdomain.com'
-                ]
-            }
-            
-            # 应用 Referer 配置
-            self.bucket.put_bucket_referer(referer_config)
-            logger.info("[OSS] Referer 配置成功")
-        except Exception as e:
-            logger.warning(f"[OSS] Referer 配置失败: {e}")
-            # Referer 配置失败不影响其他功能
-    
+
     @property
     def bucket(self) -> oss2.Bucket:
         """获取 Bucket 实例"""
         if not self.enabled:
-            raise OssException('OSS 服务不可用，请检查配置')
+            raise OssException("OSS 服务不可用，请检查配置")
         return self._bucket
-    
-    def _generate_file_key(
-        self,
-        folder: str,
-        filename: str,
-        tenant_id: str = '',
-        md5: Optional[str] = None
-    ) -> str:
+
+    def _generate_file_key(self, folder: str, filename: str, tenant_id: str = "", md5: Optional[str] = None) -> str:
         """
         生成 OSS 文件路径
 
@@ -238,7 +176,7 @@ class OSSService:
             OSS 文件路径
         """
         # 获取文件扩展名
-        ext = os.path.splitext(filename)[1] or '.jpg'
+        ext = os.path.splitext(filename)[1] or ".jpg"
 
         # 生成唯一文件名
         if md5:
@@ -249,22 +187,22 @@ class OSSService:
 
         # 构建完整路径：只用 folder + MD5，不暴露租户信息
         return f"{folder}/{unique_name}"
-    
+
     def upload_file(
         self,
         file_obj: BinaryIO,
-        filename: str = 'image.png',
-        folder: str = 'uploads',
-        tenant_id: str = '',
-        content_type: str = 'image/png',
-        file_category: str = 'other',
+        filename: str = "image.png",
+        folder: str = "uploads",
+        tenant_id: str = "",
+        content_type: str = "image/png",
+        file_category: str = "other",
         skip_duplicate: bool = True,
-        ref_type: str = '',
-        ref_id: str = '',
-        source: str = '',
-        client_ip: str = '',
-        acl: str = '',
-        is_public: bool = False
+        ref_type: str = "",
+        ref_id: str = "",
+        source: str = "",
+        client_ip: str = "",
+        acl: str = "",
+        is_public: bool = False,
     ) -> Tuple[str, str, bool]:
         """
         上传文件到 OSS（支持 MD5 去重）
@@ -296,11 +234,11 @@ class OSSService:
             OssException: 上传失败
         """
         if not self.enabled:
-            raise OssException('OSS 服务不可用')
+            raise OssException("OSS 服务不可用")
 
         try:
             # 读取文件内容
-            original_pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+            original_pos = file_obj.tell() if hasattr(file_obj, "tell") else 0
             content = file_obj.read()
 
             # 验证上传文件（类型、大小）
@@ -314,10 +252,8 @@ class OSSService:
                 cached = self._check_duplicate(md5, tenant_id)
                 if cached:
                     oss_key, public_url = cached
-                    logger.info(
-                        f"[OSS] 命中缓存跳过上传 | tenant={tenant_id} | md5={md5} | saved={len(content)}bytes"
-                    )
-                    content_key = ContentKey.from_md5(md5, 'oss')
+                    logger.info(f"[OSS] 命中缓存跳过上传 | tenant={tenant_id} | md5={md5} | saved={len(content)}bytes")
+                    content_key = ContentKey.from_md5(md5, "oss")
                     return oss_key, public_url, True, content_key
 
             # 生成 OSS 路径（使用 MD5 前缀作为文件名的一部分，便于追踪）
@@ -325,22 +261,22 @@ class OSSService:
 
             # 设置 headers（包含缓存控制）
             headers = {
-                'x-oss-meta-md5': md5,
-                'Cache-Control': 'public, max-age=31536000, immutable',
-                'Expires': 'Thu, 31 Dec 2026 23:59:59 GMT',
+                "x-oss-meta-md5": md5,
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "Expires": "Thu, 31 Dec 2026 23:59:59 GMT",
             }
             if content_type:
-                headers['Content-Type'] = content_type
-            
+                headers["Content-Type"] = content_type
+
             # 设置对象 ACL
             if acl:
-                headers['x-oss-object-acl'] = acl
+                headers["x-oss-object-acl"] = acl
 
             # 上传到 OSS
             result = self.bucket.put_object(oss_key, content, headers=headers)
 
             if result.status != 200:
-                raise OssException(f'OSS 上传失败: HTTP {result.status}')
+                raise OssException(f"OSS 上传失败: HTTP {result.status}")
 
             # 生成访问 URL
             public_url = self.get_url(oss_key)
@@ -363,11 +299,9 @@ class OSSService:
                     is_public=is_public,
                 )
 
-            logger.info(
-                f"[OSS] 上传成功 | key={oss_key} | size={len(content)}bytes | md5={md5}"
-            )
+            logger.info(f"[OSS] 上传成功 | key={oss_key} | size={len(content)}bytes | md5={md5}")
 
-            content_key = ContentKey.from_md5(md5, 'oss')
+            content_key = ContentKey.from_md5(md5, "oss")
             return oss_key, public_url, False, content_key
 
         except UploadValidationError:
@@ -375,10 +309,10 @@ class OSSService:
             raise
         except oss2.exceptions.OssError as e:
             logger.error(f"[OSS] 上传失败: {e}")
-            raise OssException(f'OSS 上传失败: {e.message}')
+            raise OssException(f"OSS 上传失败: {e.message}")
         except Exception as e:
             logger.error(f"[OSS] 上传异常: {e}")
-            raise OssException(f'OSS 上传异常: {str(e)}')
+            raise OssException(f"OSS 上传异常: {str(e)}")
 
     def _check_duplicate(self, md5: str, tenant_id: str) -> Optional[Tuple[str, str]]:
         """
@@ -392,8 +326,8 @@ class OSSService:
             如果存在，返回 (storage_key, access_url)；否则返回 None
         """
         try:
-            FileUploadRecord = self._get_upload_record_model()
-            record = FileUploadRecord.get_by_md5(md5, tenant_id=tenant_id, storage_type='oss')
+            FileRecord = self._get_upload_record_model()
+            record = FileRecord.get_by_md5(md5, tenant_id=tenant_id, storage_type="oss")
             if record:
                 return record.storage_key, record.access_url
         except Exception as e:
@@ -401,9 +335,10 @@ class OSSService:
         return None
 
     def _get_upload_record_model(self):
-        """延迟导入 FileUploadRecord 模型"""
-        from apps.common.models import FileUploadRecord
-        return FileUploadRecord
+        """延迟导入 FileRecord 模型"""
+        from apps.common.models import FileRecord
+
+        return FileRecord
 
     def _save_record(
         self,
@@ -412,22 +347,22 @@ class OSSService:
         access_url: str,
         folder: str,
         tenant_id: str,
-        file_category: str = 'other',
+        file_category: str = "other",
         file_size: int = 0,
-        content_type: str = '',
-        file_ext: str = '',
-        ref_type: str = '',
-        ref_id: str = '',
-        source: str = '',
-        client_ip: str = '',
-        is_public: bool = False
+        content_type: str = "",
+        file_ext: str = "",
+        ref_type: str = "",
+        ref_id: str = "",
+        source: str = "",
+        client_ip: str = "",
+        is_public: bool = False,
     ):
         """保存上传记录"""
         try:
-            FileUploadRecord = self._get_upload_record_model()
-            FileUploadRecord.create_record(
+            FileRecord = self._get_upload_record_model()
+            FileRecord.create_record(
                 md5=md5,
-                storage_type='oss',
+                storage_type="oss",
                 storage_key=storage_key,
                 access_url=access_url,
                 folder=folder,
@@ -444,19 +379,19 @@ class OSSService:
             )
         except Exception as e:
             logger.warning(f"[OSS] 保存记录失败: {e}")
-    
+
     def upload_from_path(
         self,
         local_path: str,
-        folder: str = 'uploads',
-        tenant_id: str = '',
-        file_category: str = 'other',
+        folder: str = "uploads",
+        tenant_id: str = "",
+        file_category: str = "other",
         skip_duplicate: bool = True,
-        ref_type: str = '',
-        ref_id: str = '',
-        source: str = '',
-        client_ip: str = '',
-        is_public: bool = False
+        ref_type: str = "",
+        ref_id: str = "",
+        source: str = "",
+        client_ip: str = "",
+        is_public: bool = False,
     ) -> Tuple[str, str, bool]:
         """
         从本地路径上传文件
@@ -480,7 +415,7 @@ class OSSService:
         """
         filename = os.path.basename(local_path)
 
-        with open(local_path, 'rb') as f:
+        with open(local_path, "rb") as f:
             return self.upload_file(
                 file=f,
                 filename=filename,
@@ -492,22 +427,22 @@ class OSSService:
                 ref_id=ref_id,
                 source=source,
                 client_ip=client_ip,
-                is_public=is_public
+                is_public=is_public,
             )
-    
+
     def upload_from_base64(
         self,
         base64_data: str,
-        folder: str = 'uploads',
-        tenant_id: str = '',
-        content_type: str = 'image/png',
-        file_category: str = 'other',
+        folder: str = "uploads",
+        tenant_id: str = "",
+        content_type: str = "image/png",
+        file_category: str = "other",
         skip_duplicate: bool = True,
-        ref_type: str = '',
-        ref_id: str = '',
-        source: str = '',
-        client_ip: str = '',
-        is_public: bool = False
+        ref_type: str = "",
+        ref_id: str = "",
+        source: str = "",
+        client_ip: str = "",
+        is_public: bool = False,
     ) -> Tuple[str, str, bool, str]:
         """
         从 Base64 数据上传文件
@@ -534,21 +469,21 @@ class OSSService:
 
         # 解码 Base64
         # 处理 data URL 格式: data:image/png;base64,xxxxx
-        if ',' in base64_data:
-            header, base64_data = base64_data.split(',', 1)
+        if "," in base64_data:
+            header, base64_data = base64_data.split(",", 1)
             # 从 header 提取 content-type
-            if 'image/' in header:
-                content_type = header.split(':')[1].split(';')[0]
+            if "image/" in header:
+                content_type = header.split(":")[1].split(";")[0]
 
         content = b64_module.b64decode(base64_data)
 
         # 确定扩展名
         ext_map = {
-            'image/png': '.png',
-            'image/jpeg': '.jpg',
-            'image/webp': '.webp',
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/webp": ".webp",
         }
-        ext = ext_map.get(content_type, '.png')
+        ext = ext_map.get(content_type, ".png")
 
         # 生成文件名
         filename = f"{uuid.uuid4().hex}{ext}"
@@ -568,35 +503,32 @@ class OSSService:
             ref_id=ref_id,
             source=source,
             client_ip=client_ip,
-            is_public=is_public
+            is_public=is_public,
         )
-    
+
     def get_url(self, key: str) -> str:
         """
         获取文件的公网访问 URL
-        
+
         Args:
             key: OSS 文件路径
-        
+
         Returns:
             公网访问 URL
         """
         # 确保 key 未被 URL 编码
         from urllib.parse import unquote
+
         key = unquote(key)
-        
+
         if self.domain:
             # 使用自定义域名
             return f"https://{self.domain}/{key}"
         else:
             # 使用 OSS 默认域名
             return f"https://{self.bucket_name}.{self.endpoint}/{key}"
-    
-    def get_signed_url(
-        self,
-        key: str,
-        expires: int = 3600
-    ) -> str:
+
+    def get_signed_url(self, key: str, expires: int = 3600) -> str:
         """
         获取带签名的临时访问 URL（支持缓存）
 
@@ -613,10 +545,11 @@ class OSSService:
             签名 URL（HTTPS）
         """
         if not self.enabled:
-            raise OssException('OSS 服务不可用')
+            raise OssException("OSS 服务不可用")
 
         # 确保 key 未被 URL 编码（防止双重编码）
         from urllib.parse import unquote
+
         key = unquote(key)
 
         # 如果是公开读的 bucket，直接返回公网 URL
@@ -629,10 +562,10 @@ class OSSService:
             return cached_signed_url
 
         # 生成新的签名 URL
-        url = self.bucket.sign_url('GET', key, expires)
+        url = self.bucket.sign_url("GET", key, expires)
         # 强制使用 HTTPS
-        if url.startswith('http://'):
-            url = 'https://' + url[7:]
+        if url.startswith("http://"):
+            url = "https://" + url[7:]
 
         # 缓存签名 URL 到数据库
         self._cache_signed_url_by_key(key, url, expires)
@@ -647,13 +580,10 @@ class OSSService:
             缓存的签名 URL 或 None（如果不存在或已过期）
         """
         from django.utils import timezone
-        from apps.common.models import FileUploadRecord
+        from apps.common.models import FileRecord
 
         try:
-            record = FileUploadRecord.objects.filter(
-                storage_key=key,
-                storage_type='oss'
-            ).order_by('-created_at').first()
+            record = FileRecord.objects.filter(storage_key=key, storage_type="oss").order_by("-created_at").first()
 
             if not record:
                 return None
@@ -679,37 +609,28 @@ class OSSService:
         将签名 URL 缓存到数据库（通过 key）
         """
         from django.utils import timezone
-        from apps.common.models import FileUploadRecord
+        from apps.common.models import FileRecord
 
         try:
-            record = FileUploadRecord.objects.filter(
-                storage_key=key,
-                storage_type='oss'
-            ).order_by('-created_at').first()
+            record = FileRecord.objects.filter(storage_key=key, storage_type="oss").order_by("-created_at").first()
 
             if record:
                 record.signed_url = signed_url
                 record.signed_url_expires = timezone.now() + timezone.timedelta(seconds=expires)
-                record.save(update_fields=['signed_url', 'signed_url_expires', 'updated_at'])
+                record.save(update_fields=["signed_url", "signed_url_expires", "updated_at"])
                 logger.debug(f"[OSS] 已缓存签名 URL，过期时间: {record.signed_url_expires}")
             else:
-                logger.debug(f"[OSS] 未找到 FileUploadRecord 记录，跳过缓存")
+                logger.debug(f"[OSS] 未找到 FileRecord 记录，跳过缓存")
 
         except Exception as e:
             logger.warning(f"[OSS] 缓存签名 URL 失败: {e}")
-    
+
     def get_thumb_url(
-        self,
-        key: str,
-        width: int = 200,
-        height: int = 200,
-        mode: str = 'fill',
-        quality: int = 80,
-        format: str = 'webp'
+        self, key: str, width: int = 200, height: int = 200, mode: str = "fill", quality: int = 80, format: str = "webp"
     ) -> str:
         """
         获取缩略图 URL（OSS 图片处理）
-        
+
         Args:
             key: OSS 文件路径
             width: 宽度，默认 200
@@ -720,37 +641,37 @@ class OSSService:
                 - mfit: 按短边缩放，裁剪至指定尺寸
             quality: 图片质量，默认 80
             format: 输出格式，默认 webp（体积更小）
-        
+
         Returns:
             缩略图 URL
         """
         base_url = self.get_url(key)
-        
+
         # OSS 图片处理参数
         # 文档: https://help.aliyun.com/document_detail/44688.html
         process_params = f"image/resize,m_{mode},h_{height},w_{width}"
-        
+
         if quality:
             process_params += f"/quality,q_{quality}"
-        
+
         if format:
             process_params += f"/format,{format}"
-        
+
         return f"{base_url}?x-oss-process={process_params}"
-    
+
     def get_signed_thumb_url(
         self,
         key: str,
         width: int = 200,
         height: int = 200,
-        mode: str = 'fill',
+        mode: str = "fill",
         quality: int = 80,
-        format: str = 'webp',
-        expires: int = 86400
+        format: str = "webp",
+        expires: int = 86400,
     ) -> str:
         """
         获取带签名的缩略图 URL
-        
+
         Args:
             key: OSS 文件路径
             width: 宽度
@@ -759,25 +680,25 @@ class OSSService:
             quality: 图片质量
             format: 输出格式
             expires: 签名有效期（秒）
-        
+
         Returns:
             带签名的缩略图 URL
         """
         # 先获取基础签名 URL
         signed_url = self.get_signed_url(key, expires)
-        
+
         # 添加图片处理参数
         process_params = f"image/resize,m_{mode},h_{height},w_{width}"
-        
+
         if quality:
             process_params += f"/quality,q_{quality}"
-        
+
         if format:
             process_params += f"/format,{format}"
-        
+
         # 签名 URL 已有查询参数，用 & 连接
         return f"{signed_url}&x-oss-process={process_params}"
-    
+
     def get_signed_url_from_url(self, url: str, expires: int = 3600) -> str:
         """
         从 URL 生成带签名的临时访问 URL（支持缓存）
@@ -799,7 +720,7 @@ class OSSService:
             return url
 
         # 已经是签名 URL，直接返回
-        if 'OSSAccessKeyId' in url or 'Signature' in url:
+        if "OSSAccessKeyId" in url or "Signature" in url:
             return url
 
         # 如果 bucket 是公开读的，直接返回公网 URL（不签名，支持浏览器缓存）
@@ -838,7 +759,7 @@ class OSSService:
             缓存的签名 URL 或 None（如果不存在或已过期）
         """
         from django.utils import timezone
-        from apps.common.models import FileUploadRecord
+        from apps.common.models import FileRecord
 
         try:
             # 从 URL 提取 tenant_id 和 md5
@@ -846,10 +767,7 @@ class OSSService:
             # 或者从 storage_key 反向查找
 
             # 尝试通过 storage_key 查找
-            record = FileUploadRecord.objects.filter(
-                storage_key=oss_key,
-                storage_type='oss'
-            ).order_by('-created_at').first()
+            record = FileRecord.objects.filter(storage_key=oss_key, storage_type="oss").order_by("-created_at").first()
 
             if not record:
                 return None
@@ -875,31 +793,28 @@ class OSSService:
         将签名 URL 缓存到数据库
         """
         from django.utils import timezone
-        from apps.common.models import FileUploadRecord
+        from apps.common.models import FileRecord
 
         try:
             # 查找记录
-            record = FileUploadRecord.objects.filter(
-                storage_key=oss_key,
-                storage_type='oss'
-            ).order_by('-created_at').first()
+            record = FileRecord.objects.filter(storage_key=oss_key, storage_type="oss").order_by("-created_at").first()
 
             if record:
                 record.signed_url = signed_url
                 record.signed_url_expires = timezone.now() + timezone.timedelta(seconds=expires)
-                record.save(update_fields=['signed_url', 'signed_url_expires', 'updated_at'])
+                record.save(update_fields=["signed_url", "signed_url_expires", "updated_at"])
                 logger.debug(f"[OSS] 已缓存签名 URL，过期时间: {record.signed_url_expires}")
             else:
-                logger.debug(f"[OSS] 未找到 FileUploadRecord 记录，跳过缓存")
+                logger.debug(f"[OSS] 未找到 FileRecord 记录，跳过缓存")
 
         except Exception as e:
             logger.warning(f"[OSS] 缓存签名 URL 失败: {e}")
-    
+
     def _is_oss_url(self, url: str) -> bool:
         """判断是否为 OSS URL"""
-        if not url or not url.startswith('http'):
+        if not url or not url.startswith("http"):
             return False
-        
+
         # 检查是否包含我们的 OSS 域名
         if self.domain and self.domain in url:
             return True
@@ -907,42 +822,40 @@ class OSSService:
         expected_domain = f"{self.bucket_name}.{self.endpoint}"
         if expected_domain in url:
             return True
-        
+
         # 调试：打印为什么不是 OSS URL
-        logger.debug(
-            f"[OSS] URL 不匹配: domain={self.domain}, "
-            f"expected={expected_domain}, url={url[:80]}..."
-        )
+        logger.debug(f"[OSS] URL 不匹配: domain={self.domain}, " f"expected={expected_domain}, url={url[:80]}...")
         return False
-    
+
     def _extract_oss_key(self, url: str) -> Optional[str]:
         """从 URL 中提取 oss_key"""
         if not url:
             return None
-        
+
         try:
             from urllib.parse import urlparse, unquote
+
             parsed = urlparse(url)
-            path = parsed.path.lstrip('/')
+            path = parsed.path.lstrip("/")
             # URL 解码（处理 %2F 等编码字符）
             path = unquote(path)
             return path if path else None
         except Exception:
             return None
-    
+
     def delete_file(self, key: str) -> bool:
         """
         删除 OSS 文件
-        
+
         Args:
             key: OSS 文件路径
-        
+
         Returns:
             是否成功
         """
         if not self.enabled:
             return False
-        
+
         try:
             self.bucket.delete_object(key)
             logger.info(f"[OSS] 文件删除成功: key={key}")
@@ -950,181 +863,168 @@ class OSSService:
         except oss2.exceptions.OssError as e:
             logger.error(f"[OSS] 删除失败: key={key}, error={e}")
             return False
-    
+
     def delete_files(self, keys: list) -> dict:
         """
         批量删除 OSS 文件
-        
+
         Args:
             keys: OSS 文件路径列表
-        
+
         Returns:
             {'deleted': int, 'failed': int}
         """
         if not self.enabled or not keys:
-            return {'deleted': 0, 'failed': len(keys)}
-        
+            return {"deleted": 0, "failed": len(keys)}
+
         try:
             result = self.bucket.batch_delete_objects(keys)
-            deleted = len(result.deleted_keys) if hasattr(result, 'deleted_keys') else 0
+            deleted = len(result.deleted_keys) if hasattr(result, "deleted_keys") else 0
             logger.info(f"[OSS] 批量删除成功: {deleted} 个文件")
-            return {'deleted': deleted, 'failed': len(keys) - deleted}
+            return {"deleted": deleted, "failed": len(keys) - deleted}
         except oss2.exceptions.OssError as e:
             logger.error(f"[OSS] 批量删除失败: {e}")
-            return {'deleted': 0, 'failed': len(keys)}
-    
+            return {"deleted": 0, "failed": len(keys)}
+
     def file_exists(self, key: str) -> bool:
         """
         检查文件是否存在
-        
+
         Args:
             key: OSS 文件路径
-        
+
         Returns:
             是否存在
         """
         if not self.enabled:
             return False
-        
+
         try:
             return self.bucket.object_exists(key)
         except oss2.exceptions.OssError:
             return False
-    
+
     def get_file_meta(self, key: str) -> Optional[dict]:
         """
         获取文件元信息
-        
+
         Args:
             key: OSS 文件路径
-        
+
         Returns:
             元信息字典
         """
         if not self.enabled:
             return None
-        
+
         try:
             meta = self.bucket.head_object(key)
             return {
-                'size': meta.content_length,
-                'content_type': meta.content_type,
-                'last_modified': meta.last_modified,
-                'etag': meta.etag,
+                "size": meta.content_length,
+                "content_type": meta.content_type,
+                "last_modified": meta.last_modified,
+                "etag": meta.etag,
             }
         except oss2.exceptions.OssError:
             return None
-    
-    def list_files(
-        self,
-        prefix: str,
-        max_keys: int = 100
-    ) -> list:
+
+    def list_files(self, prefix: str, max_keys: int = 100) -> list:
         """
         列出指定前缀的文件
-        
+
         Args:
             prefix: 文件前缀
             max_keys: 最大返回数量
-        
+
         Returns:
             文件信息列表
         """
         if not self.enabled:
             return []
-        
+
         try:
             files = []
-            for obj in oss2.ObjectIterator(
-                self.bucket,
-                prefix=prefix,
-                max_keys=max_keys
-            ):
-                files.append({
-                    'key': obj.key,
-                    'size': obj.size,
-                    'last_modified': obj.last_modified,
-                    'etag': obj.etag,
-                })
+            for obj in oss2.ObjectIterator(self.bucket, prefix=prefix, max_keys=max_keys):
+                files.append(
+                    {
+                        "key": obj.key,
+                        "size": obj.size,
+                        "last_modified": obj.last_modified,
+                        "etag": obj.etag,
+                    }
+                )
             return files
         except oss2.exceptions.OssError as e:
             logger.error(f"[OSS] 列出文件失败: {e}")
             return []
-    
+
     def health_check(self) -> dict:
         """
         健康检查
-        
+
         Returns:
             {'status': 'ok'|'error', 'message': str}
         """
         if not self.enabled:
-            return {
-                'status': 'disabled',
-                'message': 'OSS 服务未配置'
-            }
-        
+            return {"status": "disabled", "message": "OSS 服务未配置"}
+
         try:
             # 尝试获取 Bucket 信息
             info = self.bucket.get_bucket_info()
-            # 获取缓存统计（使用 FileUploadRecord）
-            from apps.common.models import FileUploadRecord
+            # 获取缓存统计（使用 FileRecord）
+            from apps.common.models import FileRecord
             from django.db.models import Sum, Count
-            stats = FileUploadRecord.objects.filter(storage_type='oss').aggregate(
-                total_count=Count('id'),
-                total_size=Sum('file_size'),
-                total_hits=Sum('hit_count')
+
+            stats = FileRecord.objects.filter(storage_type="oss").aggregate(
+                total_count=Count("id"), total_size=Sum("file_size"), total_hits=Sum("hit_count")
             )
             cache_stats = {
-                'cache_size': stats['total_count'] or 0,
-                'total_size_bytes': stats['total_size'] or 0,
-                'total_uploads': stats['total_hits'] or 0,
+                "cache_size": stats["total_count"] or 0,
+                "total_size_bytes": stats["total_size"] or 0,
+                "total_uploads": stats["total_hits"] or 0,
             }
             return {
-                'status': 'ok',
-                'message': f"Bucket: {info.name}, Region: {info.location}",
-                'cache_stats': cache_stats,
+                "status": "ok",
+                "message": f"Bucket: {info.name}, Region: {info.location}",
+                "cache_stats": cache_stats,
             }
         except Exception as e:
-            return {
-                'status': 'error',
-                'message': str(e)
-            }
-    
+            return {"status": "error", "message": str(e)}
+
     def get_cache_stats(self) -> dict:
         """
         获取 MD5 缓存统计
-        
+
         Returns:
             缓存统计信息
         """
         try:
-            from apps.common.models import FileUploadRecord
+            from apps.common.models import FileRecord
             from django.db.models import Sum, Count
-            stats = FileUploadRecord.objects.filter(storage_type='oss').aggregate(
-                total_count=Count('id'),
-                total_size=Sum('file_size'),
-                total_hits=Sum('hit_count')
+
+            stats = FileRecord.objects.filter(storage_type="oss").aggregate(
+                total_count=Count("id"), total_size=Sum("file_size"), total_hits=Sum("hit_count")
             )
             return {
-                'cache_size': stats['total_count'] or 0,
-                'total_size_bytes': stats['total_size'] or 0,
-                'total_uploads': stats['total_hits'] or 0,
+                "cache_size": stats["total_count"] or 0,
+                "total_size_bytes": stats["total_size"] or 0,
+                "total_uploads": stats["total_hits"] or 0,
             }
         except Exception as e:
             logger.warning(f"[OSS] 获取缓存统计失败: {e}")
             return {
-                'cache_size': 0,
-                'total_size_bytes': 0,
-                'total_uploads': 0,
+                "cache_size": 0,
+                "total_size_bytes": 0,
+                "total_uploads": 0,
             }
-    
+
     def clear_cache(self):
         """清空 MD5 缓存"""
         try:
-            from apps.common.models import FileUploadRecord
+            from apps.common.models import FileRecord
+
             # 清空 OSS 相关的上传记录
-            FileUploadRecord.objects.filter(storage_type='oss').delete()
+            FileRecord.objects.filter(storage_type="oss").delete()
             logger.info("[OSS] MD5 缓存已清空")
         except Exception as e:
             logger.warning(f"[OSS] 清空缓存失败: {e}")

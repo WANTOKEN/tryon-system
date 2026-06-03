@@ -2,16 +2,17 @@
 缓存工具类
 提供统一的缓存操作接口
 """
+
 from django.core.cache import cache
-from django.db.models import F
 from functools import wraps
 import logging
 
-logger = logging.getLogger('apps')
+logger = logging.getLogger("apps")
 
 
 class CacheKeys:
     """缓存键常量"""
+
     # 分类统计
     CATEGORIES_COUNTS = "categories:counts:{merchant_id}"
     # 商户配额
@@ -26,21 +27,23 @@ class CacheKeys:
 
 class CacheTimeout:
     """缓存超时常量（秒）"""
-    SHORT = 60          # 1 分钟
-    MEDIUM = 300        # 5 分钟
-    LONG = 3600         # 1 小时
-    DAY = 86400         # 1 天
+
+    SHORT = 60  # 1 分钟
+    MEDIUM = 300  # 5 分钟
+    LONG = 3600  # 1 小时
+    DAY = 86400  # 1 天
 
 
 def cache_result(key_template, timeout=CacheTimeout.MEDIUM, key_args=None):
     """
     缓存装饰器
-    
+
     Args:
         key_template: 缓存键模板，如 "user:info:{user_id}"
         timeout: 缓存超时时间
         key_args: 用于生成缓存键的参数名列表
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -50,28 +53,30 @@ def cache_result(key_template, timeout=CacheTimeout.MEDIUM, key_args=None):
                 cache_key = key_template.format(**key_values)
             else:
                 cache_key = key_template.format(*args, **kwargs)
-            
+
             # 尝试从缓存获取
             result = cache.get(cache_key)
             if result is not None:
                 logger.debug(f"缓存命中: {cache_key}")
                 return result
-            
+
             # 执行函数并缓存结果
             result = func(*args, **kwargs)
             if result is not None:
                 cache.set(cache_key, result, timeout)
                 logger.debug(f"缓存设置: {cache_key}")
-            
+
             return result
+
         return wrapper
+
     return decorator
 
 
 def invalidate_cache(key_template, **kwargs):
     """
     使缓存失效
-    
+
     Args:
         key_template: 缓存键模板
         **kwargs: 键参数
@@ -84,7 +89,7 @@ def invalidate_cache(key_template, **kwargs):
 def invalidate_pattern(pattern):
     """
     使匹配模式的所有缓存失效
-    
+
     Args:
         pattern: 缓存键模式，如 "categories:*"
     """
@@ -99,23 +104,19 @@ def invalidate_pattern(pattern):
 
 class QuotaCache:
     """配额缓存管理"""
-    
+
     @staticmethod
     def get(merchant_id):
         """获取缓存的配额信息"""
         key = CacheKeys.MERCHANT_QUOTA.format(merchant_id=merchant_id)
         return cache.get(key)
-    
+
     @staticmethod
     def set(merchant_id, quota_total, quota_used, timeout=CacheTimeout.SHORT):
         """设置配额缓存"""
         key = CacheKeys.MERCHANT_QUOTA.format(merchant_id=merchant_id)
-        cache.set(key, {
-            'total': quota_total,
-            'used': quota_used,
-            'remaining': quota_total - quota_used
-        }, timeout)
-    
+        cache.set(key, {"total": quota_total, "used": quota_used, "remaining": quota_total - quota_used}, timeout)
+
     @staticmethod
     def invalidate(merchant_id):
         """使配额缓存失效"""
@@ -124,19 +125,19 @@ class QuotaCache:
 
 class CategoryCache:
     """分类缓存管理"""
-    
+
     @staticmethod
     def get_counts(merchant_id):
         """获取分类统计缓存"""
         key = CacheKeys.CATEGORIES_COUNTS.format(merchant_id=merchant_id)
         return cache.get(key)
-    
+
     @staticmethod
     def set_counts(merchant_id, counts, timeout=CacheTimeout.MEDIUM):
         """设置分类统计缓存"""
         key = CacheKeys.CATEGORIES_COUNTS.format(merchant_id=merchant_id)
         cache.set(key, counts, timeout)
-    
+
     @staticmethod
     def invalidate(merchant_id):
         """使分类缓存失效"""
