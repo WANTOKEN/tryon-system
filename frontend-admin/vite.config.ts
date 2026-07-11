@@ -11,7 +11,15 @@ export default defineConfig({
     ],
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8888',  // 使用 IPv4 地址
+        target: 'http://127.0.0.1:8000',  // 使用 IPv4 地址
+        changeOrigin: true,
+      },
+      '/static/uploads': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/file': {
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

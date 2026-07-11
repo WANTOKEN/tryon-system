@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { I18nProvider, useI18n } from './hooks/useI18n'
 import { useTryOn } from './hooks/useTryOn'
 import { useClothing } from './hooks/useClothing'
+import { useNetworkStatus } from './hooks/useNetworkStatus'
 import { api, TokenManager, setSessionId } from './utils/request'
 import { API_ENDPOINTS } from './config/api'
 import Header from './components/Header'
@@ -14,237 +15,83 @@ import GlobalLoading from './components/GlobalLoading'
 import CachedImage from './components/CachedImage'
 import { STORAGE_KEYS, CURRENT_CACHE_VERSION } from './constants/storageKeys'
 import { safeStorage } from './utils/safeStorage'
-
-const compressImage = (file, maxSizeMB = 5, maxWidth = 1920, maxHeight = 1920) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let { width } = img
-        let { height } = img
-
-        if (width > maxWidth || height > maxHeight) {
-          if (width > height) {
-            height = (height * maxWidth) / width
-            width = maxWidth
-          } else {
-            width = (width * maxHeight) / height
-            height = maxHeight
-          }
-        }
-
-        canvas.width = width
-        canvas.height = height
-
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0, width, height)
-
-        const targetSize = maxSizeMB * 1024 * 1024
-        const fileSize = file.size
-
-        let initialQuality = 0.9
-        if (fileSize > targetSize * 2) {
-          initialQuality = 0.7
-        } else if (fileSize > targetSize * 1.5) {
-          initialQuality = 0.8
-        }
-
-        const compressWithQuality = quality =>
-          new Promise(res => {
-            canvas.toBlob(
-              blob => {
-                if (blob) {
-                  if (blob.size <= targetSize || quality <= 0.1) {
-                    if (blob.size > file.size) {
-                      res(file)
-                    } else {
-                      const compressedFile = new File([blob], file.name, {
-                        type: 'image/jpeg',
-                        lastModified: Date.now(),
-                      })
-                      res(compressedFile)
-                    }
-                  } else {
-                    const newQuality = Math.max(0.1, quality - 0.15)
-                    compressWithQuality(newQuality).then(res)
-                  }
-                } else {
-                  res(file)
-                }
-              },
-              'image/jpeg',
-              quality
-            )
-          })
-
-        compressWithQuality(initialQuality).then(resolve)
-      }
-      img.onerror = () => reject(new Error('图片加载失败'))
-      img.src = e.target.result
-    }
-    reader.onerror = () => reject(new Error('文件读取失败'))
-    reader.readAsDataURL(file)
-  })
-
-const truncateFileName = (fileName, maxLength = 30) => {
-  if (!fileName || fileName.length <= maxLength) {
-    return fileName
-  }
-  const extIndex = fileName.lastIndexOf('.')
-  if (extIndex === -1 || extIndex === 0) {
-    return `${fileName.substring(0, maxLength - 3)}...`
-  }
-  const extension = fileName.substring(extIndex)
-  const nameWithoutExt = fileName.substring(0, extIndex)
-  const truncatedName = `${nameWithoutExt.substring(0, maxLength - extension.length - 3)}...`
-  return truncatedName + extension
-}
-
-const extractDominantColor = (file, timeout = 500) =>
-  new Promise(resolve => {
-    const timer = setTimeout(() => resolve('#F5F4F0'), timeout)
-
-    const reader = new FileReader()
-    reader.onload = e => {
-      const img = new Image()
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas')
-          const ctx = canvas.getContext('2d')
-          const size = 20
-          canvas.width = size
-          canvas.height = size
-          ctx.drawImage(img, 0, 0, size, size)
-
-          const { data } = ctx.getImageData(0, 0, size, size)
-          const colorCounts = {}
-          let maxCount = 0
-          let dominantColor = '#F5F4F0'
-
-          /* eslint-disable no-continue, no-bitwise */
-          for (let i = 0; i < data.length; i += 16) {
-            const r = data[i]
-            const g = data[i + 1]
-            const b = data[i + 2]
-            const a = data[i + 3]
-
-            if (a < 200) {
-              continue
-            }
-
-            const brightness = (r + g + b) / 3
-            if (brightness > 245 || brightness < 10) {
-              continue
-            }
-
-            const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5)
-            colorCounts[key] = (colorCounts[key] || 0) + 1
-
-            if (colorCounts[key] > maxCount) {
-              maxCount = colorCounts[key]
-              const rHex = Math.min(255, r).toString(16).padStart(2, '0')
-              const gHex = Math.min(255, g).toString(16).padStart(2, '0')
-              const bHex = Math.min(255, b).toString(16).padStart(2, '0')
-              dominantColor = `#${rHex}${gHex}${bHex}`
-            }
-          }
-          /* eslint-enable no-continue, no-bitwise */
-
-          clearTimeout(timer)
-          resolve(dominantColor)
-        } catch {
-          clearTimeout(timer)
-          resolve('#F5F4F0')
-        }
-      }
-      img.onerror = () => {
-        clearTimeout(timer)
-        resolve('#F5F4F0')
-      }
-      img.src = e.target.result
-    }
-    reader.onerror = () => {
-      clearTimeout(timer)
-      resolve('#F5F4F0')
-    }
-    reader.readAsDataURL(file)
-  })
-
-function AdminContactItem({ icon, label, value, maskedValue }) {
-  const [revealed, setRevealed] = useState(false)
-
-  return (
-    <div className='flex items-center gap-3 rounded-xl border border-grayLight p-3'>
-      <div className='flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-champagne/20'>
-        {icon}
-      </div>
-      <div className='min-w-0 flex-1'>
-        <p className='text-xs text-grayMuted'>{label}</p>
-        <p className='text-sm font-medium text-charcoal'>{revealed ? value : maskedValue}</p>
-      </div>
-      <button
-        type='button'
-        onClick={() => setRevealed(!revealed)}
-        className='flex-shrink-0 text-xs text-champagne hover:underline'
-      >
-        {revealed ? '隐藏' : '查看'}
-      </button>
-    </div>
-  )
-}
+import { compressImage, truncateFileName, extractDominantColor } from './utils/imageUtils'
+import AdminContactItem from './components/AdminContactItem'
 
 function AppContent() {
   const { t } = useI18n()
-  const [appLoading, setAppLoading] = useState(true)
-  const [theme] = useState('light')
-  const [toast, setToast] = useState(null)
-  const [avatarFile, setAvatarFile] = useState(null)
-  const [avatarPreview, setAvatarPreview] = useState(null)
-  const [avatarSource, setAvatarSource] = useState('user')
+
+  // === 应用全局状态 ===
+  const [appLoading, setAppLoading] = useState(true) // 应用初始化加载中
+  const [theme] = useState('light') // 主题（当前仅支持 light）
+  const [toast, setToast] = useState(null) // 全局 Toast 提示
+
+  // === 试穿核心状态 ===
+  const [avatarFile, setAvatarFile] = useState(null) // 用户上传的头像文件
+  const [avatarPreview, setAvatarPreview] = useState(null) // 头像预览 URL（base64 或 blob URL）
+  const [avatarSource, setAvatarSource] = useState('user') // 头像来源：user/system/history
   const [_showUploadModal] = useState(false)
-  const [quota, setQuota] = useState({ total: 100, used: 0, remaining: 100 })
-  const [hasResult, setHasResult] = useState(false)
-  const [selected, setSelected] = useState([])
-  const [customClothing, setCustomClothing] = useState([])
-  const [wardrobeClothing, setWardrobeClothing] = useState([])
-  const [showLoginModal, setShowLoginModal] = useState(false)
-  const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [showStoreModal, setShowStoreModal] = useState(false)
-  const [showWardrobeModal, setShowWardrobeModal] = useState(false)
-  const [showCustomUploadModal, setShowCustomUploadModal] = useState(false)
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [quota, setQuota] = useState({ total: 100, used: 0, remaining: 100 }) // 配额信息
+  const [hasResult, setHasResult] = useState(false) // 是否有试穿结果
+
+  // === 服装选择状态 ===
+  const [selected, setSelected] = useState([]) // 已选中的服装列表
+  const [customClothing, setCustomClothing] = useState([]) // 用户自定义上传的服装
+  const [wardrobeClothing, setWardrobeClothing] = useState([]) // 从衣橱选择的服装
+
+  // === 弹窗显示状态 ===
+  const [showLoginModal, setShowLoginModal] = useState(false) // 登录弹窗
+  const [showSettingsModal, setShowSettingsModal] = useState(false) // 设置弹窗
+  const [showStoreModal, setShowStoreModal] = useState(false) // 店铺信息弹窗
+  const [showWardrobeModal, setShowWardrobeModal] = useState(false) // 衣橱弹窗
+  const [showCustomUploadModal, setShowCustomUploadModal] = useState(false) // 自定义上传弹窗
+  const [showConfirmModal, setShowConfirmModal] = useState(false) // 确认对话框
   const [confirmConfig, setConfirmConfig] = useState({ title: '', message: '', action: null })
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false) // 图片预览弹窗
   const [previewModalData, setPreviewModalData] = useState({ src: '', name: '' })
-  const [showCameraModal, setShowCameraModal] = useState(false)
-  const [cameraCallback, setCameraCallback] = useState(null)
+  const [showCameraModal, setShowCameraModal] = useState(false) // 相机弹窗
+  const [cameraCallback, setCameraCallback] = useState(null) // 相机拍照回调
+
+  // === 衣橱上传分类/名称 ===
   const [wardrobeUploadCategory, setWardrobeUploadCategory] = useState('tops')
   const [wardrobeUploadSubcategory, setWardrobeUploadSubcategory] = useState('')
   const [wardrobeUploadSubcategoryCustom, setWardrobeUploadSubcategoryCustom] = useState('')
   const [wardrobeUploadName, setWardrobeUploadName] = useState('')
+
+  // === 自定义上传分类/名称 ===
   const [customUploadCategory, setCustomUploadCategory] = useState('tops')
   const [customUploadSubcategory, setCustomUploadSubcategory] = useState('')
   const [customUploadSubcategoryCustom, setCustomUploadSubcategoryCustom] = useState('')
   const [customUploadName, setCustomUploadName] = useState('')
+
+  // === 用户认证状态 ===
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userInfo, setUserInfo] = useState(null)
   const [loginLoading, setLoginLoading] = useState(false)
+
+  // === 管理员联系信息 ===
   const [showAdminContactModal, setShowAdminContactModal] = useState(false)
   const [adminContactInfo, setAdminContactInfo] = useState(null)
   const [adminContactLoading, setAdminContactLoading] = useState(false)
+
+  // === 历史记录弹窗 ===
   const [showHistoryModal, setShowHistoryModal] = useState(false)
 
   // 防止 StrictMode 下重复初始化
   const initRef = useRef(false)
 
+  /** 获取管理员联系信息 */
   const fetchAdminContact = useCallback(async () => {
     setAdminContactLoading(true)
     try {
       const response = await api.get(API_ENDPOINTS.AUTH.ADMIN_CONTACT, { requiresAuth: false })
       if (response.success) {
-        setAdminContactInfo(response.data?.data || response.data)
+        const { data } = response
+        if (data && data.success && data.data) {
+          setAdminContactInfo(data.data)
+        } else if (data) {
+          setAdminContactInfo(data)
+        }
       }
     } catch (error) {
       console.error('Failed to fetch admin contact:', error)
@@ -253,6 +100,7 @@ function AppContent() {
     }
   }, [])
 
+  /** 显示管理员联系弹窗（懒加载联系信息） */
   const handleShowAdminContact = useCallback(async () => {
     if (!adminContactInfo) {
       await fetchAdminContact()
@@ -260,6 +108,7 @@ function AppContent() {
     setShowAdminContactModal(true)
   }, [adminContactInfo, fetchAdminContact])
 
+  /** 脱敏处理：手机号中间4位用 * 替换 */
   const maskPhone = useCallback(phone => {
     if (!phone || phone.length < 7) {
       return phone
@@ -267,6 +116,7 @@ function AppContent() {
     return `${phone.slice(0, 3)}****${phone.slice(-4)}`
   }, [])
 
+  /** 脱敏处理：微信号中间用 *** 替换 */
   const maskWechat = useCallback(wechat => {
     if (!wechat || wechat.length < 4) {
       return wechat
@@ -274,6 +124,7 @@ function AppContent() {
     return `${wechat.slice(0, 2)}***${wechat.slice(-2)}`
   }, [])
 
+  /** 脱敏处理：邮箱用户名中间用 *** 替换 */
   const maskEmail = useCallback(email => {
     if (!email || !email.includes('@')) {
       return email
@@ -323,11 +174,13 @@ function AppContent() {
     return () => window.removeEventListener('auth:logout', handleLogout)
   }, [])
 
+  /** 显示 Toast 提示，3秒后自动消失 */
   const showToast = useCallback((message, type = 'info') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
   }, [])
 
+  /** 刷新用户信息（含配额数据），更新本地缓存 */
   const refreshUserInfo = useCallback(async () => {
     try {
       const response = await api.get(API_ENDPOINTS.AUTH.ME)
@@ -341,6 +194,7 @@ function AppContent() {
     }
   }, [])
 
+  /** 试穿完成回调：标记有结果，刷新用户配额信息 */
   const handleTryOnComplete = useCallback(
     ({ resultUrl: _url }) => {
       setHasResult(true)
@@ -349,6 +203,7 @@ function AppContent() {
     [refreshUserInfo]
   )
 
+  /** 试穿失败回调：显示错误 Toast */
   const handleTryOnError = useCallback(
     error => {
       showToast(error || t('n_tryOnFail'), 'error')
@@ -399,6 +254,9 @@ function AppContent() {
       const startTime = Date.now()
       const MIN_LOADING_TIME = 2000
 
+      // 跟踪登录状态（使用本地变量避免异步状态更新问题）
+      let isAuthenticated = false
+
       try {
         // 检查缓存版本，版本不匹配时清除旧缓存
         const cachedVersion = localStorage.getItem(STORAGE_KEYS.CACHE_VERSION)
@@ -417,7 +275,7 @@ function AppContent() {
             try {
               const parsed = JSON.parse(cachedUserInfo)
               setUserInfo(parsed)
-              setIsLoggedIn(true)
+              isAuthenticated = true
             } catch (e) {
               // 忽略解析错误
             }
@@ -427,51 +285,60 @@ function AppContent() {
             const response = await api.get(API_ENDPOINTS.AUTH.ME)
             if (response.success) {
               const userData = response.data?.data || response.data
+              isAuthenticated = true
               setIsLoggedIn(true)
               setUserInfo(userData)
               localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userData))
             } else {
               TokenManager.clearTokens()
               localStorage.removeItem(STORAGE_KEYS.USER_INFO)
+              isAuthenticated = false
               setIsLoggedIn(false)
               setUserInfo(null)
             }
           } catch (error) {
             if (!cachedUserInfo) {
+              isAuthenticated = true
               setIsLoggedIn(true)
               setUserInfo({ store_name: t('settingsLoggedIn') })
             }
           }
         }
 
+        // 更新全局状态
+        setIsLoggedIn(isAuthenticated)
+
         const cachedAvatar = await safeStorage.getItem(STORAGE_KEYS.AVATAR_PREVIEW)
         if (cachedAvatar) {
           setAvatarPreview(cachedAvatar)
         }
 
-        const cachedCustomClothing = await safeStorage.getItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-        if (cachedCustomClothing) {
-          try {
-            const parsed =
-              typeof cachedCustomClothing === 'string'
-                ? JSON.parse(cachedCustomClothing)
-                : cachedCustomClothing
-            setCustomClothing(parsed)
-          } catch (e) {
-            // 忽略解析错误
+        // 仅在已登录时加载服装缓存
+        if (isAuthenticated) {
+          const cachedCustomClothing = await safeStorage.getItem(STORAGE_KEYS.CUSTOM_CLOTHING)
+          if (cachedCustomClothing) {
+            try {
+              const parsed =
+                typeof cachedCustomClothing === 'string'
+                  ? JSON.parse(cachedCustomClothing)
+                  : cachedCustomClothing
+              setCustomClothing(parsed)
+            } catch (e) {
+              // 忽略解析错误
+            }
           }
-        }
 
-        const cachedWardrobeClothing = await safeStorage.getItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-        if (cachedWardrobeClothing) {
-          try {
-            const parsed =
-              typeof cachedWardrobeClothing === 'string'
-                ? JSON.parse(cachedWardrobeClothing)
-                : cachedWardrobeClothing
-            setWardrobeClothing(parsed)
-          } catch (e) {
-            // 忽略解析错误
+          const cachedWardrobeClothing = await safeStorage.getItem(STORAGE_KEYS.WARDROBE_CLOTHING)
+          if (cachedWardrobeClothing) {
+            try {
+              const parsed =
+                typeof cachedWardrobeClothing === 'string'
+                  ? JSON.parse(cachedWardrobeClothing)
+                  : cachedWardrobeClothing
+              setWardrobeClothing(parsed)
+            } catch (e) {
+              // 忽略解析错误
+            }
           }
         }
 
@@ -493,8 +360,10 @@ function AppContent() {
           }
         }
 
-        // 获取模特照片
-        await fetchModelPhotos()
+        // 获取模特照片（仅在已登录时）
+        if (isAuthenticated) {
+          await fetchModelPhotos()
+        }
 
         const elapsed = Date.now() - startTime
         const waitTime = MIN_LOADING_TIME - elapsed
@@ -530,6 +399,10 @@ function AppContent() {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
+  /**
+   * 处理头像文件选择
+   * 校验大小(≤30MB)和格式 → 设置预览 → 缓存到 localStorage
+   */
   const handleAvatarChange = useCallback(
     e => {
       const file = e.target.files?.[0]
@@ -585,6 +458,11 @@ function AppContent() {
     [showToast, t]
   )
 
+  /**
+   * 提交试穿任务
+   * 流程：登录检查 → 头像检查 → 服装检查 → 配额检查(本地+服务端) → 头像处理 → 提交
+   * 移动端提交后自动滚动到结果区域
+   */
   const handleTryOn = useCallback(async () => {
     if (!isLoggedIn) {
       showToast(t('n_needLogin'), 'warning')
@@ -633,10 +511,12 @@ function AppContent() {
     }
 
     let fileToSubmit = null
-    const keyToReuse = null
+    let keyToReuse = null
     let submitAvatarSource = avatarSource || 'user'
 
-    if (avatarFile) {
+    if (avatarSource === 'system') {
+      keyToReuse = await safeStorage.getItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
+    } else if (avatarFile) {
       fileToSubmit = avatarFile
       submitAvatarSource = 'user'
     } else if (avatarPreview) {
@@ -726,6 +606,7 @@ function AppContent() {
     setCameraCallback(null)
   }, [])
 
+  /** 登出：清除所有认证状态和本地缓存 */
   const handleLogout = useCallback(() => {
     showConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => {
       TokenManager.clearTokens()
@@ -839,7 +720,7 @@ function AppContent() {
         console.log(`[收藏] 尝试收藏: uuid=${uuid}, is_saved=${newSavedState}`)
         const response = await api.post(API_ENDPOINTS.TRYON.SAVE(uuid), { is_saved: newSavedState })
         console.log(`[收藏] 响应:`, response)
-        
+
         if (response.success) {
           // 实时更新本地状态
           updateHistoryRecord(uuid, { is_saved: newSavedState })
@@ -853,7 +734,7 @@ function AppContent() {
         showToast(t('n_saveFail'), 'error')
       }
     },
-    [isLoggedIn, fetchHistory, showToast, t, updateHistoryRecord]
+    [isLoggedIn, showToast, t, updateHistoryRecord]
   )
 
   const handleDeleteHistory = useCallback(
@@ -946,9 +827,20 @@ function AppContent() {
         if (response.success) {
           const loginData = response.data?.data || response.data
           TokenManager.setTokens(loginData.access_token, loginData.refresh_token)
-          localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(loginData.merchant))
+
+          // 登录成功后获取用户信息
+          try {
+            const meResponse = await api.get(API_ENDPOINTS.AUTH.ME)
+            if (meResponse.success) {
+              const meInfo = meResponse.data?.data || meResponse.data
+              localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(meInfo))
+              setUserInfo(meInfo)
+            }
+          } catch (meError) {
+            console.error('获取用户信息失败:', meError)
+          }
+
           setIsLoggedIn(true)
-          setUserInfo(loginData.merchant)
           setShowLoginModal(false)
           showToast(t('n_loginSuccess'), 'success')
         } else {
@@ -992,9 +884,20 @@ function AppContent() {
         if (response.success) {
           const loginData = response.data?.data || response.data
           TokenManager.setTokens(loginData.access_token, loginData.refresh_token)
-          localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(loginData.merchant))
+
+          // 登录成功后获取用户信息
+          try {
+            const meResponse = await api.get(API_ENDPOINTS.AUTH.ME)
+            if (meResponse.success) {
+              const meInfo = meResponse.data?.data || meResponse.data
+              localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(meInfo))
+              setUserInfo(meInfo)
+            }
+          } catch (meError) {
+            console.error('获取用户信息失败:', meError)
+          }
+
           setIsLoggedIn(true)
-          setUserInfo(loginData.merchant)
           setShowLoginModal(false)
           showToast(t('n_loginSuccess'), 'success')
         } else {
@@ -1555,26 +1458,7 @@ function AppContent() {
     [isLoggedIn, showToast, wardrobeClothing, t]
   )
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
-
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true)
-      if (toast && toast.message === '网络已断开，部分功能不可用') {
-        showToast(t('networkRecovered'), 'success')
-      }
-    }
-    const handleOffline = () => {
-      setIsOnline(false)
-      showToast(t('networkOffline'), 'warning')
-    }
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [showToast, toast, t])
+  const isOnline = useNetworkStatus({ showToast, t, currentToast: toast })
 
   return (
     <>

@@ -151,7 +151,6 @@ function filterMenuByPermissions(
 
   return filtered.map((item) => {
     if (item && 'children' in item && item.children) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { requiredPermissions: _, ...rest } = item;
       return {
         ...rest,
@@ -159,7 +158,6 @@ function filterMenuByPermissions(
       };
     }
     // 移除 requiredPermissions 属性，确保返回类型兼容
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { requiredPermissions: _, ...rest } = item;
     return rest;
   }) as MenuProps['items'];

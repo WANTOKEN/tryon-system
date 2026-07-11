@@ -13,7 +13,7 @@ export const API_ENDPOINTS = {
     REFRESH: `${API_BASE}/auth/refresh/`,
     SEND_RESET_SMS: `${API_BASE}/auth/send-reset-sms/`,
     RESET_PASSWORD: `${API_BASE}/auth/reset-password/`,
-    ADMIN_CONTACT: `${API_BASE}/auth/admin-contact/`,
+    ADMIN_CONTACT: `${API_BASE}/common/admin-contact/`,
   },
   // 衣橱
   WARDROBE: {

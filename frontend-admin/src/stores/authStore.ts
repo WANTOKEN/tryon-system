@@ -8,6 +8,7 @@ interface AuthState {
   user: AdminUser | null;
   isAuthenticated: boolean;
   setAuth: (token: string, user: AdminUser) => void;
+  setToken: (token: string) => void;
   logout: () => void;
   // 权限检查方法
   isSuperAdmin: () => boolean;
@@ -27,6 +28,11 @@ export const useAuthStore = create<AuthState>()(
 
       setAuth: (token, user) => {
         set({ token, user, isAuthenticated: true });
+      },
+
+      // 仅写入 token（登录后、拉取用户信息前调用，确保后续请求带上 Authorization）
+      setToken: (token) => {
+        set({ token, isAuthenticated: false });
       },
 
       logout: () => {
@@ -119,7 +125,11 @@ export const initAuth = () => {
     try {
       const parsed = JSON.parse(storageData);
       if (parsed.state?.token) {
-        useAuthStore.setState({ isAuthenticated: true });
+        useAuthStore.setState({
+          token: parsed.state.token,
+          user: parsed.state.user,
+          isAuthenticated: true,
+        });
       }
     } catch {
       // ignore

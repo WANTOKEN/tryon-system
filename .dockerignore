@@ -1,0 +1,14 @@
+# 仅用于 nginx 网关构建（build context = 仓库根）。
+# 该文件只影响以仓库根为构建上下文的镜像（即 nginx 服务）；
+# backend / frontend-react / frontend-admin 各自以子目录为上下文，不受影响。
+.git
+logs
+backend
+db
+*.db
+*.sqlite3
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc

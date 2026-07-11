@@ -198,7 +198,7 @@ const ModelPhotosPage: React.FC = () => {
       key: 'checkbox',
       width: 60,
       hideInSearch: true,
-      render: (_: any, record: ModelPhoto) => (
+      render: (_: unknown, record: ModelPhoto) => (
         <Checkbox
           checked={selectedRowKeys.includes(record.id)}
           onChange={(e) => {
@@ -266,7 +266,7 @@ const ModelPhotosPage: React.FC = () => {
       key: 'sort_order',
       width: 150,
       hideInSearch: true,
-      render: (_: any, record: ModelPhoto) => (
+      render: (_: unknown, record: ModelPhoto) => (
         <Space>
           <Tooltip title="上移">
             <Button

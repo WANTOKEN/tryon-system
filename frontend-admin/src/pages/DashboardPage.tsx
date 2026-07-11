@@ -1,31 +1,14 @@
 import { Row, Col, Card, Progress, Typography, Divider, Empty, Spin, Alert, Statistic } from 'antd';
 import { UserOutlined, ShoppingOutlined, FileImageOutlined, CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, RiseOutlined, ShopOutlined, CreditCardOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
-import { dashboardApi } from '../api';
-import type { DashboardStats } from '../types';
 import { useAuthStore } from '../stores/authStore';
+import { useDashboardStats } from '../hooks/queries';
 
 const { Title, Text } = Typography;
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
   const { user } = useAuthStore();
   const isSuperAdmin = user?.is_superuser ?? false;
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const data = await dashboardApi.getStats();
-        setStats(data);
-      } catch (error) {
-        console.error('Failed to fetch dashboard stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStats();
-  }, []);
+  const { data: stats, isPending: loading } = useDashboardStats();
 
   // 统计卡片数据 - 根据是否为超级管理员显示不同内容
   const statCards = isSuperAdmin ? [

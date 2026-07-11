@@ -15,7 +15,6 @@ export default function FilesPage() {
     total_size: number;
     deleted_files: number;
     deleted_size: number;
-    by_storage: Array<{ storage_type: string; count: number; size: number }>;
     by_category: Array<{ file_category: string; count: number; size: number }>;
   } | null>(null);
 
@@ -96,21 +95,7 @@ export default function FilesPage() {
       width: 100,
       render: (_, record) => formatSize(record.file_size || 0),
     },
-    {
-      title: '存储类型',
-      dataIndex: 'storage_type',
-      valueType: 'select',
-      width: 100,
-      valueEnum: {
-        local: { text: '本地', status: 'Default' },
-        oss: { text: 'OSS', status: 'Processing' },
-      },
-      render: (_, record) => (
-        <Tag color={record.storage_type === 'oss' ? 'blue' : 'green'}>
-          {record.storage_type_text || (record.storage_type === 'oss' ? 'OSS' : '本地')}
-        </Tag>
-      ),
-    },
+
     {
       title: '租户ID',
       dataIndex: 'tenant_id',
@@ -274,12 +259,7 @@ export default function FilesPage() {
             <Col span={8}>
               <Space direction="vertical" size="small">
                 <div style={{ fontSize: 12, color: '#666' }}>
-                  存储分布：
-                  {stats.by_storage.map(s => (
-                    <Tag key={s.storage_type} color={s.storage_type === 'oss' ? 'blue' : 'green'}>
-                      {s.storage_type === 'oss' ? 'OSS' : '本地'}: {s.count}个 ({formatSize(s.size)})
-                    </Tag>
-                  ))}
+                  存储类型：OSS
                 </div>
               </Space>
             </Col>
@@ -295,7 +275,6 @@ export default function FilesPage() {
             const res = await fileApi.list({
               page: params.current,
               page_size: params.pageSize,
-              storage_type: params.storage_type,
               file_category: params.file_category,
               is_deleted: params.is_deleted,
               search: params.search,

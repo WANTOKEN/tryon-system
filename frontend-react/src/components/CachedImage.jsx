@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react'
+
 import { getFileUrl } from '../utils/request'
 
 // 内存缓存：存储已加载的图片 URL
@@ -47,7 +48,7 @@ function CachedImage({
 }) {
   const fileUrl = getFileUrl(src)
   const thumbFileUrl = thumbUrl ? getFileUrl(thumbUrl) : null
-  
+
   const [loaded, setLoaded] = useState(() => imageCache.has(fileUrl))
   const [inView, setInView] = useState(!lazy)
   const [currentSrc, setCurrentSrc] = useState(thumbFileUrl || fileUrl)

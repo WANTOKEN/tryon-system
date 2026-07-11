@@ -5,10 +5,12 @@ import type { UploadFile } from 'antd/es/upload/interface';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, LinkOutlined, EyeInvisibleOutlined, PictureOutlined, CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined } from '@ant-design/icons';
 import { useState, useRef, useEffect } from 'react';
 import type { Clothing } from '../types';
-import { tryonApi } from '../api';
+import { clothingApi } from '../api';
 
+/** 图片来源类型：本地上传 或 URL 输入 */
 type ImageSourceType = 'upload' | 'url';
 
+/** 服装表单数据 */
 interface ClothingFormData {
   name: string;
   image_url: string;
@@ -20,11 +22,13 @@ interface ClothingFormData {
   is_active: boolean;
 }
 
-const MAX_FILE_SIZE = 30 * 1024 * 1024;
+// 文件上传限制常量
+const MAX_FILE_SIZE = 30 * 1024 * 1024; // 最大 30MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'];
-const MAX_NAME_LENGTH = 30;
+const MAX_NAME_LENGTH = 30; // 文件名最大显示长度
 
+/** 截断过长的文件名，保留扩展名 */
 function truncateFileName(fileName: string, maxLength: number = MAX_NAME_LENGTH): string {
   if (!fileName || fileName.length <= maxLength) {
     return fileName;
@@ -39,6 +43,7 @@ function truncateFileName(fileName: string, maxLength: number = MAX_NAME_LENGTH)
   return truncatedName + extension;
 }
 
+/** 校验文件大小和格式 */
 function validateFile(file: File): { valid: boolean; error?: string } {
   if (file.size > MAX_FILE_SIZE) {
     return { valid: false, error: `文件大小超过限制（最大 30MB），当前 ${Math.round(file.size / 1024 / 1024 * 10) / 10}MB` };
@@ -54,6 +59,11 @@ function validateFile(file: File): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
+/**
+ * 提取图片主色调
+ * 通过 Canvas 缩小采样后统计像素颜色分布，返回主色调十六进制值
+ * 超时后返回默认黑色 #000000
+ */
 const extractDominantColor = (file: File, timeout: number = 500): Promise<string> =>
   new Promise(resolve => {
     const timer = setTimeout(() => resolve('#000000'), timeout);
@@ -123,7 +133,7 @@ const extractDominantColor = (file: File, timeout: number = 500): Promise<string
     reader.readAsDataURL(file);
   });
 
-// 缩略ID显示
+// 缩略 ID 显示（过长时保留首尾8位）
 const truncateId = (id: string | undefined) => {
   if (!id) return '-';
   return id.length > 16 ? `${id.substring(0, 8)}...${id.substring(id.length - 8)}` : id;
@@ -172,25 +182,11 @@ export default function ClothingPage() {
     }));
   };
 
-  // 获取分类中文名称
-  const getCategoryName = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId);
-    return category?.name || categoryId;
-  };
-
-  // 获取子分类中文名称
-  const getSubcategoryName = (categoryId: string, subcategoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId);
-    if (!category) return subcategoryId;
-    const subcategory = category.subcategories.find(sub => sub.id === subcategoryId);
-    return subcategory?.name || subcategoryId;
-  };
-
   // 加载分类数据
   useEffect(() => {
     const loadCategories = async () => {
       try {
-        const data = await tryonApi.getCategories();
+        const data = await clothingApi.getCategories();
         setCategories(data);
       } catch (error) {
         console.error('加载分类失败:', error);
@@ -475,7 +471,7 @@ export default function ClothingPage() {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await tryonApi.deleteClothing(clothing.id);
+          await clothingApi.deleteClothing(clothing.id);
           message.success('删除成功');
           actionRef.current?.reload();
         } catch (error) {
@@ -527,23 +523,23 @@ export default function ClothingPage() {
         
         if (editingClothing) {
           // 编辑模式上传新图片
-          await tryonApi.updateClothingWithImage(editingClothing.id, formData);
+          await clothingApi.updateClothingWithImage(editingClothing.id, formData);
           message.success('更新成功');
         } else {
           // 新建模式上传图片
-          await tryonApi.uploadClothing(formData);
+          await clothingApi.uploadClothing(formData);
           message.success('上传成功');
         }
       } else {
         // URL模式
         if (editingClothing) {
-          await tryonApi.updateClothing(editingClothing.id, {
+          await clothingApi.updateClothing(editingClothing.id, {
             ...values,
             sizes: sizesArray,
           });
           message.success('更新成功');
         } else {
-          await tryonApi.createClothing({
+          await clothingApi.createClothing({
             ...values,
             sizes: sizesArray,
           });
@@ -576,12 +572,17 @@ export default function ClothingPage() {
     setBatchResults([]);
   };
 
+  /**
+   * 批量上传服装图片
+   * 使用并发控制（最多3个同时上传），提高上传效率同时避免服务器过载
+   */
   const handleBatchSubmit = async () => {
     if (batchFiles.length === 0) {
       message.error('请选择要上传的图片');
       return;
     }
 
+    // 验证所有文件
     const invalidFiles = batchFiles.filter(f => {
       if (!f.originFileObj) return true;
       const validation = validateFile(f.originFileObj);
@@ -604,15 +605,15 @@ export default function ClothingPage() {
     setBatchResults([]);
 
     const results: Array<{ name: string; status: 'success' | 'error'; message?: string }> = [];
+    const BATCH_CONCURRENCY = 3; // 并发上传数量限制
 
-    for (let i = 0; i < batchFiles.length; i++) {
-      const file = batchFiles[i];
+    /**
+     * 上传单个文件的异步任务
+     */
+    const uploadSingleFile = async (file: UploadFile) => {
       if (!file.originFileObj) {
-        results.push({ name: file.name, status: 'error', message: '文件无效' });
-        continue;
+        return { name: file.name, status: 'error' as const, message: '文件无效' };
       }
-
-      setBatchProgress({ current: i + 1, total: batchFiles.length });
 
       try {
         const formData = new FormData();
@@ -621,16 +622,26 @@ export default function ClothingPage() {
         formData.append('name', name);
         formData.append('category', batchCategory);
         formData.append('subcategory', batchSubcategory || getSubcategoryOptions(batchCategory)[0]?.value || '');
-        
+
         const dominantColor = await extractDominantColor(file.originFileObj);
         formData.append('color', dominantColor);
 
-        await tryonApi.uploadClothing(formData);
-        results.push({ name: file.name, status: 'success' });
+        await clothingApi.uploadClothing(formData);
+        return { name: file.name, status: 'success' as const };
       } catch (error) {
         const err = error as { response?: { data?: { message?: string } } };
-        results.push({ name: file.name, status: 'error', message: err.response?.data?.message || '上传失败' });
+        return { name: file.name, status: 'error' as const, message: err.response?.data?.message || '上传失败' };
       }
+    };
+
+    // 使用并发控制进行批量上传
+    let completedCount = 0;
+    for (let i = 0; i < batchFiles.length; i += BATCH_CONCURRENCY) {
+      const batch = batchFiles.slice(i, i + BATCH_CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(file => uploadSingleFile(file)));
+      results.push(...batchResults);
+      completedCount += batch.length;
+      setBatchProgress({ current: completedCount, total: batchFiles.length });
     }
 
     setBatchResults(results);
@@ -667,7 +678,7 @@ export default function ClothingPage() {
         actionRef={actionRef}
         request={async (params) => {
           try {
-            const res = await tryonApi.listClothing({
+            const res = await clothingApi.list({
               page: params.current,
               page_size: params.pageSize,
               name: params.name,

@@ -1,4 +1,4 @@
-# Python
+# ============ Python ============
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,68 +19,52 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.mypy_cache/
+.pytest_cache/
 
-# OS
-.DS_Store
-Thumbs.db
+# ============ 虚拟环境 ============
+venv/
+.venv/
+env/
 
-# Git
-.git
-
-# Node
+# ============ Node ============
 node_modules/
+dist/
+.cache/
 
-# Environment
+# ============ 环境变量（勿提交，参考 backend/.env.example） ============
 .env
 .env.local
+.env.*
+!.env.example
 
-# IDE
+# ============ 数据库 ============
+*.sqlite3
+db.sqlite3
+*.db
+backup_*.sql
+
+# ============ 本地存储（运行时生成，资源与 AI 结果存服务器） ============
+media/
+staticfiles/
+backend/storage/
+
+# ============ 日志 ============
+*.log
+logs/
+!logs/.gitkeep
+
+# ============ OS / IDE ============
+.DS_Store
+Thumbs.db
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# Django
-*.log
-db.sqlite3
-db.sqlite3-journal
-/staticfiles/
-/media/
-
-# Logs
-logs/*.log
-!logs/.gitkeep
-
-# Type checking
-.mypy_cache/
-
-# Frontend
-frontend-react2/node_modules/
-frontend-react2/dist/
-frontend-react2/.cache/
-
-# Misc
-*.log
-*.pot
-*.pyc
-logs/
-!logs/.gitkeep
-media/
-staticfiles/
-backup_*.sql
-.env
-.env.*
-!.env.example
-
-# Database
-*.sqlite3
-db.sqlite3
-
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Docker
+# ============ Docker ============
 *.pid
+
+# ============ Git ============
+.git

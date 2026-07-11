@@ -1,29 +1,12 @@
 import { Card, Form, Input, Button, message, Switch, Divider, Spin, Tabs, InputNumber, Select, Space } from 'antd';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { configApi } from '../api';
-import type { GroupedConfig, SystemConfigItem } from '../types';
+import type { SystemConfigItem } from '../types';
+import { useConfigGrouped } from '../hooks/queries';
 
 export default function SettingsPage() {
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [groupedConfig, setGroupedConfig] = useState<GroupedConfig | null>(null);
-
-  const loadConfig = async () => {
-    setLoading(true);
-    try {
-      const data = await configApi.getGrouped();
-      setGroupedConfig(data);
-    } catch (error) {
-      console.error('Failed to load config:', error);
-      message.error('加载配置失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadConfig();
-  }, []);
+  const { data: groupedConfig, isPending: loading, refetch: loadConfig } = useConfigGrouped();
 
   const handleSave = async (_group: string, configs: SystemConfigItem[]) => {
     setSaving(true);
@@ -291,13 +274,9 @@ function StorageConfigPanel({ configs, onSave, loading, onRefresh }: {
   return (
     <Card>
       <Form.Item label="存储类型">
-        <Select
-          value={getConfig('storage_type')?.value || 'local'}
-          onChange={(v) => handleChange('storage_type', v)}
-          options={[
-            { value: 'local', label: '本地存储' },
-            { value: 'oss', label: 'OSS存储' },
-          ]}
+        <Input
+          value="OSS"
+          disabled
           style={{ width: 200 }}
         />
       </Form.Item>

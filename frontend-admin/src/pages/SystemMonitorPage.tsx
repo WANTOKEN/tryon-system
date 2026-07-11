@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-import { dashboardApi } from '../api';
 import { useAuthStore } from '../stores/authStore';
 import { Card, Row, Col, Statistic, Progress, Empty, Typography, Divider, Spin } from 'antd';
 import {
@@ -10,28 +8,13 @@ import {
   CheckCircleOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import type { DashboardStats } from '../types';
+import { useDashboardStats } from '../hooks/queries';
 
 const { Title, Text } = Typography;
 
 export default function SystemMonitorPage() {
   const { isSuperAdmin } = useAuthStore();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const data = await dashboardApi.getStats();
-        setStats(data);
-      } catch (error) {
-        console.error('Failed to fetch system stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStats();
-  }, []);
+  const { data: stats, isPending: loading } = useDashboardStats();
 
   // 非超管无法访问此页面
   if (!isSuperAdmin()) {

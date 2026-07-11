@@ -98,7 +98,7 @@ export function useClothing() {
       setError(null)
       try {
         const formData = new FormData()
-        formData.append('image', file)
+        formData.append('file', file)
         const finalName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
         formData.append('name', finalName)
         formData.append('category', category)
@@ -114,6 +114,8 @@ export function useClothing() {
         }
 
         const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
+        // eslint-disable-next-line no-console
+        console.log('[useClothing] upload response:', response)
         if (response.success) {
           const item = response.data?.data || response.data
           const newItem = {

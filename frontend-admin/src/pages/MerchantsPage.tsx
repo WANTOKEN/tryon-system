@@ -8,7 +8,7 @@ import { merchantApi } from '../api';
 
 const { Text } = Typography;
 
-interface MerchantFormData {
+type MerchantFormData = {
   store_name: string;
   username: string;
   phone?: string;

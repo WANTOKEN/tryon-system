@@ -86,6 +86,12 @@ export default function ModelSelectModal({
                       className={`h-full w-full object-cover transition-transform duration-200 ${
                         isSelected ? 'scale-105' : 'group-hover:scale-105'
                       }`}
+                      onError={e => {
+                        const { target } = e
+                        target.src =
+                          'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300"%3E%3Crect fill="%23f0f0f0" width="200" height="300" rx="8"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="14" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle"%3E%E6%A8%A1%E7%89%B9%E7%85%A7%E7%89%87%3C/text%3E%3C/svg%3E'
+                        target.onerror = null
+                      }}
                     />
                   </div>
                   {isSelected && (

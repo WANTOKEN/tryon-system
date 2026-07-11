@@ -25,6 +25,6 @@ export const STORAGE_KEYS = {
 }
 
 // 当前缓存版本号（修改此值会自动清除旧缓存）
-export const CURRENT_CACHE_VERSION = '3'
+export const CURRENT_CACHE_VERSION = '4'
 
 export default STORAGE_KEYS

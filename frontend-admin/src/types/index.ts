@@ -76,8 +76,6 @@ export interface Clothing {
 export interface FileRecord {
   id: string; // UUID
   md5_hash: string;
-  storage_type: 'local' | 'oss';
-  storage_type_text?: string;
   storage_key: string;
   access_url: string;
   tenant_id: string;

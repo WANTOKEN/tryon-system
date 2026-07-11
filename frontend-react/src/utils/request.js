@@ -1,6 +1,6 @@
 /**
  * HTTP 请求封装
- * 
+ *
  * 功能特性：
  * - JWT Token 自动管理和刷新
  * - 请求重试机制（指数退避）
@@ -180,18 +180,9 @@ const DEFAULT_RETRY_CONFIG = {
 
 // 指数退避延迟计算
 function calculateRetryDelay(retryCount, baseDelay, multiplier) {
-  const delay = baseDelay * Math.pow(multiplier, retryCount)
+  const delay = baseDelay * multiplier ** retryCount
   const jitter = Math.random() * baseDelay
   return delay + jitter
-}
-
-// 创建带超时的 Promise
-function createTimeoutPromise(timeoutMs) {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(new Error('请求超时'))
-    }, timeoutMs)
-  })
 }
 
 // 刷新 Token
@@ -210,7 +201,7 @@ async function refreshToken() {
 
     if (response.ok) {
       const data = await response.json()
-      TokenManager.setTokens(data.access, refresh)
+      TokenManager.setTokens(data.access_token, refresh)
       return true
     }
     return false
@@ -295,6 +286,67 @@ async function executeRequest(url, config, timeout) {
   }
 }
 
+// 延迟辅助（executor 使用语句体，避免 no-promise-executor-return）
+function sleep(ms) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms)
+  })
+}
+
+// 递归重试：规避循环内 await / continue 的 lint 限制，同时保持顺序重试语义
+async function attemptRequest(url, config, requiresAuth, retryConfig, retryCount) {
+  const { maxRetries, retryDelay, retryDelayMultiplier, retryOnStatusCodes, timeout } = retryConfig
+
+  try {
+    const { response, data } = await executeRequest(url, config, timeout)
+
+    // Token 过期处理（仅首次尝试）
+    if (response.status === 401 && requiresAuth && retryCount === 0) {
+      const refreshed = await refreshToken()
+      if (refreshed) {
+        // 仅本层使用更新后的鉴权头，不修改传入的 config（避免 no-param-reassign）
+        const authedConfig = {
+          ...config,
+          headers: { ...config.headers, Authorization: `Bearer ${TokenManager.getAccessToken()}` },
+        }
+        const { response: retryResponse, data: retryData } = await executeRequest(
+          url,
+          authedConfig,
+          timeout
+        )
+        return handleResponse(retryResponse, retryData)
+      }
+      TokenManager.clearTokens()
+      localStorage.removeItem(STORAGE_KEYS.USER_INFO)
+      window.dispatchEvent(new Event('auth:logout'))
+      return handleResponse(response, data)
+    }
+
+    // 检查是否需要重试
+    if (retryOnStatusCodes.includes(response.status) && retryCount < maxRetries) {
+      const delay = calculateRetryDelay(retryCount, retryDelay, retryDelayMultiplier)
+      console.warn(
+        `请求失败，准备重试 (${retryCount + 1}/${maxRetries})，延迟 ${delay.toFixed(0)}ms`
+      )
+      await sleep(delay)
+      return attemptRequest(url, config, requiresAuth, retryConfig, retryCount + 1)
+    }
+
+    return handleResponse(response, data)
+  } catch (error) {
+    // 网络错误或超时，尝试重试
+    if (retryCount < maxRetries) {
+      const delay = calculateRetryDelay(retryCount, retryDelay, retryDelayMultiplier)
+      console.warn(
+        `请求异常，准备重试 (${retryCount + 1}/${maxRetries})，延迟 ${delay.toFixed(0)}ms: ${error.message}`
+      )
+      await sleep(delay)
+      return attemptRequest(url, config, requiresAuth, retryConfig, retryCount + 1)
+    }
+    return { success: false, error: error.message || '网络请求失败' }
+  }
+}
+
 // 通用请求方法（带重试）
 async function request(url, options = {}) {
   const {
@@ -307,50 +359,11 @@ async function request(url, options = {}) {
 
   // 合并重试配置
   const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryOptions }
-  const { maxRetries, retryDelay, retryDelayMultiplier, retryOnStatusCodes, timeout } = retryConfig
 
   // 构建初始请求配置
-  let config = buildRequestConfig(method, body, headers, requiresAuth)
+  const config = buildRequestConfig(method, body, headers, requiresAuth)
 
-  for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
-    try {
-      const { response, data } = await executeRequest(url, config, timeout)
-
-      // Token 过期处理
-      if (response.status === 401 && requiresAuth && retryCount === 0) {
-        const refreshed = await refreshToken()
-        if (refreshed) {
-          config.headers.Authorization = `Bearer ${TokenManager.getAccessToken()}`
-          const { response: retryResponse, data: retryData } = await executeRequest(url, config, timeout)
-          return handleResponse(retryResponse, retryData)
-        }
-        TokenManager.clearTokens()
-        localStorage.removeItem(STORAGE_KEYS.USER_INFO)
-        window.dispatchEvent(new Event('auth:logout'))
-      }
-
-      // 检查是否需要重试
-      if (retryOnStatusCodes.includes(response.status) && retryCount < maxRetries) {
-        const delay = calculateRetryDelay(retryCount, retryDelay, retryDelayMultiplier)
-        console.warn(`请求失败，准备重试 (${retryCount + 1}/${maxRetries})，延迟 ${delay.toFixed(0)}ms`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-        continue
-      }
-
-      return handleResponse(response, data)
-    } catch (error) {
-      // 网络错误或超时，尝试重试
-      if (retryCount < maxRetries) {
-        const delay = calculateRetryDelay(retryCount, retryDelay, retryDelayMultiplier)
-        console.warn(`请求异常，准备重试 (${retryCount + 1}/${maxRetries})，延迟 ${delay.toFixed(0)}ms: ${error.message}`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-        continue
-      }
-      return { success: false, error: error.message || '网络请求失败' }
-    }
-  }
-
-  return { success: false, error: '请求失败，已达到最大重试次数' }
+  return attemptRequest(url, config, requiresAuth, retryConfig, 0)
 }
 
 // 便捷方法
@@ -436,7 +449,9 @@ export function getFileUrl(fileIdOrUrl) {
 }
 
 export function parseFileIdFromUrl(url) {
-  if (!url) return null
+  if (!url) {
+    return null
+  }
   if (url.includes('/file/')) {
     const match = url.match(/\/file\/([^/]+)/)
     return match ? match[1] : null
@@ -445,6 +460,8 @@ export function parseFileIdFromUrl(url) {
 }
 
 export function isFileUrl(url) {
-  if (!url) return false
+  if (!url) {
+    return false
+  }
   return url.startsWith('/file/') || url.startsWith(`${FILE_API_BASE}/`)
 }

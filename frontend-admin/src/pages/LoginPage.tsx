@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Form, Input, Button, Checkbox, App, Modal, Space, Typography } from 'antd';
 import { UserOutlined, LockOutlined, PhoneOutlined, WechatOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import JSEncrypt from 'jsencrypt';
 import { authApi } from '../api';
 import { useAuthStore } from '../stores/authStore';
 
@@ -24,12 +23,12 @@ export default function LoginPage() {
     email?: string;
   }>({});
   const navigate = useNavigate();
-  const { setAuth } = useAuthStore();
+  const { setAuth, setToken } = useAuthStore();
   const { message } = App.useApp();
 
   const fetchAdminContact = async () => {
     try {
-      const response = await fetch('/api/v1/auth/admin-contact/');
+      const response = await fetch('/api/v1/common/admin-contact/');
       const data = await response.json();
       if (data.success) {
         setAdminContact(data.data || {});
@@ -60,33 +59,27 @@ export default function LoginPage() {
     return `${name.slice(0, 2)}***@${domain}`;
   };
 
-  // RSA 加密密码
-  const encryptPassword = async (password: string): Promise<string> => {
-    try {
-      const publicKey = await authApi.getPublicKey();
-      const encrypt = new JSEncrypt();
-      encrypt.setPublicKey(publicKey);
-      const encrypted = encrypt.encrypt(password);
-      if (!encrypted) {
-        throw new Error('加密失败');
-      }
-      return encrypted;
-    } catch (error) {
-      console.error('获取公钥或加密失败:', error);
-      throw error;
-    }
-  };
-
   const onFinish = async (values: LoginForm) => {
     setLoading(true);
     try {
-      // RSA 加密密码
-      const encryptedPassword = await encryptPassword(values.password);
+      // 直接发送密码（后端不支持 RSA 加密）
+      const response = await authApi.login(values.username, values.password);
+
+      // 先持久化 token，确保接下来获取用户信息的 /me 请求带上 Authorization
+      setToken(response.access_token);
+
+      // 登录成功后获取用户信息
+      const userInfo = await authApi.getCurrentUser();
       
-      // 发送加密后的密码
-      const response = await authApi.login(values.username, encryptedPassword, true);
+      // 适配用户信息格式，添加 role 字段
+      const adminUser = {
+        ...userInfo,
+        role: 'merchant_admin' as const,
+        is_superuser: false,
+        merchant_id: userInfo.id,
+      };
       
-      setAuth(response.access_token, response.user);
+      setAuth(response.access_token, adminUser);
       message.success('登录成功');
       navigate('/dashboard');
     } catch (error) {
@@ -97,13 +90,15 @@ export default function LoginPage() {
         const err = error as {
           response?: {
             status?: number;
-            data?: { message?: string };
+            data?: { message?: string; detail?: string };
           };
           message?: string;
         };
         
         // 优先使用后端返回的错误信息
-        if (err.response?.data?.message) {
+        if (err.response?.data?.detail) {
+          errorMessage = err.response.data.detail;
+        } else if (err.response?.data?.message) {
           errorMessage = err.response.data.message;
         } else if (err.message) {
           errorMessage = err.message;
@@ -111,10 +106,10 @@ export default function LoginPage() {
         
         // 根据状态码提供更友好的提示
         if (err.response?.status === 403) {
-          errorMessage = err.response?.data?.message || '无管理员权限，请联系管理员开通';
+          errorMessage = err.response?.data?.detail || '无管理员权限，请联系管理员开通';
           showContactModal();
         } else if (err.response?.status === 401) {
-          errorMessage = err.response?.data?.message || '用户名或密码错误';
+          errorMessage = err.response?.data?.detail || '用户名或密码错误';
         }
       }
       
