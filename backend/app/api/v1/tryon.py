@@ -52,7 +52,7 @@ async def _serialize_record(db, record) -> dict:
         "clothing": record.selected_clothing or [],
         "error_message": record.error_message,
         "processing_time": record.processing_time,
-        "created_at": record.created_at,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
     }
 
 

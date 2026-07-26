@@ -279,20 +279,15 @@ export const dashboardApi = {
 // ============ Config API ============
 export const configApi = {
   getGrouped: async () => {
-    // 后端暂未实现系统配置端点，返回空分组结构以保持类型一致
-    return {
-      basic: [],
-      ai: [],
-      oss: [],
-      storage: [],
-      quota: [],
-      contact: [],
-      other: [],
-    };
+    const response = await api.get('/admin/system/config/grouped/');
+    return response.data;
   },
-  batchUpdate: async (_configMap: Record<string, unknown>, _options?: unknown) => {
-    // TODO: Implement backend endpoint
-    return { success: true };
+  batchUpdate: async (configMap: Record<string, unknown>, options?: { value_types?: Record<string, string> }) => {
+    const response = await api.post('/admin/system/config/batch/', {
+      configs: configMap,
+      value_types: options?.value_types ?? {},
+    });
+    return response.data;
   },
 };
 

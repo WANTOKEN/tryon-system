@@ -21,11 +21,15 @@ from app.models.model_photo import ModelPhoto
 from app.models.operation_log import OperationLog
 from app.api.deps import get_current_user
 from app.services import hash_password
+from app.services.config_service import get_grouped_configs, update_configs
 from app.storage.service import upload_file
 from app.schemas.merchant import QuotaAdjustRequest, MerchantCreate, MerchantUpdate, MerchantResponse
 from app.schemas.clothing import ClothingResponse, ClothingUpdate, ClothingCreate
 from app.schemas.tryon import TryOnRecordResponse
 from app.schemas.file import FileRecordResponse
+from app.core.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -211,34 +215,100 @@ async def get_stats(
     total_tryon = (await db.execute(select(func.count()).select_from(TryOnRecord))).scalar()
     total_clothing = (await db.execute(select(func.count()).select_from(Clothing))).scalar()
 
-    # 近 7 天试穿趋势
+    # 配额汇总（跨商家）
+    quota_row = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(Merchant.quota_total), 0),
+                func.coalesce(func.sum(Merchant.quota_used), 0),
+                func.coalesce(func.sum(Merchant.quota_remaining), 0),
+            ).select_from(Merchant)
+        )
+    ).first()
+
+    # 存储用量（非删除文件）
+    total_files = (
+        await db.execute(
+            select(func.count()).select_from(FileRecord).where(FileRecord.is_deleted == False)  # noqa: E712
+        )
+    ).scalar()
+    total_storage_bytes = (
+        await db.execute(
+            select(func.coalesce(func.sum(FileRecord.file_size), 0))
+            .select_from(FileRecord)
+            .where(FileRecord.is_deleted == False)  # noqa: E712
+        )
+    ).scalar()
+
+    # 今日试穿统计
+    today = datetime.now(timezone.utc).date()
+    today_total = (
+        await db.execute(
+            select(func.count()).select_from(TryOnRecord).where(cast(TryOnRecord.created_at, Date) == today)
+        )
+    ).scalar() or 0
+    today_completed = (
+        await db.execute(
+            select(func.count()).select_from(TryOnRecord).where(
+                cast(TryOnRecord.created_at, Date) == today,
+                TryOnRecord.status == "completed",
+            )
+        )
+    ).scalar() or 0
+    today_avg_time = (
+        await db.execute(
+            select(func.coalesce(func.avg(TryOnRecord.processing_time), 0)).select_from(TryOnRecord).where(
+                cast(TryOnRecord.created_at, Date) == today,
+                TryOnRecord.status == "completed",
+            )
+        )
+    ).scalar() or 0
+
+    # 近 7 天试穿趋势（含成功数）
     trend = []
     for i in range(6, -1, -1):
-        day = datetime.now(timezone.utc).date() - timedelta(days=i)
+        day = today - timedelta(days=i)
         cnt = (
             await db.execute(
                 select(func.count()).select_from(TryOnRecord).where(
                     cast(TryOnRecord.created_at, Date) == day
                 )
             )
-        ).scalar()
-        trend.append({"date": day.isoformat(), "count": cnt or 0, "success_count": cnt or 0})
+        ).scalar() or 0
+        success = (
+            await db.execute(
+                select(func.count()).select_from(TryOnRecord).where(
+                    cast(TryOnRecord.created_at, Date) == day,
+                    TryOnRecord.status == "completed",
+                )
+            )
+        ).scalar() or 0
+        trend.append({"date": day.isoformat(), "count": cnt, "success_count": success})
+
+    success_rate = round(today_completed / today_total, 4) if today_total else 0.0
+    engine_stats = [
+        {
+            "name": settings.ai_engine,
+            "type": settings.ai_engine,
+            "status": "running" if settings.ai_engine else "stopped",
+        }
+    ]
 
     return {
-        "today_tryon_count": trend[-1]["count"],
-        "today_success_rate": 1.0,
-        "today_avg_processing_time": 0,
+        "today_tryon_count": today_total,
+        "today_success_rate": success_rate,
+        "today_avg_processing_time": int(today_avg_time or 0),
         "total_merchants": total_merchants,
         "active_merchants": active_merchants,
         "total_tryon_records": total_tryon,
         "total_clothing": total_clothing,
-        "total_storage_bytes": 0,
-        "total_files": 0,
-        "quota_total": 0,
-        "quota_used": 0,
-        "quota_remaining": 0,
+        "total_storage_bytes": int(total_storage_bytes or 0),
+        "total_files": total_files or 0,
+        "quota_total": int(quota_row[0]) if quota_row else 0,
+        "quota_used": int(quota_row[1]) if quota_row else 0,
+        "quota_remaining": int(quota_row[2]) if quota_row else 0,
         "tryon_trend": trend,
-        "engine_stats": [],
+        "engine_stats": engine_stats,
     }
 
 
@@ -327,11 +397,11 @@ async def admin_update_clothing(
 async def admin_create_clothing(
     data: ClothingCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: Merchant = Depends(get_current_user),
+    admin: Merchant = Depends(require_superadmin),
 ):
-    """管理后台创建服装记录（无图）"""
+    """管理后台创建服装记录（无图，仅超管）"""
     clothing = Clothing(
-        merchant_id=current_user.id,
+        merchant_id=admin.id,
         name=data.name,
         category=data.category,
         subcategory=data.subcategory,
@@ -345,7 +415,7 @@ async def admin_create_clothing(
     db.add(clothing)
     await db.commit()
     await db.refresh(clothing)
-    await log_operation(db, current_user, "create_clothing", "clothing", clothing.uuid)
+    await log_operation(db, admin, "create_clothing", "clothing", clothing.uuid)
     return ClothingResponse.model_validate(clothing).model_dump()
 
 
@@ -359,7 +429,7 @@ async def admin_upload_clothing(
     sizes: str = Form("[]"),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: Merchant = Depends(get_current_user),
+    admin: Merchant = Depends(require_superadmin),
 ):
     """管理后台上传服装图片（真实落库）"""
     content = await file.read()
@@ -372,7 +442,7 @@ async def admin_upload_clothing(
         file_category="clothing",
     )
     clothing = Clothing(
-        merchant_id=current_user.id,
+        merchant_id=admin.id,
         name=name,
         category=category,
         subcategory=subcategory,
@@ -387,7 +457,7 @@ async def admin_upload_clothing(
     db.add(clothing)
     await db.commit()
     await db.refresh(clothing)
-    await log_operation(db, current_user, "upload_clothing", "clothing", clothing.uuid)
+    await log_operation(db, admin, "upload_clothing", "clothing", clothing.uuid)
     return {
         "uuid": clothing.uuid,
         "name": clothing.name,
@@ -466,6 +536,38 @@ async def reset_quota(
         "quota_used": merchant.quota_used,
         "quota_remaining": merchant.quota_remaining,
     }
+
+
+# ===== 系统配置（设置页面） =====
+class ConfigBatchRequest(BaseModel):
+    configs: dict = {}          # {key: value}
+    value_types: dict = {}      # {key: value_type}
+
+
+@router.get("/system/config/grouped/")
+async def get_config_grouped(
+    db: AsyncSession = Depends(get_db),
+    _: Merchant = Depends(require_superadmin),
+):
+    """按分组返回系统配置（对齐前端 GroupedConfig）"""
+    return await get_grouped_configs(db)
+
+
+@router.post("/system/config/batch/")
+async def batch_update_configs(
+    payload: ConfigBatchRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: Merchant = Depends(require_superadmin),
+):
+    """批量更新系统配置"""
+    if not isinstance(payload.configs, dict) or not payload.configs:
+        raise HTTPException(status_code=400, detail="configs 必须是非空对象")
+    updated = await update_configs(db, payload.configs, payload.value_types)
+    await log_operation(
+        db, admin, "update_config", "system_config", "",
+        f"updated={updated}",
+    )
+    return {"success": True, "updated": updated}
 
 
 # ===== 文件统计 / 批量操作 / 清理 =====
@@ -592,7 +694,10 @@ async def admin_create_model_photo(
             else:
                 fields[k] = v
     else:
-        fields = await request.json()
+        try:
+            fields = await request.json()
+        except Exception:
+            fields = {}
     if not image_bytes:
         raise HTTPException(status_code=400, detail="请上传模特照片")
     rec, url, _ = await upload_file(
@@ -650,7 +755,10 @@ async def admin_update_model_photo(
             else:
                 fields[k] = v
     else:
-        fields = await request.json()
+        try:
+            fields = await request.json()
+        except Exception:
+            fields = {}
     if "is_active" in fields:
         photo.is_active = str(fields["is_active"]).lower() in ("true", "1", "yes")
     if "sort_order" in fields:

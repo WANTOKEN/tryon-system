@@ -7,6 +7,7 @@ from app.models.clothing import Clothing
 from app.models.tryon_record import TryOnRecord
 from app.models.model_photo import ModelPhoto
 from app.models.operation_log import OperationLog
+from app.models.system_config import SystemConfig
 
 __all__ = [
     "Merchant",
@@ -15,4 +16,5 @@ __all__ = [
     "TryOnRecord",
     "ModelPhoto",
     "OperationLog",
+    "SystemConfig",
 ]

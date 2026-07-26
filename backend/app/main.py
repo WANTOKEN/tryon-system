@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.api.v1 import router as api_v1_router
 from app.db import engine, Base, AsyncSessionLocal
 from app.services.auth_service import ensure_admin
+from app.services.config_service import ensure_system_configs
 
 settings = get_settings()
 
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     # 播种超级管理员（首次启动）
     async with AsyncSessionLocal() as db:
         await ensure_admin(db)
+        await ensure_system_configs(db)
 
     yield
     await engine.dispose()

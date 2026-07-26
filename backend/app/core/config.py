@@ -64,6 +64,9 @@ class Settings(BaseSettings):
             raise ValueError(
                 "jwt_secret_key 必须由环境变量注入，禁止在生产环境使用默认弱密钥"
             )
+        # 安全护栏：非开发环境下强制关闭开发期短信明文返回，避免生产泄漏验证码
+        if self.env != "development":
+            self.dev_sms_enabled = False
         return self
 
     # ===== 存储后端（资源与 AI 结果均存服务器本地磁盘） =====

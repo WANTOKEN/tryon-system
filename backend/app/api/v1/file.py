@@ -42,6 +42,22 @@ async def list_files(
     }
 
 
+@router.get("/{file_id}/info/")
+async def get_file_info(file_id: str, db: AsyncSession = Depends(get_db)):
+    """文件元信息（注册在泛匹配 /{file_id}/ 之前，避免被其遮蔽）"""
+    rec = (
+        await db.execute(
+            select(FileRecord).where(
+                (FileRecord.uuid == file_id) | (FileRecord.id == _to_int(file_id)),
+                FileRecord.is_deleted == False,  # noqa: E712
+            )
+        )
+    ).scalar_one_or_none()
+    if not rec:
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileRecordResponse.model_validate(rec)
+
+
 @router.get("/{file_id}/")
 async def get_file(file_id: str, db: AsyncSession = Depends(get_db)):
     """按 uuid 或 id 返回文件（重定向到可访问 URL，供 <img> 直接使用）"""
@@ -71,22 +87,6 @@ async def get_file_by_key(storage_key: str, db: AsyncSession = Depends(get_db)):
     if not rec:
         raise HTTPException(status_code=404, detail="File not found")
     return RedirectResponse(rec.access_url)
-
-
-@router.get("/{file_id}/info/")
-async def get_file_info(file_id: str, db: AsyncSession = Depends(get_db)):
-    """文件元信息"""
-    rec = (
-        await db.execute(
-            select(FileRecord).where(
-                (FileRecord.uuid == file_id) | (FileRecord.id == _to_int(file_id)),
-                FileRecord.is_deleted == False,  # noqa: E712
-            )
-        )
-    ).scalar_one_or_none()
-    if not rec:
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileRecordResponse.model_validate(rec)
 
 
 class SecureUrlRequest(BaseModel):

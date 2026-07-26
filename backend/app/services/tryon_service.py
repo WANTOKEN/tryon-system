@@ -6,8 +6,9 @@ TryOn service - 虚拟试穿服务
 - 状态机: pending -> processing -> completed | failed
 """
 import asyncio
+import logging
 import time
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,20 @@ from app.storage.service import upload_file
 from app.services.tryon_engine import get_engine
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+# 进程内后台任务引用集合：避免任务被 GC 回收导致静默丢失，便于追踪
+_running_tasks: Set[asyncio.Task] = set()
+
+
+def _track_task(task: asyncio.Task) -> None:
+    """登记后台任务并在结束后自动移除，同时记录未捕获异常"""
+    _running_tasks.add(task)
+    task.add_done_callback(_running_tasks.discard)
+    task.add_done_callback(
+        lambda t: logger.error("试穿后台任务异常: %s", t.exception())
+        if t.exception() else None
+    )
 
 
 async def _read_avatar_bytes(avatar_key: Optional[str], avatar_data: Optional[bytes]) -> bytes:
@@ -107,7 +122,7 @@ async def generate(
     await db.commit()
 
     # 后台驱动生成（开发/演示用进程内任务；生产可换 Celery）
-    asyncio.create_task(
+    task = asyncio.create_task(
         _process(
             record_uuid=rec_uuid,
             avatar_data=avatar_data,
@@ -116,11 +131,13 @@ async def generate(
             prompt=prompt,
         )
     )
+    _track_task(task)
     return record
 
 
 async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key: Optional[str], clothing_uuids: List[str], prompt: Optional[str] = None):
     async with AsyncSessionLocal() as db:
+        record = None
         try:
             record = (
                 await db.execute(select(TryOnRecord).where(TryOnRecord.uuid == record_uuid))
@@ -153,7 +170,8 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
             record.processing_time = int(time.time() - record.created_at.timestamp()) if record.created_at else 0
             await db.commit()
         except Exception as e:  # noqa: BLE001
-            if record:
+            logger.exception("试穿任务 %s 处理失败", record_uuid)
+            if record is not None:
                 record.status = "failed"
                 record.status_text = "生成失败"
                 record.error_message = str(e)
