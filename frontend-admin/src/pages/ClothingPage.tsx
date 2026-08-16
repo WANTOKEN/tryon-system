@@ -288,21 +288,12 @@ export default function ClothingPage() {
       dataIndex: 'category',
       valueType: 'select',
       valueEnum: Object.fromEntries(
-        ['tops', 'bottoms', 'dresses', 'outerwear', 'shoes', 'accessories'].map(key => [
-          key,
-          { text: getCategoryName(key), status: 'Success' }
-        ])
+        categories.map(cat => [cat.id, { text: cat.name, status: 'Success' }])
       ),
       width: 90,
       align: 'center',
       render: (_, record) => (
-        <Tag color={
-          record.category === 'tops' ? 'green' :
-          record.category === 'bottoms' ? 'blue' :
-          record.category === 'dresses' ? 'orange' :
-          record.category === 'outerwear' ? 'red' :
-          record.category === 'shoes' ? 'cyan' : 'gray'
-        }>
+        <Tag color="blue">
           {getCategoryName(record.category)}
         </Tag>
       ),

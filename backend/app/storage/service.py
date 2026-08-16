@@ -1,13 +1,13 @@
 """
 文件上传服务（数据库 + 存储后端 的桥接）
 
-职责：计算 MD5、可选去重、调用存储后端、写入 FileRecord。
-返回 (FileRecord, access_url, is_duplicate)。
+职责：调用存储后端、写入 FileRecord。不做去重，每次上传均为独立记录。
+返回 (FileRecord, access_url)。
 """
-import hashlib
+import uuid as _uuid
+
 from typing import Tuple
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.file_record import FileRecord
@@ -31,28 +31,13 @@ async def upload_file(
     content_type: str,
     file_category: str,
     is_public: bool = False,
-    dedup: bool = True,
-) -> Tuple[FileRecord, str, bool]:
-    """上传文件并落库，返回 (记录, 可访问URL, 是否命中去重)"""
-    md5_hash = hashlib.md5(content).hexdigest()
-
-    if dedup:
-        existing = (
-            await db.execute(
-                select(FileRecord).where(
-                    FileRecord.md5_hash == md5_hash, FileRecord.is_deleted == False  # noqa: E712
-                )
-            )
-        ).scalar_one_or_none()
-        if existing:
-            return existing, existing.access_url, True
-
+) -> Tuple[FileRecord, str]:
+    """上传文件并落库，返回 (记录, 可访问URL)"""
     ext = _EXT_MAP.get(content_type, ".bin")
-    storage_key = f"{folder}/{md5_hash}{ext}"
+    storage_key = f"{folder}/{_uuid.uuid4().hex}{ext}"
     url = await storage.upload(content, storage_key, content_type, is_public)
 
     record = FileRecord(
-        md5_hash=md5_hash,
         storage_key=storage_key,
         access_url=url,
         file_size=len(content),
@@ -66,7 +51,7 @@ async def upload_file(
     db.add(record)
     await db.flush()
     await db.refresh(record)
-    return record, url, False
+    return record, url
 
 
 def get_access_url(storage_key: str, is_public: bool = False, expires: int = 3600) -> str:

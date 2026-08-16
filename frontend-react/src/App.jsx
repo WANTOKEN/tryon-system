@@ -13,6 +13,7 @@ import Toast from './components/Toast'
 import LoginModal from './components/LoginModal'
 import GlobalLoading from './components/GlobalLoading'
 import CachedImage from './components/CachedImage'
+import { useTheme } from './hooks/useTheme'
 import { STORAGE_KEYS, CURRENT_CACHE_VERSION } from './constants/storageKeys'
 import { safeStorage } from './utils/safeStorage'
 import { compressImage, truncateFileName, extractDominantColor } from './utils/imageUtils'
@@ -23,7 +24,7 @@ function AppContent() {
 
   // === 应用全局状态 ===
   const [appLoading, setAppLoading] = useState(true) // 应用初始化加载中
-  const [theme] = useState('light') // 主题（当前仅支持 light）
+  const { theme, mode, setTheme, toggleMode } = useTheme() // 主题配色系统
   const [toast, setToast] = useState(null) // 全局 Toast 提示
 
   // === 试穿核心状态 ===
@@ -394,10 +395,6 @@ function AppContent() {
       fetchCategories()
     }
   }, [isLoggedIn, fetchHistory, fetchClothing, fetchCategories])
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-  }, [theme])
 
   /**
    * 处理头像文件选择
@@ -991,67 +988,6 @@ function AppContent() {
     [showToast, t]
   )
 
-  const handleSendResetSms = useCallback(
-    async phone => {
-      if (!phone) {
-        showToast(t('n_phoneEmpty'), 'warning')
-        return false
-      }
-
-      try {
-        const response = await api.post(
-          API_ENDPOINTS.AUTH.SEND_RESET_SMS,
-          { phone },
-          { requiresAuth: false }
-        )
-
-        if (response.success) {
-          showToast(t('n_smsSent'), 'success')
-          return true
-        }
-        showToast(response.error || t('n_smsSendFail'), 'error')
-        return false
-      } catch (error) {
-        showToast(t('n_smsSendFailRetry'), 'error')
-        return false
-      }
-    },
-    [showToast, t]
-  )
-
-  const handleResetPassword = useCallback(
-    async (phone, code, newPassword) => {
-      if (!phone || !code || !newPassword) {
-        showToast(t('n_resetInputEmpty', '请填写完整信息'), 'warning')
-        return
-      }
-
-      setLoginLoading(true)
-      try {
-        const response = await api.post(
-          API_ENDPOINTS.AUTH.RESET_PASSWORD,
-          {
-            phone,
-            code,
-            new_password: newPassword,
-          },
-          { requiresAuth: false }
-        )
-
-        if (response.success) {
-          showToast(t('n_resetSuccess', '密码重置成功，请登录'), 'success')
-          setShowLoginModal(false)
-        } else {
-          showToast(response.error || t('n_resetError', '重置失败'), 'error')
-        }
-      } catch (error) {
-        showToast(t('n_resetFail', '重置失败，请稍后重试'), 'error')
-      } finally {
-        setLoginLoading(false)
-      }
-    },
-    [showToast, t]
-  )
 
   const _handleSaveResult = useCallback(() => {
     if (!hasResult || tryOnHistory.length === 0) {
@@ -1463,9 +1399,7 @@ function AppContent() {
   return (
     <>
       {appLoading && <GlobalLoading />}
-      <div
-        className={`bg-texture min-h-screen transition-colors ${theme === 'dark' ? 'dark' : ''}`}
-      >
+      <div className="bg-texture min-h-screen transition-colors">
         <Header
           user={isLoggedIn ? userInfo : null}
           sessionCustomer={sessionCustomer}
@@ -1473,6 +1407,10 @@ function AppContent() {
           onEndSession={handleEndSession}
           onOpenHistory={() => setShowHistoryModal(true)}
           history={tryOnHistory}
+          theme={theme}
+          mode={mode}
+          onThemeChange={setTheme}
+          onToggleMode={toggleMode}
         />
         <MainLayout
           avatarPreview={avatarPreview}
@@ -1550,8 +1488,6 @@ function AppContent() {
           onSmsLogin={handleSmsLogin}
           onSendSms={handleSendSms}
           onRegister={handleRegister}
-          onSendResetSms={handleSendResetSms}
-          onResetPassword={handleResetPassword}
           loading={loginLoading}
         />
 

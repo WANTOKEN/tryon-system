@@ -19,12 +19,6 @@ DEFAULT_CONFIGS: List[tuple] = [
     ("ai", "ai_timeout", "120", "integer", "超时时间(秒)"),
     ("ai", "ai_retry_count", "3", "integer", "重试次数"),
     ("ai", "ai_api_key", "", "string", "API 密钥"),
-    ("oss", "oss_enabled", "false", "boolean", "启用 OSS 存储"),
-    ("oss", "oss_type", "aliyun", "string", "OSS 类型"),
-    ("oss", "oss_bucket", "", "string", "Bucket 名称"),
-    ("oss", "oss_endpoint", "", "string", "Endpoint"),
-    ("oss", "oss_access_key", "", "string", "Access Key"),
-    ("oss", "oss_secret_key", "",string, "Secret Key"),
     ("storage", "storage_max_size_mb", "1024", "integer", "最大存储空间(MB)"),
     ("storage", "storage_cleanup_days", "30", "integer", "自动清理天数"),
     ("quota", "default_quota", "100", "integer", "默认配额"),
@@ -53,7 +47,6 @@ async def ensure_system_configs(db: AsyncSession) -> None:
             continue
         db.add(
             SystemConfig(
-                config_group=group,
                 key=key,
                 value=str(value),
                 value_type=vtype,
@@ -63,6 +56,23 @@ async def ensure_system_configs(db: AsyncSession) -> None:
     await db.commit()
 
 
+def _parse_value(value: str, value_type: str):
+    """按 value_type 解析配置值（SystemConfig 模型无 parse_value 方法，这里本地实现）"""
+    try:
+        if value_type == "integer":
+            return int(value)
+        if value_type == "float":
+            return float(value)
+        if value_type == "boolean":
+            return str(value).lower() in ("true", "1", "yes")
+        if value_type == "json":
+            import json
+            return json.loads(value) if value else {}
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return value
+    return value
+
+
 def _serialize(cfg: SystemConfig) -> dict:
     return {
         "id": cfg.id,
@@ -70,7 +80,7 @@ def _serialize(cfg: SystemConfig) -> dict:
         "value": cfg.value,
         "value_type": cfg.value_type,
         "value_type_text": VALUE_TYPE_TEXT.get(cfg.value_type, cfg.value_type),
-        "parsed_value": cfg.parse_value(),
+        "parsed_value": _parse_value(cfg.value, cfg.value_type),
         "description": cfg.description,
         "is_public": cfg.is_public,
         "created_at": cfg.created_at.isoformat() if cfg.created_at else "",
@@ -80,18 +90,18 @@ def _serialize(cfg: SystemConfig) -> dict:
 
 async def get_grouped_configs(db: AsyncSession) -> dict:
     """按 config_group 分组返回配置（对齐前端 GroupedConfig）"""
+    group_of = {key: group for group, key, _, _, _ in DEFAULT_CONFIGS}
     rows = (await db.execute(select(SystemConfig).order_by(SystemConfig.id))).scalars().all()
     grouped = {
         "basic": [],
         "ai": [],
-        "oss": [],
         "storage": [],
         "quota": [],
         "contact": [],
         "other": [],
     }
     for cfg in rows:
-        grouped.setdefault(cfg.config_group, []).append(_serialize(cfg))
+        grouped.setdefault(group_of.get(cfg.key, "other"), []).append(_serialize(cfg))
     return grouped
 
 

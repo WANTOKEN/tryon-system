@@ -2,8 +2,8 @@
 Database connection and session management
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 from app.core.config import get_settings
+from app.models.base import Base  # 复用模型基类，确保 create_all 能建出所有表
 
 settings = get_settings()
 
@@ -15,11 +15,11 @@ if settings.database_url.startswith("sqlite"):
         connect_args={"check_same_thread": False},
     )
 elif settings.database_url.startswith("mysql"):
-    # MySQL 8：启用 pre_ping 与 pool_recycle，避免连接被服务端 wait_timeout 回收后变为失效连接
+    # MySQL 8：注意 pool_pre_ping 在 sqlalchemy 2.0.35 + aiomysql 0.2.0 下会触发
+    # aiomysql ping(reconnect) 签名不兼容 bug，故关闭；改用 pool_recycle 回收失效连接。
     engine = create_async_engine(
         settings.database_url,
         echo=settings.db_echo,
-        pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
         pool_recycle=3600,
@@ -28,7 +28,6 @@ else:
     engine = create_async_engine(
         settings.database_url,
         echo=settings.db_echo,
-        pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
     )
@@ -40,10 +39,6 @@ AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 async def get_db() -> AsyncSession:

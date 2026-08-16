@@ -11,6 +11,10 @@ from functools import lru_cache
 from typing import Any, List
 from pathlib import Path
 
+# backend/.env 的绝对路径：无论从项目根还是 backend 目录启动 uvicorn 都能正确加载，
+# 避免「运行目录不在 backend 时读取不到 .env、回退到默认 MySQL 连接」导致的 Access denied。
+_BACKEND_ENV = Path(__file__).resolve().parent.parent.parent / ".env"
+
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -75,6 +79,9 @@ class Settings(BaseSettings):
     storage_local_dir: str = str(Path(__file__).resolve().parent.parent.parent / "storage")
     storage_public_base: str = "/static/uploads"  # 本地可访问的基础路径（服务器地址）
 
+    # 上传/结果图大小上限（MB）；用于 SSRF 下载防护时的字节数上限
+    upload_max_size_mb: int = 20
+
     # ===== AI 试穿引擎 =====
     # mock: 演示模式，使用本地占位图（无需外部 API，保证闭环可运行）
     # real: 接入真实虚拟试穿 API（需配置下方密钥与回调/轮询）
@@ -95,6 +102,20 @@ class Settings(BaseSettings):
     )
     ark_timeout: int = 120                  # 单次生成请求超时（秒）
 
+    # ===== 豆包 Seedream（LAS）多图融合引擎 =====
+    # 真实引擎可切换为豆包 Seedream 接入（base64 传图），需配置 LAS_API_KEY 后启用。
+    las_api_key: str = ""                                   # 豆包 Seedream 访问凭证
+    las_base_url: str = "https://operator.las.cn-beijing.volces.com"  # LAS 服务地址
+    engine_model: str = "doubao-seedream-4.5"               # LAS 多图融合模型名
+    engine_timeout: int = 60                                # 引擎单次请求超时（秒）
+    task_overall_timeout: int = 180                         # 试穿任务总耗时上限（秒）
+    las_size: str = "2048x2048"                             # 生成尺寸
+    las_response_format: str = "url"                        # url | b64_json
+    las_watermark: bool = False                             # 是否添加「AI 生成」水印
+    las_result_allowed_host: str = "operator.las.cn-beijing.volces.com"  # 结果 URL 允许的主机（含 .volces.com 后缀）
+    las_result_download_timeout: int = 30                   # 结果图下载超时（秒）
+    las_max_ref_images: int = 14                            # 参考图数量上限（人像 + 服装）
+
     # 演示用：mock 引擎模拟处理耗时（秒）
     mock_tryon_seconds: int = 4
 
@@ -107,7 +128,7 @@ class Settings(BaseSettings):
     dev_sms_enabled: bool = True
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[".env", str(_BACKEND_ENV)],
         case_sensitive=False,
         extra="ignore",
     )

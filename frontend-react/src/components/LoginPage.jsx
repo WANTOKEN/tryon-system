@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import BrandLogo from './BrandLogo'
 
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -30,20 +31,8 @@ export default function LoginPage({ onLogin }) {
       <div className='relative w-full max-w-md animate-scale-in'>
         {/* Logo */}
         <div className='mb-10 text-center'>
-          <div className='gold-glow mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-champagne to-champagne-dark shadow-lg'>
-            <svg
-              className='h-9 w-9 text-white'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={1.5}
-                d='M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
-              />
-            </svg>
+          <div className='gold-glow mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-champagne to-champagne-dark p-3 shadow-lg'>
+            <BrandLogo size={40} />
           </div>
           <h1 className='text-2xl font-bold text-charcoal dark:text-grayLight'>
             AI Virtual Try-on

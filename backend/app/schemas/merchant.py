@@ -25,11 +25,9 @@ class MerchantUpdate(MerchantBase):
 
 
 class MerchantResponse(MerchantBase):
-    id: int
-    uuid: str
+    id: str
     role: str = "merchant"
     is_superuser: bool = False
-    permissions: List[str] = []
     quota_total: int
     quota_used: int
     quota_remaining: int

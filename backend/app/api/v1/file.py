@@ -48,7 +48,7 @@ async def get_file_info(file_id: str, db: AsyncSession = Depends(get_db)):
     rec = (
         await db.execute(
             select(FileRecord).where(
-                (FileRecord.uuid == file_id) | (FileRecord.id == _to_int(file_id)),
+                FileRecord.uuid == file_id,
                 FileRecord.is_deleted == False,  # noqa: E712
             )
         )
@@ -60,11 +60,11 @@ async def get_file_info(file_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{file_id}/")
 async def get_file(file_id: str, db: AsyncSession = Depends(get_db)):
-    """按 uuid 或 id 返回文件（重定向到可访问 URL，供 <img> 直接使用）"""
+    """按 uuid 返回文件（重定向到可访问 URL，供 <img> 直接使用）"""
     rec = (
         await db.execute(
             select(FileRecord).where(
-                (FileRecord.uuid == file_id) | (FileRecord.id == _to_int(file_id)),
+                FileRecord.uuid == file_id,
                 FileRecord.is_deleted == False,  # noqa: E712
             )
         )
@@ -130,9 +130,3 @@ async def bulk_secure_url(payload: BulkSecureUrlRequest, db: AsyncSession = Depe
             result[key] = rec.access_url
     return {"urls": result}
 
-
-def _to_int(value: str) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return -1

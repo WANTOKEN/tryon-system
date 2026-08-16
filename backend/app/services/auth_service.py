@@ -60,12 +60,6 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[Merchant]:
     return result.scalar_one_or_none()
 
 
-async def get_user_by_phone(db: AsyncSession, phone: str) -> Optional[Merchant]:
-    stmt = select(Merchant).where(Merchant.phone == phone)
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
-
-
 async def create_user(db: AsyncSession, username: str, phone: str, password: str, **kwargs) -> Merchant:
     merchant = Merchant(
         username=username,
@@ -76,12 +70,6 @@ async def create_user(db: AsyncSession, username: str, phone: str, password: str
     db.add(merchant)
     await db.flush()
     return merchant
-
-
-async def update_last_login(db: AsyncSession, merchant: Merchant, ip: str = ""):
-    merchant.last_login_at = datetime.now(timezone.utc)
-    merchant.last_login_ip = ip
-    await db.flush()
 
 
 # ===== 开发期短信验证码（内存存储，仅用于无短信网关的本地演示） =====

@@ -3,7 +3,7 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 sqlalchemy==2.0.35
-aiomysql==0.2.0          # 默认 MySQL 8 异步驱动（兼容 caching_sha2_password）
+aiomysql==0.2.0          # 默认 MySQL 8 异步驱动；注意 sqlalchemy 2.0.35 下 pool_pre_ping 会触发其 ping(reconnect) 签名不兼容 bug，故 database.py 已关闭 pre_ping
 aiosqlite==0.20.0        # 仅测试时使用 SQLite
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

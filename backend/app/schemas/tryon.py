@@ -20,11 +20,11 @@ class TryOnStatusResponse(BaseModel):
     status_text: str
     result_url: Optional[str]
     error_message: Optional[str]
-    processing_time: Optional[int]
+    duration_ms: Optional[int]
 
 
 class TryOnRecordResponse(BaseModel):
-    id: int
+    id: str
     uuid: str
     session_id: str
     avatar_url: str
@@ -33,6 +33,7 @@ class TryOnRecordResponse(BaseModel):
     status_text: str
     ai_engine: str
     is_saved: bool
+    duration_ms: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

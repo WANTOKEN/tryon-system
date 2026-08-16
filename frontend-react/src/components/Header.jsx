@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 
 import { useI18n } from '../hooks/useI18n'
+import BrandLogo from './BrandLogo'
 
 export default function Header({
   user,
@@ -9,10 +10,26 @@ export default function Header({
   onEndSession,
   onOpenHistory,
   history = [],
+  theme,
+  mode,
+  onThemeChange,
+  onToggleMode,
 }) {
   const { t, locale, changeLocale, languages, currentLang } = useI18n()
   const [showLangDropdown, setShowLangDropdown] = useState(false)
   const langRef = useRef(null)
+  const [showThemeDropdown, setShowThemeDropdown] = useState(false)
+  const themeRef = useRef(null)
+
+  const THEME_OPTIONS = [
+    { key: 'luxury-gold', name: '香槟金', color: '#c8a45c' },
+    { key: 'frost-blue', name: '冰川蓝', color: '#4a90d9' },
+    { key: 'sakura-pink', name: '樱花粉', color: '#e89ab0' },
+    { key: 'forest-green', name: '森林绿', color: '#5a9e7a' },
+  ]
+
+  const activeThemeColor =
+    THEME_OPTIONS.find(o => o.key === theme)?.color || '#c8a45c'
 
   const savedCount = useMemo(
     () => (history || []).filter(r => r.is_saved || r.saved).length,
@@ -34,6 +51,9 @@ export default function Header({
       if (langRef.current && !langRef.current.contains(e.target)) {
         setShowLangDropdown(false)
       }
+      if (themeRef.current && !themeRef.current.contains(e.target)) {
+        setShowThemeDropdown(false)
+      }
     }
     document.addEventListener('click', handler)
     return () => document.removeEventListener('click', handler)
@@ -44,30 +64,18 @@ export default function Header({
 
   return (
     <header
-      className='sticky top-0 z-50 bg-gradient-to-r from-[#1A1A1A] via-[#222222] to-[#1A1A1A] px-3 py-2 text-white shadow-lg shadow-black/10 md:px-5 md:py-2.5'
+      className='sticky top-0 z-50 px-3 py-2 text-white shadow-lg shadow-black/10 md:px-5 md:py-2.5'
+      style={{
+        background: 'linear-gradient(to right, var(--header-bg-1), var(--header-bg-2), var(--header-bg-1))',
+        color: 'var(--header-on)',
+      }}
       role='banner'
     >
       <div className='mx-auto flex max-w-7xl items-center justify-between'>
         {/* Logo */}
         <div className='flex items-center space-x-2 md:space-x-2.5'>
-          <div
-            className='flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-champagne to-yellow-600 md:h-8 md:w-8'
-            aria-hidden='true'
-          >
-            <svg
-              className='h-4 w-4 text-charcoal md:h-5 md:w-5'
-              fill='none'
-              stroke='currentColor'
-              viewBox='0 0 24 24'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth='2'
-                d='M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01'
-              />
-            </svg>
-          </div>
+          <BrandLogo size={28} className='flex-shrink-0 md:h-8 md:w-8' />
+
           <div>
             <h1
               id='site-title'
@@ -180,7 +188,7 @@ export default function Header({
               </svg>
             </button>
             {showLangDropdown && (
-              <div className='absolute right-0 top-full z-[60] mt-2 w-36 animate-fade-in overflow-hidden rounded-xl border border-white/10 bg-[#2A2A2A] shadow-xl shadow-black/30'>
+              <div className='absolute right-0 top-full z-[60] mt-2 w-36 animate-fade-in overflow-hidden rounded-xl border border-white/10 bg-[var(--header-bg-2)] shadow-xl shadow-black/30'>
                 {languages.map(lang => (
                   <button
                     type='button'
@@ -196,6 +204,85 @@ export default function Header({
                     <span className='text-base'>{lang.flag}</span> {lang.name}
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* 主题切换 */}
+          <div className='relative' ref={themeRef}>
+            <button
+              type='button'
+              className='touch-target flex items-center justify-center gap-1.5 rounded-lg p-2 transition-colors hover:bg-white/10'
+              aria-label='主题配色'
+              title='主题配色'
+              onClick={() => setShowThemeDropdown(!showThemeDropdown)}
+            >
+              <span
+                className='flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white/20'
+                style={{ backgroundColor: activeThemeColor }}
+              >
+                <svg className='h-2.5 w-2.5 text-white/90' fill='currentColor' viewBox='0 0 24 24'>
+                  <path d='M12 3a9 9 0 100 18c1.66 0 3-1.34 3-3 0-.55-.45-1-1-1H12a1 1 0 01-1-1v-2a1 1 0 011-1h2c1.1 0 2-.9 2-2 0-1.66-1.34-3-3-3 .55 0 1-.45 1-1V5c0-1.1-.9-2-2-2z' />
+                </svg>
+              </span>
+              <svg
+                className={`h-3 w-3 text-gray-500 transition-transform duration-200 ${showThemeDropdown ? 'rotate-180' : ''}`}
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M19 9l-7 7-7-7' />
+              </svg>
+            </button>
+            {showThemeDropdown && (
+              <div className='absolute right-0 top-full z-[60] mt-2 w-44 animate-fade-in overflow-hidden rounded-xl border border-white/10 bg-[var(--header-bg-2)] p-2 shadow-xl shadow-black/30'>
+                <p className='px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500'>
+                  配色方案
+                </p>
+                {THEME_OPTIONS.map(opt => (
+                  <button
+                    type='button'
+                    key={opt.key}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-white/10 ${
+                      theme === opt.key ? 'bg-white/10 text-white' : 'text-gray-300'
+                    }`}
+                    onClick={() => {
+                      onThemeChange(opt.key)
+                      setShowThemeDropdown(false)
+                    }}
+                  >
+                    <span
+                      className='h-4 w-4 flex-shrink-0 rounded-full ring-1 ring-white/20'
+                      style={{ backgroundColor: opt.color }}
+                    />
+                    {opt.name}
+                    {theme === opt.key && (
+                      <svg className='ml-auto h-3.5 w-3.5 text-accent' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='3' d='M5 13l4 4L19 7' />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+                <div className='my-1.5 border-t border-white/10' />
+                <button
+                  type='button'
+                  className='flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-white/10'
+                  onClick={() => {
+                    onToggleMode()
+                    setShowThemeDropdown(false)
+                  }}
+                >
+                  {mode === 'dark' ? (
+                    <svg className='h-4 w-4 text-accent' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z' />
+                    </svg>
+                  ) : (
+                    <svg className='h-4 w-4 text-accent' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z' />
+                    </svg>
+                  )}
+                  {mode === 'dark' ? '切换到亮色' : '切换到暗色'}
+                </button>
               </div>
             )}
           </div>
@@ -223,7 +310,7 @@ export default function Header({
           <div className='relative'>
             <button
               type='button'
-              className='flex items-center justify-center rounded-full transition-all hover:ring-2 hover:ring-champagne/40 hover:ring-offset-2 hover:ring-offset-[#1A1A1A] active:scale-[0.97]'
+              className='flex items-center justify-center rounded-full transition-all hover:ring-2 hover:ring-champagne/40 hover:ring-offset-2 hover:ring-offset-[var(--header-bg-1)] active:scale-[0.97]'
               aria-label={
                 user ? user.store_name || t('settingsMerchantAccount') : t('storeNotLoggedIn')
               }
@@ -240,7 +327,7 @@ export default function Header({
                 <div
                   className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold lg:h-10 lg:w-10 lg:text-sm ${
                     user
-                      ? 'bg-gradient-to-br from-champagne to-yellow-600 text-charcoal ring-2 ring-champagne/30'
+                      ? 'bg-gradient-to-br from-champagne to-champagne-dark text-[var(--header-on)] ring-2 ring-champagne/30'
                       : 'bg-gray-600 text-gray-300 ring-2 ring-gray-500/30'
                   }`}
                 >
@@ -250,7 +337,7 @@ export default function Header({
             </button>
             {/* 登录状态指示器 */}
             {user && (
-              <span className='absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-[#1A1A1A] bg-success shadow-sm shadow-success/50 lg:h-3 lg:w-3' />
+              <span className='absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-[var(--header-bg-1)] bg-success shadow-sm shadow-success/50 lg:h-3 lg:w-3' />
             )}
           </div>
         </nav>

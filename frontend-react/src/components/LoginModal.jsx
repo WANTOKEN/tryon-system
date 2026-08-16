@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 
 import { useI18n } from '../hooks/useI18n'
+import BrandLogo from './BrandLogo'
 
 export default function LoginModal({
   isOpen,
@@ -9,8 +10,6 @@ export default function LoginModal({
   onSmsLogin,
   onSendSms,
   onRegister,
-  onSendResetSms,
-  onResetPassword,
   loading = false,
 }) {
   const { t } = useI18n()
@@ -72,24 +71,11 @@ export default function LoginModal({
     onRegister(username.trim(), phone.trim(), password, storeName.trim())
   }
 
-  const handleResetPassword = e => {
-    e.preventDefault()
-    if (!phone.trim() || !smsCode.trim() || !password.trim()) {
-      return
-    }
-    onResetPassword(phone.trim(), smsCode.trim(), password)
-  }
-
   const handleSendSms = async purpose => {
     if (countdown > 0 || !phone.trim()) {
       return
     }
-    let success = false
-    if (purpose === 'reset') {
-      success = await onSendResetSms(phone.trim())
-    } else {
-      success = await onSendSms(phone.trim())
-    }
+    const success = await onSendSms(phone.trim())
     if (success) {
       setCountdown(60)
     }
@@ -98,13 +84,11 @@ export default function LoginModal({
   const titles = {
     login: t('loginTitle'),
     register: t('registerTitle', '注册账号'),
-    reset: t('resetPasswordTitle', '重置密码'),
   }
 
   const subtitles = {
     login: t('loginSubtitle'),
     register: t('registerSubtitle', '创建您的商家账号'),
-    reset: t('resetPasswordSubtitle', '通过手机验证码重置密码'),
   }
 
   return (
@@ -128,19 +112,7 @@ export default function LoginModal({
       <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-white shadow-2xl'>
         <div className='bg-gradient-to-r from-[#1A1A1A] to-[#2A2A2A] px-6 py-6 text-center'>
           <div className='mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-2 border-champagne/40 bg-champagne/20'>
-            <svg
-              className='h-7 w-7 text-champagne'
-              fill='none'
-              stroke='currentColor'
-              viewBox='0 0 24 24'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth='2'
-                d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
-              />
-            </svg>
+            <BrandLogo size={32} />
           </div>
           <h2 className='text-lg font-semibold text-white'>{titles[mode]}</h2>
           <p className='mt-1 text-xs text-gray-400'>{subtitles[mode]}</p>
@@ -207,15 +179,6 @@ export default function LoginModal({
                       className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
                       placeholder={t('loginPasswordPlaceholder')}
                     />
-                  </div>
-                  <div className='flex items-center justify-between text-xs'>
-                    <button
-                      type='button'
-                      onClick={() => setMode('reset')}
-                      className='text-champagne hover:underline'
-                    >
-                      {t('forgotPassword', '忘记密码？')}
-                    </button>
                   </div>
                   <button
                     type='submit'
@@ -446,108 +409,6 @@ export default function LoginModal({
             </form>
           )}
 
-          {mode === 'reset' && (
-            <form onSubmit={handleResetPassword} className='space-y-3'>
-              <div>
-                <label
-                  htmlFor='reset-phone'
-                  className='mb-1.5 block text-xs font-medium text-charcoal'
-                >
-                  {t('resetPhoneLabel', '手机号')}
-                </label>
-                <input
-                  id='reset-phone'
-                  type='tel'
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder={t('resetPhonePlaceholder', '请输入注册手机号')}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor='reset-sms-code'
-                  className='mb-1.5 block text-xs font-medium text-charcoal'
-                >
-                  {t('resetSmsLabel', '验证码')}
-                </label>
-                <div className='flex gap-2'>
-                  <input
-                    id='reset-sms-code'
-                    type='text'
-                    value={smsCode}
-                    onChange={e => setSmsCode(e.target.value)}
-                    maxLength={6}
-                    className='flex-1 rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                    placeholder={t('resetSmsPlaceholder', '请输入验证码')}
-                  />
-                  <button
-                    type='button'
-                    onClick={() => handleSendSms('reset')}
-                    disabled={countdown > 0 || !phone.trim()}
-                    className='whitespace-nowrap rounded-xl border border-champagne/30 px-4 py-2.5 text-sm font-medium text-champagne transition-colors hover:bg-champagne/5 disabled:cursor-not-allowed disabled:opacity-50'
-                  >
-                    {countdown > 0
-                      ? t('loginSendSmsCountdown', { n: countdown })
-                      : t('loginSendSms')}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label
-                  htmlFor='reset-password'
-                  className='mb-1.5 block text-xs font-medium text-charcoal'
-                >
-                  {t('resetNewPasswordLabel', '新密码')}
-                </label>
-                <input
-                  id='reset-password'
-                  type='password'
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-                  placeholder={t('resetNewPasswordPlaceholder', '请输入新密码（至少6位）')}
-                />
-              </div>
-              <button
-                type='submit'
-                disabled={loading || !phone.trim() || !smsCode.trim() || !password.trim()}
-                className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                {loading ? (
-                  <>
-                    <svg className='h-4 w-4 animate-spin' fill='none' viewBox='0 0 24 24'>
-                      <circle
-                        className='opacity-25'
-                        cx='12'
-                        cy='12'
-                        r='10'
-                        stroke='currentColor'
-                        strokeWidth='4'
-                      />
-                      <path
-                        className='opacity-75'
-                        fill='currentColor'
-                        d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
-                      />
-                    </svg>
-                    {t('resetLoading', '重置中...')}
-                  </>
-                ) : (
-                  t('resetBtn', '重置密码')
-                )}
-              </button>
-              <div className='mt-3 text-center text-xs text-grayMuted'>
-                <button
-                  type='button'
-                  onClick={() => setMode('login')}
-                  className='text-champagne hover:underline'
-                >
-                  {t('backToLogin', '返回登录')}
-                </button>
-              </div>
-            </form>
-          )}
 
           <button
             type='button'

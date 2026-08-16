@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, message } from 'antd';
+import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, message, ConfigProvider, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -20,9 +20,14 @@ import {
   CloudUploadOutlined,
   HistoryOutlined,
   MonitorOutlined,
+  BgColorsOutlined,
+  BulbOutlined,
+  MoonOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { PERMISSIONS } from '../types';
+import { useTheme } from '../hooks/useTheme';
+import BrandLogo from '../components/BrandLogo';
 
 const { Header, Sider, Content } = Layout;
 
@@ -168,7 +173,10 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, isSuperAdmin, hasAnyPermission } = useAuthStore();
-  const { token: { colorBgContainer, colorPrimary } } = theme.useToken();
+  const { theme: currentTheme, mode, setTheme, toggleMode, themes, current } = useTheme();
+  const { token: { colorBgContainer, colorPrimary, colorBorderSecondary, colorText } } = theme.useToken();
+
+  const primaryColor = mode === 'dark' ? current.primaryDark : current.primary;
 
   // 根据用户角色和权限过滤菜单
   const menuItems = useMemo(() => {
@@ -210,7 +218,31 @@ export default function AdminLayout() {
     },
   ];
 
+  const themeSwitcherMenu: MenuProps['items'] = themes.map(t => ({
+    key: t.key,
+    label: (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: '50%',
+            background: mode === 'dark' ? t.primaryDark : t.primary,
+            display: 'inline-block',
+          }}
+        />
+        {t.name}
+      </span>
+    ),
+  }));
+
   return (
+    <ConfigProvider
+      theme={{
+        algorithm: mode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        token: { colorPrimary: primaryColor, borderRadius: 8 },
+      }}
+    >
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
         trigger={null}
@@ -226,7 +258,7 @@ export default function AdminLayout() {
           top: 0,
           bottom: 0,
           background: colorBgContainer,
-          borderRight: '1px solid #f0f0f0',
+          borderRight: `1px solid ${colorBorderSecondary}`,
         }}
       >
         {/* Logo 区域 */}
@@ -238,8 +270,8 @@ export default function AdminLayout() {
             justifyContent: 'center',
             gap: collapsed ? 0 : 12,
             padding: collapsed ? '0 16px' : '0 24px',
-            borderBottom: '1px solid #f0f0f0',
-            background: `linear-gradient(135deg, ${colorPrimary} 0%, #69b1ff 100%)`,
+            borderBottom: `1px solid ${colorBorderSecondary}`,
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}99 100%)`,
           }}
         >
           <div
@@ -251,13 +283,10 @@ export default function AdminLayout() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 16,
-              fontWeight: 'bold',
-              color: '#fff',
               flexShrink: 0,
             }}
           >
-            AI
+            <BrandLogo size={22} />
           </div>
           {!collapsed && (
             <span style={{ fontSize: 16, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap' }}>
@@ -287,7 +316,7 @@ export default function AdminLayout() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: `1px solid ${colorBorderSecondary}`,
             position: 'sticky',
             top: 0,
             zIndex: 10,
@@ -309,6 +338,34 @@ export default function AdminLayout() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* 主题配色切换 */}
+            <Dropdown
+              menu={{
+                items: themeSwitcherMenu,
+                selectable: true,
+                selectedKeys: [currentTheme],
+                onClick: ({ key }) => setTheme(key),
+              }}
+              placement="bottomRight"
+              trigger={['click']}
+            >
+              <Button
+                type="text"
+                icon={<BgColorsOutlined style={{ fontSize: 16 }} />}
+                style={{ width: 40, height: 40, borderRadius: 8 }}
+                aria-label="主题配色"
+              />
+            </Dropdown>
+            {/* 明暗模式切换 */}
+            <Tooltip title={mode === 'dark' ? '切换到亮色' : '切换到暗色'}>
+              <Button
+                type="text"
+                icon={mode === 'dark' ? <BulbOutlined style={{ fontSize: 16 }} /> : <MoonOutlined style={{ fontSize: 16 }} />}
+                onClick={toggleMode}
+                style={{ width: 40, height: 40, borderRadius: 8 }}
+                aria-label="明暗模式"
+              />
+            </Tooltip>
             {/* 帮助按钮 */}
             <Button
               type="text"
@@ -342,7 +399,7 @@ export default function AdminLayout() {
                   size={32}
                   style={{ backgroundColor: colorPrimary }}
                 />
-                <span style={{ fontWeight: 500, color: '#333' }}>{user?.username || '管理员'}</span>
+                <span style={{ fontWeight: 500, color: colorText }}>{user?.username || '管理员'}</span>
                 {roleTag}
               </div>
             </Dropdown>
@@ -363,5 +420,6 @@ export default function AdminLayout() {
         </Content>
       </Layout>
     </Layout>
+    </ConfigProvider>
   );
 }

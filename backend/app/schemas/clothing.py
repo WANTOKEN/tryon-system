@@ -24,17 +24,23 @@ class ClothingUpdate(ClothingBase):
 
 
 class ClothingResponse(ClothingBase):
-    id: int
-    uuid: str
-    merchant_id: int
-    image_url: str
-    image_thumb_url: str
-    image_key: Optional[str] = None
-    file_id: Optional[int]
-    sort_order: int
+    id: str
+    merchant_id: str
+    name: str = "未命名服装"
+    category: str
+    color: str
+    size: str
+    brand: str
+    season: str
+    style: str
+    material: str
+    price: float
+    description: str
     is_active: bool
+    image_url: str
+    image_key: str
+    thumb_url: str
     source: str
-    source_text: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

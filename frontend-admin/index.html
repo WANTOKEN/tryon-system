@@ -3,8 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
     <title>frontend-admin</title>
+    <script>
+      // 应用启动前同步主题，避免闪烁
+      (function () {
+        try {
+          var t = localStorage.getItem('aitryon-theme') || 'luxury-gold';
+          var m = localStorage.getItem('aitryon-mode') || 'light';
+          var el = document.documentElement;
+          el.setAttribute('data-theme', t);
+          el.classList.toggle('dark', m === 'dark');
+          el.style.colorScheme = m === 'dark' ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

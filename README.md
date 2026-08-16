@@ -52,14 +52,15 @@ my_project/
 ## 快速开始（本地）
 
 ```bash
-cd backend
+# 在仓库根目录创建并激活虚拟环境（统一使用根目录 .venv）
 python3 -m venv .venv && source .venv/bin/activate
+cd backend
 pip install -r requirements.txt
 
 cp .env.example .env        # 可选，默认 local 模式即可运行
 pytest tests/test_smoke.py -q     # 端到端闭环冒烟测试（应为绿色）
 
-uvicorn main:app --reload --port 8000   # 启动后访问 http://localhost:8000/docs
+uvicorn app.main:app --reload --port 8000   # 启动后访问 http://localhost:8000/docs
 ```
 
 启动后自动建表并创建超级管理员：**admin / admin123**
@@ -111,7 +112,13 @@ docker compose up --build
 | `DATABASE_URL` | `mysql+aiomysql://tryon:tryon@localhost:3306/tryon?charset=utf8mb4` | 数据库；可改为 `sqlite+aiosqlite:///./test.db` 仅用于测试 |
 | `STORAGE_BACKEND` | `local` | 本地存储（资源与 AI 结果存服务器）|
 | `STORAGE_LOCAL_DIR` | `backend/storage` | local 模式写入目录 |
-| `AI_ENGINE` | `mock` | `mock` / `real`（接真实 API 需 `ARK_API_KEY`） |
+| `AI_ENGINE` | `mock` | `mock` / `real`（接真实 API 需 `LAS_API_KEY`） |
+| `LAS_API_KEY` | 空 | 豆包 Seedream（LAS）访问凭证；配置后启用 `AI_ENGINE=real` |
+| `LAS_BASE_URL` | `https://operator.las.cn-beijing.volces.com` | LAS 服务地址 |
+| `ENGINE_MODEL` | `doubao-seedream-4.5` | 多图融合模型名 |
+| `ENGINE_TIMEOUT` | `60` | 引擎单次请求超时（秒） |
+| `TASK_OVERALL_TIMEOUT` | `180` | 试穿任务总耗时上限（秒） |
+| `UPLOAD_MAX_SIZE_MB` | `20` | 结果图下载字节上限（SSRF 防护） |
 | `MOCK_TRYON_SECONDS` | `4` | mock 引擎模拟处理耗时 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin123` | 初始超管 |
 | `DEV_SMS_ENABLED` | `true` | 开发期短信验证码（内存，明文返回 `dev_code`） |

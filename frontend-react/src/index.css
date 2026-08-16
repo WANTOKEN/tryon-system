@@ -4,6 +4,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 自定义语义类（跟随主题变量，缺失会导致白底/无背景等破面） */
+.bg-texture {
+  background-color: var(--bg-primary);
+}
+.glass-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  backdrop-filter: blur(12px);
+}
+.gold-glow {
+  box-shadow: 0 0 24px var(--accent-glow);
+}
+.text-accent {
+  color: var(--accent);
+}
+
 /* ===== 高级感 CSS 变量系统 ===== */
 :root {
   /* 背景色 - 优雅白色系 */
@@ -75,7 +91,193 @@
   --spacing-xl: 24px;
 }
 
-/* 深色模式 */
+/* =========================================================
+   主题配色系统（基于 theme-palette 设计方案）
+   机制：<html data-theme="..."> 控制色系，<html class="dark"> 控制明暗
+   仅切换语义变量（--accent / --bg-* / --text-* / --border-*），
+   现有组件无需改动即可跟随主题变色。
+   ========================================================= */
+:root[data-theme='luxury-gold'] {
+  --accent: #c8a45c;
+  --accent-dark: #b08d3e;
+  --accent-light: rgba(200, 164, 92, 0.12);
+  --accent-medium: rgba(200, 164, 92, 0.22);
+  --accent-glow: rgba(200, 164, 92, 0.3);
+  --bg-primary: #ffffff;
+  --bg-secondary: #faf8f3;
+  --bg-tertiary: #f3efe6;
+  --bg-hover: #f3efe6;
+  --bg-card: #ffffff;
+  --text-primary: #1f1b16;
+  --text-secondary: #6e6657;
+  --text-muted: #a59c89;
+  --text-light: #a59c89;
+  --border-primary: #e7e1d4;
+  --border-secondary: #f3efe6;
+  --border-accent: #c8a45c;
+  --header-bg-1: #1a1a1a;
+  --header-bg-2: #222222;
+  --header-on: #ffffff;
+}
+:root[data-theme='luxury-gold'].dark {
+  --accent: #d4af37;
+  --accent-dark: #b8962e;
+  --accent-light: rgba(212, 175, 55, 0.14);
+  --accent-medium: rgba(212, 175, 55, 0.26);
+  --accent-glow: rgba(212, 175, 55, 0.3);
+  --bg-primary: #24211c;
+  --bg-secondary: #2a2620;
+  --bg-tertiary: #322d26;
+  --bg-hover: #322d26;
+  --bg-card: #24211c;
+  --text-primary: #f0e9da;
+  --text-secondary: #c2b8a3;
+  --text-muted: #8a8070;
+  --text-light: #8a8070;
+  --border-primary: #3a342b;
+  --border-secondary: #322d26;
+  --border-accent: #d4af37;
+  --header-bg-1: #141210;
+  --header-bg-2: #1d1a16;
+  --header-on: #f0e9da;
+}
+
+:root[data-theme='frost-blue'] {
+  --accent: #4a90d9;
+  --accent-dark: #3a78bf;
+  --accent-light: rgba(74, 144, 217, 0.12);
+  --accent-medium: rgba(74, 144, 217, 0.22);
+  --accent-glow: rgba(74, 144, 217, 0.3);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f8fc;
+  --bg-tertiary: #ecf3f9;
+  --bg-hover: #ecf3f9;
+  --bg-card: #ffffff;
+  --text-primary: #1a2230;
+  --text-secondary: #4f5d70;
+  --text-muted: #97a3b5;
+  --text-light: #97a3b5;
+  --border-primary: #dde8f2;
+  --border-secondary: #ecf3f9;
+  --border-accent: #4a90d9;
+  --header-bg-1: #1c2733;
+  --header-bg-2: #243240;
+  --header-on: #ffffff;
+}
+:root[data-theme='frost-blue'].dark {
+  --accent: #5b9be0;
+  --accent-dark: #4a90d9;
+  --accent-light: rgba(91, 155, 224, 0.14);
+  --accent-medium: rgba(91, 155, 224, 0.26);
+  --accent-glow: rgba(91, 155, 224, 0.3);
+  --bg-primary: #1e2733;
+  --bg-secondary: #232e3c;
+  --bg-tertiary: #2b3848;
+  --bg-hover: #2b3848;
+  --bg-card: #1e2733;
+  --text-primary: #e6edf5;
+  --text-secondary: #b3c2d4;
+  --text-muted: #7c8aa0;
+  --text-light: #7c8aa0;
+  --border-primary: #334154;
+  --border-secondary: #2b3848;
+  --border-accent: #5b9be0;
+  --header-bg-1: #11161e;
+  --header-bg-2: #1a212c;
+  --header-on: #e6edf5;
+}
+
+:root[data-theme='sakura-pink'] {
+  --accent: #e89ab0;
+  --accent-dark: #d97f99;
+  --accent-light: rgba(232, 154, 176, 0.14);
+  --accent-medium: rgba(232, 154, 176, 0.26);
+  --accent-glow: rgba(232, 154, 176, 0.3);
+  --bg-primary: #ffffff;
+  --bg-secondary: #fdf6f8;
+  --bg-tertiary: #fbeef2;
+  --bg-hover: #fbeef2;
+  --bg-card: #ffffff;
+  --text-primary: #2e1f24;
+  --text-secondary: #6e5059;
+  --text-muted: #b0919c;
+  --text-light: #b0919c;
+  --border-primary: #f3dde4;
+  --border-secondary: #fbeef2;
+  --border-accent: #e89ab0;
+  --header-bg-1: #2a1c20;
+  --header-bg-2: #34242a;
+  --header-on: #ffffff;
+}
+:root[data-theme='sakura-pink'].dark {
+  --accent: #f0a7bd;
+  --accent-dark: #e89ab0;
+  --accent-light: rgba(240, 167, 189, 0.14);
+  --accent-medium: rgba(240, 167, 189, 0.26);
+  --accent-glow: rgba(240, 167, 189, 0.3);
+  --bg-primary: #2a1f23;
+  --bg-secondary: #322429;
+  --bg-tertiary: #3c2c32;
+  --bg-hover: #3c2c32;
+  --bg-card: #2a1f23;
+  --text-primary: #fbeef2;
+  --text-secondary: #e0c2cc;
+  --text-muted: #a98e98;
+  --text-light: #a98e98;
+  --border-primary: #463339;
+  --border-secondary: #3c2c32;
+  --border-accent: #f0a7bd;
+  --header-bg-1: #1a1215;
+  --header-bg-2: #241a1e;
+  --header-on: #fbeef2;
+}
+
+:root[data-theme='forest-green'] {
+  --accent: #5a9e7a;
+  --accent-dark: #488363;
+  --accent-light: rgba(90, 158, 122, 0.12);
+  --accent-medium: rgba(90, 158, 122, 0.22);
+  --accent-glow: rgba(90, 158, 122, 0.3);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f8f5;
+  --bg-tertiary: #ebf3ee;
+  --bg-hover: #ebf3ee;
+  --bg-card: #ffffff;
+  --text-primary: #1a241e;
+  --text-secondary: #4d6154;
+  --text-muted: #93a89a;
+  --text-light: #93a89a;
+  --border-primary: #d8e6dd;
+  --border-secondary: #ebf3ee;
+  --border-accent: #5a9e7a;
+  --header-bg-1: #1c2620;
+  --header-bg-2: #243029;
+  --header-on: #ffffff;
+}
+:root[data-theme='forest-green'].dark {
+  --accent: #6cb090;
+  --accent-dark: #5a9e7a;
+  --accent-light: rgba(108, 176, 144, 0.14);
+  --accent-medium: rgba(108, 176, 144, 0.26);
+  --accent-glow: rgba(108, 176, 144, 0.3);
+  --bg-primary: #1e2620;
+  --bg-secondary: #232b24;
+  --bg-tertiary: #2b352c;
+  --bg-hover: #2b352c;
+  --bg-card: #1e2620;
+  --text-primary: #e6f0ea;
+  --text-secondary: #b3c9bc;
+  --text-muted: #7f9789;
+  --text-light: #7f9789;
+  --border-primary: #344238;
+  --border-secondary: #2b352c;
+  --border-accent: #6cb090;
+  --header-bg-1: #111611;
+  --header-bg-2: #1a211b;
+  --header-on: #e6f0ea;
+}
+
+/* 深色模式（无 data-theme 时的默认暗色兜底） */
 .dark {
   --bg-primary: #0D0D0D;
   --bg-secondary: #141414;

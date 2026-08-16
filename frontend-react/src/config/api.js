@@ -11,8 +11,6 @@ export const API_ENDPOINTS = {
     ME: `${API_BASE}/auth/me/`,
     SEND_SMS: `${API_BASE}/auth/send-sms/`,
     REFRESH: `${API_BASE}/auth/refresh/`,
-    SEND_RESET_SMS: `${API_BASE}/auth/send-reset-sms/`,
-    RESET_PASSWORD: `${API_BASE}/auth/reset-password/`,
     ADMIN_CONTACT: `${API_BASE}/common/admin-contact/`,
   },
   // 衣橱
@@ -20,7 +18,6 @@ export const API_ENDPOINTS = {
     CLOTHING: `${API_BASE}/wardrobe/clothing/`,
     CLOTHING_DETAIL: uuid => `${API_BASE}/wardrobe/clothing/${uuid}/`,
     CATEGORIES: `${API_BASE}/wardrobe/categories/`,
-    PRESETS: `${API_BASE}/wardrobe/presets/`,
   },
   // 试穿
   TRYON: {
@@ -43,9 +40,6 @@ export const API_ENDPOINTS = {
     ACCESS: fileId => `${API_BASE}/file/${fileId}/`,
     INFO: fileId => `${API_BASE}/file/${fileId}/info/`,
     BY_KEY: storageKey => `${API_BASE}/file/by-key/${storageKey}/`,
-    LIST: `${API_BASE}/file/list/`,
-    SECURE_URL: `${API_BASE}/file/secure-url/`,
-    BULK_SECURE_URL: `${API_BASE}/file/bulk-secure-url/`,
   },
 }
 

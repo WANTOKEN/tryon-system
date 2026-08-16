@@ -14,6 +14,20 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="AI试衣" />
     
+    <script>
+      // 应用启动前同步主题，避免闪烁
+      (function () {
+        try {
+          var t = localStorage.getItem('aitryon-theme') || 'luxury-gold';
+          var m = localStorage.getItem('aitryon-mode') || 'light';
+          var el = document.documentElement;
+          el.setAttribute('data-theme', t);
+          el.classList.toggle('dark', m === 'dark');
+          el.style.colorScheme = m === 'dark' ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- 图标 -->
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />

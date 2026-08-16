@@ -8,7 +8,7 @@ CREATE DATABASE IF NOT EXISTS `tryon`
   COLLATE utf8mb4_unicode_ci;
 
 -- 2) 创建应用账户，并显式使用 mysql_native_password 认证插件
---    这是解决 MySQL 8 默认 caching_sha2_password 与 Python 异步驱动（aiomysql）
+--    这是解决 MySQL 8 默认 caching_sha2_password 与 Python 异步驱动（asyncmy）
 --    认证不兼容问题的关键：mysql_native_password 被所有 MySQL 客户端/驱动广泛支持。
 CREATE USER IF NOT EXISTS 'tryon'@'%'
   IDENTIFIED WITH mysql_native_password BY 'tryon';

@@ -16,7 +16,7 @@ from app.storage.service import upload_file
 
 router = APIRouter()
 
-_SOURCE_TEXT = {"merchant_upload": "商家上传", "admin_upload": "后台上传", "preset": "预设"}
+_SOURCE_TEXT = {"merchant_upload": "商家上传", "admin_upload": "后台上传"}
 
 
 async def _serialize(clothing: Clothing, db: AsyncSession) -> dict:
@@ -78,7 +78,7 @@ async def upload_clothing(
 ):
     """上传服装图片（落本地存储 + 写 FileRecord）"""
     content = await file.read()
-    rec, url, is_dup = await upload_file(
+    rec, url = await upload_file(
         db,
         content,
         folder="clothing",
@@ -114,7 +114,6 @@ async def upload_clothing(
         "image_url": url,
         "image_thumb_url": url,
         "image_key": rec.uuid,
-        "is_duplicate": is_dup,
     }
 
 

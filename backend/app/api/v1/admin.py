@@ -19,6 +19,7 @@ from app.models.tryon_record import TryOnRecord
 from app.models.file_record import FileRecord
 from app.models.model_photo import ModelPhoto
 from app.models.operation_log import OperationLog
+from app.models.quota_history import QuotaHistory
 from app.api.deps import get_current_user
 from app.services import hash_password
 from app.services.config_service import get_grouped_configs, update_configs
@@ -167,7 +168,7 @@ async def create_merchant(
 
 @router.patch("/merchants/{merchant_id}/")
 async def update_merchant(
-    merchant_id: int,
+    merchant_id: str,
     merchant_in: MerchantUpdate,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
@@ -184,7 +185,7 @@ async def update_merchant(
 
 @router.patch("/merchants/{merchant_id}/quota/")
 async def adjust_quota(
-    merchant_id: int,
+    merchant_id: str,
     quota_data: QuotaAdjustRequest,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
@@ -192,8 +193,23 @@ async def adjust_quota(
     merchant = (await db.execute(select(Merchant).where(Merchant.id == merchant_id))).scalar_one_or_none()
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
+    old_total = merchant.quota_total
+    old_used = merchant.quota_used
     merchant.quota_total = quota_data.quota_total
     merchant.quota_remaining = max(0, quota_data.quota_total - merchant.quota_used)
+    db.add(
+        QuotaHistory(
+            merchant_id=merchant.id,
+            change_type="adjust",
+            old_total=old_total,
+            new_total=merchant.quota_total,
+            old_used=old_used,
+            new_used=merchant.quota_used,
+            reason=quota_data.reason or "",
+            operator_id=admin.id,
+            operator_name=admin.username,
+        )
+    )
     await db.commit()
     await log_operation(db, admin, "quota_adjust", "merchant", str(merchant.id), merchant.username)
     return {
@@ -257,7 +273,7 @@ async def get_stats(
     ).scalar() or 0
     today_avg_time = (
         await db.execute(
-            select(func.coalesce(func.avg(TryOnRecord.processing_time), 0)).select_from(TryOnRecord).where(
+            select(func.coalesce(func.avg(TryOnRecord.duration_ms), 0)).select_from(TryOnRecord).where(
                 cast(TryOnRecord.created_at, Date) == today,
                 TryOnRecord.status == "completed",
             )
@@ -288,9 +304,12 @@ async def get_stats(
     success_rate = round(today_completed / today_total, 4) if today_total else 0.0
     engine_stats = [
         {
+            "engine": settings.ai_engine,
             "name": settings.ai_engine,
             "type": settings.ai_engine,
             "status": "running" if settings.ai_engine else "stopped",
+            "count": today_total,
+            "avg_time": int(today_avg_time or 0),
         }
     ]
 
@@ -433,7 +452,7 @@ async def admin_upload_clothing(
 ):
     """管理后台上传服装图片（真实落库）"""
     content = await file.read()
-    rec, url, is_dup = await upload_file(
+    rec, url = await upload_file(
         db,
         content,
         folder="clothing",
@@ -468,7 +487,6 @@ async def admin_upload_clothing(
         "image_url": url,
         "image_thumb_url": url,
         "image_key": rec.uuid,
-        "is_duplicate": is_dup,
     }
 
 
@@ -478,7 +496,7 @@ async def admin_list_records(
     _: Merchant = Depends(require_superadmin),
     page: int = 1,
     page_size: int = 20,
-    merchant_id: int = None,
+    merchant_id: str = None,
     status: str = None,
 ):
     stmt = select(TryOnRecord)
@@ -500,7 +518,7 @@ async def admin_list_records(
 # ===== 商家删除 / 配额重置 =====
 @router.delete("/merchants/{merchant_id}/")
 async def delete_merchant(
-    merchant_id: int,
+    merchant_id: str,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
@@ -518,7 +536,7 @@ async def delete_merchant(
 
 @router.post("/merchants/{merchant_id}/quota/reset/")
 async def reset_quota(
-    merchant_id: int,
+    merchant_id: str,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
@@ -527,8 +545,22 @@ async def reset_quota(
     ).scalar_one_or_none()
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
+    old_used = merchant.quota_used
     merchant.quota_used = 0
     merchant.quota_remaining = merchant.quota_total
+    db.add(
+        QuotaHistory(
+            merchant_id=merchant.id,
+            change_type="reset",
+            old_total=merchant.quota_total,
+            new_total=merchant.quota_total,
+            old_used=old_used,
+            new_used=0,
+            reason="",
+            operator_id=admin.id,
+            operator_name=admin.username,
+        )
+    )
     await db.commit()
     await log_operation(db, admin, "quota_reset", "merchant", str(merchant.id), merchant.username)
     return {
@@ -536,6 +568,42 @@ async def reset_quota(
         "quota_used": merchant.quota_used,
         "quota_remaining": merchant.quota_remaining,
     }
+
+
+@router.get("/merchants/{merchant_id}/quota/history/")
+async def get_merchant_quota_history(
+    merchant_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: Merchant = Depends(require_superadmin),
+    days: int = 30,
+):
+    """查询商家配额调整/重置历史（管理后台「配额历史」抽屉）"""
+    if days <= 0 or days > 365:
+        days = 30
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    stmt = (
+        select(QuotaHistory)
+        .where(QuotaHistory.merchant_id == merchant_id)
+        .where(QuotaHistory.created_at >= since)
+        .order_by(QuotaHistory.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "id": h.id,
+            "merchant_id": h.merchant_id,
+            "change_type": h.change_type,
+            "old_total": h.old_total,
+            "new_total": h.new_total,
+            "old_used": h.old_used,
+            "new_used": h.new_used,
+            "reason": h.reason,
+            "operator_id": h.operator_id,
+            "operator_name": h.operator_name,
+            "created_at": h.created_at.isoformat() if h.created_at else "",
+        }
+        for h in rows
+    ]
 
 
 # ===== 系统配置（设置页面） =====

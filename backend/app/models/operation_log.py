@@ -1,32 +1,17 @@
-"""
-OperationLog model - 后台操作审计日志
-"""
-import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Integer, DateTime, Text
+"""操作日志模型（uuid 主键 + 操作人存 uuid）"""
+from sqlalchemy import String, Integer, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db import Base
+from app.models.base import Base, UUIDMixin, TimestampMixin
 
 
-class OperationLog(Base):
-    """后台操作日志"""
-
+class OperationLog(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "operation_logs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: str(uuid.uuid4()))
-    admin_id: Mapped[int] = mapped_column(Integer, nullable=True)
-    admin_username: Mapped[str] = mapped_column(String(64), default="")
-    action: Mapped[str] = mapped_column(String(64), default="")
-    target_type: Mapped[str] = mapped_column(String(64), default="")
-    target_id: Mapped[str] = mapped_column(String(64), default="")
-    detail: Mapped[str] = mapped_column(Text, default="")
+    operator_id: Mapped[str] = mapped_column(String(32), default="", index=True)
+    action: Mapped[str] = mapped_column(String(64), default="", index=True)
+    target_type: Mapped[str] = mapped_column(String(32), default="", index=True)
+    target_id: Mapped[str] = mapped_column(String(32), default="", index=True)
     target_name: Mapped[str] = mapped_column(String(128), default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
     ip: Mapped[str] = mapped_column(String(64), default="")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-
-    def __repr__(self):
-        return f"<OperationLog {self.action} by {self.admin_username}>"

@@ -82,7 +82,7 @@ async def _db_scalar(stmt):
 
 async def generate(
     db: AsyncSession,
-    merchant_id: int,
+    merchant_id: str,
     session_id: str,
     avatar_data: Optional[bytes] = None,
     avatar_url: Optional[str] = None,
@@ -155,7 +155,7 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
 
             # 落库结果图
             tenant_id = str(record.merchant_id)
-            rec, url, _ = await upload_file(
+            rec, url = await upload_file(
                 db,
                 result_bytes,
                 folder="results",
@@ -167,7 +167,7 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
             record.result_url = url
             record.status = "completed"
             record.status_text = "已完成"
-            record.processing_time = int(time.time() - record.created_at.timestamp()) if record.created_at else 0
+            record.duration_ms = int((time.time() - record.created_at.timestamp()) * 1000) if record.created_at else 0
             await db.commit()
         except Exception as e:  # noqa: BLE001
             logger.exception("试穿任务 %s 处理失败", record_uuid)
@@ -183,7 +183,7 @@ async def get_status(db: AsyncSession, record_uuid: str) -> Optional[TryOnRecord
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def list_records(db: AsyncSession, merchant_id: int, page: int = 1, page_size: int = 20):
+async def list_records(db: AsyncSession, merchant_id: str, page: int = 1, page_size: int = 20):
     from sqlalchemy import func
 
     stmt = select(TryOnRecord).where(TryOnRecord.merchant_id == merchant_id)

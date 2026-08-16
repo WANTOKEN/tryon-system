@@ -32,7 +32,7 @@ async def get_current_user(
             detail="Invalid token type",
         )
 
-    user_id = int(payload.get("sub"))
+    user_id = payload.get("sub")
     user = await get_user_by_id(db, user_id)
 
     if not user:
@@ -62,7 +62,7 @@ async def get_optional_user(
     if not payload or payload.get("type") != "access":
         return None
     try:
-        user_id = int(payload.get("sub"))
+        user_id = payload.get("sub")
     except (TypeError, ValueError):
         return None
     return await get_user_by_id(db, user_id)

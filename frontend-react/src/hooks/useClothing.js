@@ -148,7 +148,9 @@ export function useClothing() {
   // 删除服装
   const deleteClothing = useCallback(async uuid => {
     try {
-      const response = await api.delete(API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(uuid))
+      const response = await api.delete(
+        `${API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(uuid)}?source=merchant_upload`
+      )
       if (response.success) {
         setClothing(prev => prev.filter(item => item.uuid !== uuid))
         return { success: true }

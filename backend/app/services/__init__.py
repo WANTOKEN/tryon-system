@@ -9,7 +9,6 @@ from app.services.auth_service import (
     decode_token,
     authenticate_user,
     get_user_by_id,
-    get_user_by_phone,
     create_user,
 )
 
@@ -21,6 +20,5 @@ __all__ = [
     "decode_token",
     "authenticate_user",
     "get_user_by_id",
-    "get_user_by_phone",
     "create_user",
 ]

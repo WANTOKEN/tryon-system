@@ -4,6 +4,7 @@ import { UserOutlined, LockOutlined, PhoneOutlined, WechatOutlined, MailOutlined
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api';
 import { useAuthStore } from '../stores/authStore';
+import BrandLogo from '../components/BrandLogo';
 
 const { Text } = Typography;
 
@@ -126,11 +127,7 @@ export default function LoginPage() {
         <div className="login-left-content">
           <div className="login-logo">
             <div className="logo-icon">
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <BrandLogo size={28} />
             </div>
             <h1>AI Virtual Try-On</h1>
           </div>

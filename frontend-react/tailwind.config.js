@@ -9,10 +9,10 @@ export default {
     extend: {
       colors: {
         champagne: {
-          DEFAULT: '#D4AF37',
-          light: 'rgba(212, 175, 55, 0.1)',
-          medium: 'rgba(212, 175, 55, 0.2)',
-          dark: '#B8962E',
+          DEFAULT: 'var(--accent)',
+          light: 'var(--accent-light)',
+          medium: 'var(--accent-medium)',
+          dark: 'var(--accent-dark)',
         },
         ivory: '#FFFFF0',
         ivoryDark: '#FAFAF5',

@@ -42,7 +42,6 @@ async def login(request: Request, login_data: LoginRequest, db: AsyncSession = D
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
     user.last_login_at = datetime.now(timezone.utc)
-    user.last_login_ip = request.client.host if request.client else ""
     await db.commit()
 
     return TokenResponse(

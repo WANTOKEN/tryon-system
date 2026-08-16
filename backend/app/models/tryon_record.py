@@ -1,68 +1,35 @@
-"""
-TryOnRecord model - 试穿记录
-"""
-import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, JSON, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db import Base
+"""试穿记录模型（uuid 主键 + 外键存 uuid）"""
+from sqlalchemy import String, Integer, Text, ForeignKey, Float, Boolean
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import Base, UUIDMixin, TimestampMixin
 
 
-class TryOnRecord(Base):
-    """试穿记录模型"""
-
+class TryOnRecord(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "tryon_records"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: str(uuid.uuid4()), index=True)
+    merchant_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("merchants.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(32), default="", index=True)
 
-    merchant_id: Mapped[int] = mapped_column(Integer, ForeignKey("merchants.id"), index=True)
-
-    session_id: Mapped[str] = mapped_column(String(64), index=True)
-
-    # Avatar
-    avatar_file_id: Mapped[int] = mapped_column(Integer, ForeignKey("file_records.id"), nullable=True)
+    avatar_file_id: Mapped[str] = mapped_column(String(32), default="", index=True)
     avatar_url: Mapped[str] = mapped_column(String(512), default="")
-    avatar_source: Mapped[str] = mapped_column(String(16), default="user")  # system, user, history
+    selected_clothing: Mapped[str] = mapped_column(Text, default="")  # 服装 uuid 列表 JSON
 
-    # Result
-    result_file_id: Mapped[int] = mapped_column(Integer, ForeignKey("file_records.id"), nullable=True)
+    engine: Mapped[str] = mapped_column(String(64), default="mock")
+    engine_task_id: Mapped[str] = mapped_column(String(128), default="")
+
+    session_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    avatar_source: Mapped[str] = mapped_column(String(32), default="user")
+    is_saved: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    status: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    status_text: Mapped[str] = mapped_column(String(64), default="pending")
+    result_file_id: Mapped[str] = mapped_column(String(32), default="", index=True)
     result_url: Mapped[str] = mapped_column(String(512), default="")
+    result_thumb_url: Mapped[str] = mapped_column(String(512), default="")
 
-    # Status
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, processing, completed, failed
-    status_text: Mapped[str] = mapped_column(String(32), default="处理中")
-    error_message: Mapped[str] = mapped_column(Text, nullable=True)
-    processing_time: Mapped[int] = mapped_column(Integer, nullable=True)
-
-    # AI Engine
-    ai_engine: Mapped[str] = mapped_column(String(32), default="seeddance")
-    task_id: Mapped[str] = mapped_column(String(64), nullable=True)
-
-    # Save status
-    is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # Selected clothing
-    selected_clothing: Mapped[list[str]] = mapped_column(JSON, default=list)  # List of clothing UUIDs
-
-    # Request info
-    ip_address: Mapped[str] = mapped_column(String(64), default="")
-    device_info: Mapped[str] = mapped_column(String(256), default="")
-
-    # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    # Relationships
-    merchant: Mapped["Merchant"] = relationship("Merchant", back_populates="tryon_records")
-    avatar_file: Mapped["FileRecord"] = relationship("FileRecord", foreign_keys=[avatar_file_id])
-    result_file: Mapped["FileRecord"] = relationship("FileRecord", foreign_keys=[result_file_id])
-
-    def __repr__(self):
-        return f"<TryOnRecord {self.uuid} status={self.status}>"
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    cost: Mapped[float] = mapped_column(Float, default=0.0)

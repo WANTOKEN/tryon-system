@@ -1,34 +1,17 @@
-"""
-ModelPhoto model - 系统模特照片库
-"""
-import uuid
-from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, DateTime
+"""模特形象模型（uuid 主键 + 外键存商户 uuid）"""
+from sqlalchemy import String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db import Base
+from app.models.base import Base, UUIDMixin, TimestampMixin
 
 
-class ModelPhoto(Base):
-    """系统模特照片"""
-
+class ModelPhoto(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "model_photos"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column(String(36), unique=True, default=lambda: str(uuid.uuid4()))
+    merchant_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("merchants.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), default="")
     image_url: Mapped[str] = mapped_column(String(512), default="")
-    image_thumb_url: Mapped[str] = mapped_column(String(512), default="")
-    file_id: Mapped[int] = mapped_column(Integer, nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    def __repr__(self):
-        return f"<ModelPhoto {self.id}>"
+    image_key: Mapped[str] = mapped_column(String(64), default="")  # FileRecord.uuid
+    description: Mapped[str] = mapped_column(Text, default="")

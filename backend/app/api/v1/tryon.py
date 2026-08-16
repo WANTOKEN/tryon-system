@@ -51,7 +51,7 @@ async def _serialize_record(db, record) -> dict:
         "is_saved": record.is_saved,
         "clothing": record.selected_clothing or [],
         "error_message": record.error_message,
-        "processing_time": record.processing_time,
+        "processing_time": record.duration_ms,
         "created_at": record.created_at.isoformat() if record.created_at else None,
     }
 
@@ -64,7 +64,7 @@ async def upload_avatar(
 ):
     """上传人像，返回 image_key（供 generate 复用）"""
     content = await file.read()
-    rec, url, is_dup = await upload_file(
+    rec, url = await upload_file(
         db,
         content,
         folder="avatars",
@@ -72,7 +72,7 @@ async def upload_avatar(
         content_type=file.content_type or "image/png",
         file_category="avatar",
     )
-    return {"image_key": rec.uuid, "image_url": url, "is_duplicate": is_dup}
+    return {"image_key": rec.uuid, "image_url": url}
 
 
 @router.post("/upload/clothing/")
@@ -83,7 +83,7 @@ async def upload_clothing_image(
 ):
     """上传服装图（顾客自定义），返回 image_key"""
     content = await file.read()
-    rec, url, is_dup = await upload_file(
+    rec, url = await upload_file(
         db,
         content,
         folder="clothing",
@@ -91,7 +91,7 @@ async def upload_clothing_image(
         content_type=file.content_type or "image/png",
         file_category="clothing",
     )
-    return {"image_key": rec.uuid, "image_url": url, "is_duplicate": is_dup}
+    return {"image_key": rec.uuid, "image_url": url}
 
 
 class TryOnGenerateForm(BaseModel):

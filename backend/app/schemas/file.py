@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 class FileRecordResponse(BaseModel):
-    id: int
+    id: str
     uuid: str
     md5_hash: str
     storage_key: str
@@ -17,9 +17,8 @@ class FileRecordResponse(BaseModel):
     folder: str
     tenant_id: str
     is_public: bool
-    width: int
-    height: int
     created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -28,4 +27,3 @@ class FileUploadResponse(BaseModel):
     file_id: str
     content_key: str
     url: str
-    is_duplicate: bool

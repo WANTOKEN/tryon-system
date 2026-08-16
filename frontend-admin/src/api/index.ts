@@ -66,11 +66,6 @@ export const authApi = {
     const response = await api.post('/auth/refresh/', { refresh_token: refreshToken });
     return response.data;
   },
-
-  getPublicKey: async () => {
-    // 后端不支持 RSA 加密，返回空字符串
-    return '';
-  },
 };
 
 // ============ 系统 API ============
@@ -183,35 +178,9 @@ export const clothingApi = {
   },
 
   getCategories: async () => {
-    // 返回默认分类数据
-    return [
-      { id: 'upper', name: '上装', subcategories: [
-        { id: 't-shirt', name: 'T恤' },
-        { id: 'shirt', name: '衬衫' },
-        { id: 'sweater', name: '毛衣' },
-        { id: 'hoodie', name: '卫衣' },
-      ]},
-      { id: 'lower', name: '下装', subcategories: [
-        { id: 'pants', name: '裤子' },
-        { id: 'jeans', name: '牛仔裤' },
-        { id: 'shorts', name: '短裤' },
-        { id: 'skirt', name: '裙子' },
-      ]},
-      { id: 'dress', name: '连衣裙', subcategories: [
-        { id: 'casual', name: '休闲裙' },
-        { id: 'formal', name: '正式裙' },
-      ]},
-      { id: 'outerwear', name: '外套', subcategories: [
-        { id: 'coat', name: '大衣' },
-        { id: 'jacket', name: '夹克' },
-        { id: 'blazer', name: '西装' },
-      ]},
-      { id: 'accessories', name: '配饰', subcategories: [
-        { id: 'bag', name: '包包' },
-        { id: 'hat', name: '帽子' },
-        { id: 'scarf', name: '围巾' },
-      ]},
-    ];
+    // 与后端 /wardrobe/categories/ 保持一致，避免前后端字典分裂
+    const response = await api.get('/wardrobe/categories/');
+    return response.data || [];
   },
 
   deleteClothing: async (id: string) => {
