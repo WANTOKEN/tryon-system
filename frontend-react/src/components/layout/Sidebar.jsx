@@ -9,6 +9,8 @@ export default function Sidebar({
   onAvatarChange,
   onOpenPreviewModal,
   onShowModelModal,
+  onSetAvatarPreview,
+  sessionId = null,
   // Clothing library
   onOpenClothingLibrary,
   // Selected clothing
@@ -27,8 +29,10 @@ export default function Sidebar({
       <AvatarSection
         avatarPreview={avatarPreview}
         onAvatarChange={onAvatarChange}
+        onSetAvatarPreview={onSetAvatarPreview}
         onOpenPreviewModal={onOpenPreviewModal}
         onShowModelModal={onShowModelModal}
+        sessionId={sessionId}
         t={t}
         showToast={showToast}
       />
@@ -64,6 +68,8 @@ Sidebar.propTypes = {
   onAvatarChange: PropTypes.func.isRequired,
   onOpenPreviewModal: PropTypes.func.isRequired,
   onShowModelModal: PropTypes.func.isRequired,
+  onSetAvatarPreview: PropTypes.func,
+  sessionId: PropTypes.string,
   onOpenClothingLibrary: PropTypes.func.isRequired,
   selected: PropTypes.arrayOf(PropTypes.object).isRequired,
   customClothing: PropTypes.arrayOf(PropTypes.object),

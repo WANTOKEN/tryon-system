@@ -52,3 +52,14 @@
 - **统一使用仓库根目录 `.venv`**（`/Users/apple/my_project/.venv`），不在 `backend/` 下另建 `.venv`（已删除 `backend/.venv`）。
 - 后端启动/依赖安装均用根目录 venv；README 快速开始已改为在根目录 `python3 -m venv .venv`。
 - 数据库异步驱动统一用 **aiomysql**（不用 asyncmy）：`asyncmy 0.2.14` 与 `sqlalchemy 2.0.35` 的 `pool_pre_ping=True` 不兼容（`do_ping` 报 `ping() missing 1 required positional argument: 'reconnect'`）。`backend/.env` 的 `DATABASE_URL` 已改为 `mysql+aiomysql://...`，`requirements.txt` 由 `asyncmy` 换为 `aiomysql==0.2.0`。
+
+## 项目运行方式（标准操作，2026-08-29 写入 README「运行操作」章节）
+- **端口**：后端 8000、用户端（frontend-react）5173、管理后台（frontend-admin）5174、MySQL 3306。
+- **启动顺序**：先 `docker compose up -d db`（仅 MySQL，backend/nginx 在 compose 里已注释）→ 后端 → 两个前端。
+- **后端启动命令**（必须从 `backend/` 目录，才能加载 `backend/.env`）：
+  `cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
+  `--host 0.0.0.0` 必需（手机扫码上传要经局域网 IP 访问后端）。成功标志 `Application startup complete.`，首次启动自动建表 + 建超管 admin/admin123。
+- **前端**：`npm run dev`；两前端 vite 已配 proxy 把 `/api`、`/static/uploads`、`/file` 转发到 `http://127.0.0.1:8000`，无需配 `VITE_API_BASE_URL`。
+- **配置加载要点**：后端实际读 `backend/.env`（非根目录 `.env`），因其为相对路径 `.env` 需在 cwd=backend 时才命中。
+- **测试数据**：`cd backend && ../.venv/bin/python scripts/seed_test_data.py` → 商家 `test_merchant`/`test123456` + 12 条网络服装图数据（图片落 `backend/storage/clothes/`）。
+- **常见坑**：`Access denied for user 'tryon'` → 旧数据卷未跑 init.sql，需 `docker compose down -v && docker compose up -d db` 重建卷（会清空数据）。

@@ -15,7 +15,7 @@ class TryOnGenerateRequest(BaseModel):
 
 
 class TryOnStatusResponse(BaseModel):
-    uuid: str
+    id: str
     status: str
     status_text: str
     result_url: Optional[str]
@@ -25,13 +25,12 @@ class TryOnStatusResponse(BaseModel):
 
 class TryOnRecordResponse(BaseModel):
     id: str
-    uuid: str
     session_id: str
     avatar_url: str
     result_url: str
     status: str
     status_text: str
-    ai_engine: str
+    engine: str
     is_saved: bool
     duration_ms: int
     created_at: datetime

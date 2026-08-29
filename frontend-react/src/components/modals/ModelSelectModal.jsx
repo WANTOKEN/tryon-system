@@ -18,6 +18,7 @@ export default function ModelSelectModal({
       onClose={onClose}
       title={t('useModel') || '使用模特'}
       size='md'
+      zIndex='var(--z-top)'
       footer={
         <>
           <Button variant='secondary' onClick={onClose}>
@@ -41,7 +42,7 @@ export default function ModelSelectModal({
           return (
             <div className='py-12 text-center text-grayMuted'>
               <svg
-                className='mx-auto mb-4 h-12 w-12 text-gray-300'
+                className='mx-auto mb-4 h-12 w-12 text-[var(--text-tertiary)]'
                 fill='none'
                 stroke='currentColor'
                 viewBox='0 0 24 24'
@@ -67,7 +68,7 @@ export default function ModelSelectModal({
                   className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition-all duration-200 ${
                     isSelected
                       ? 'border-champagne shadow-lg'
-                      : 'border-gray-200 hover:border-champagne/50 hover:shadow-md dark:border-gray-700'
+                      : 'hover:border-champagne/50 border-[var(--border-primary)] hover:shadow-md'
                   }`}
                   onClick={() => onSelectModel(model)}
                   role='button'
@@ -95,7 +96,7 @@ export default function ModelSelectModal({
                     />
                   </div>
                   {isSelected && (
-                    <div className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-champagne text-white shadow-md'>
+                    <div className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-md'>
                       <svg
                         className='h-4 w-4'
                         fill='none'
@@ -118,7 +119,7 @@ export default function ModelSelectModal({
         )
       })()}
 
-      <div className='mt-4 text-sm text-gray-500'>
+      <div className='mt-4 text-sm text-[var(--text-muted)]'>
         {(() => {
           if (tempSelectedModel) {
             return t('selectedModel', {

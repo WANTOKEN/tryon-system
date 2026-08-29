@@ -110,12 +110,10 @@ export function useClothing() {
           formData.append('price', price)
         }
         if (sizes) {
-          formData.append('sizes', sizes)
+          formData.append('size', sizes)
         }
 
         const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
-        // eslint-disable-next-line no-console
-        console.log('[useClothing] upload response:', response)
         if (response.success) {
           const item = response.data?.data || response.data
           const newItem = {
@@ -134,7 +132,7 @@ export function useClothing() {
           setClothing(prev => [...prev, newItem])
           return { success: true, item: newItem }
         }
-        return { success: false, error: response.error || '上传失败' }
+        return { success: false, error: response.error || null }
       } catch (err) {
         setError(err.message)
         return { success: false, error: err.message }
@@ -155,7 +153,7 @@ export function useClothing() {
         setClothing(prev => prev.filter(item => item.uuid !== uuid))
         return { success: true }
       }
-      return { success: false, error: response.error || '删除失败' }
+      return { success: false, error: response.error || null }
     } catch (err) {
       return { success: false, error: err.message }
     }

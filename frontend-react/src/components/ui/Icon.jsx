@@ -28,6 +28,69 @@ const ICONS = {
       d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
     />
   ),
+  check: <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2.5' d='M5 13l4 4L19 7' />,
+  sun: (
+    <>
+      <circle
+        cx='12'
+        cy='12'
+        r='4'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        strokeWidth='1.5'
+      />
+      <path
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        strokeWidth='1.5'
+        d='M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41'
+      />
+    </>
+  ),
+  moon: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z'
+    />
+  ),
+  globe: (
+    <>
+      <circle
+        cx='12'
+        cy='12'
+        r='9'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        strokeWidth='1.5'
+      />
+      <path
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        strokeWidth='1.5'
+        d='M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18'
+      />
+    </>
+  ),
+  palette: (
+    <>
+      <circle
+        cx='12'
+        cy='12'
+        r='9'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        strokeWidth='1.5'
+      />
+      <path
+        strokeLinecap='round'
+        strokeLinejoin='round'
+        strokeWidth='1.5'
+        d='M12 3a6 6 0 00-6 6c0 3.314 4 3.314 4 6 0 1.657-1 2-3 2M14 3a1 1 0 00-1 1v2a1 1 0 001 1 1 1 0 001-1V4a1 1 0 00-1-1zM18 9a1 1 0 00-1 1v2a1 1 0 001 1 1 1 0 001-1v-2a1 1 0 00-1-1z'
+      />
+    </>
+  ),
   refresh: (
     <path
       strokeLinecap='round'
@@ -98,7 +161,7 @@ const ICONS = {
       strokeLinecap='round'
       strokeLinejoin='round'
       strokeWidth='1.5'
-      d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2z'
+      d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'
     />
   ),
   info: (
@@ -117,7 +180,58 @@ const ICONS = {
       d='M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z'
     />
   ),
-  check: <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='3' d='M5 13l4 4L19 7' />,
+  logout: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='2'
+      d='M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1'
+    />
+  ),
+  store: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M3 9l1.5-4h15L21 9m-18 0h18m-18 0v11a1 1 0 001 1h16a1 1 0 001-1V9M8 13h2m4 0h2m-10 4h2m4 0h2'
+    />
+  ),
+  users: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 100-8 4 4 0 000 8zm6 0a4 4 0 100-8 4 4 0 000 8z'
+    />
+  ),
+  chevronRight: (
+    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M9 18l6-6-6-6' />
+  ),
+  history: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M12 8v4l3 3m6-3a9 9 0 11-3.5-7.1M21 3v5h-5'
+    />
+  ),
+  plus: <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M12 5v14M5 12h14' />,
+  qr: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 3h3m0 0h3m-3 0v3m0-3v3'
+    />
+  ),
+  mobile: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z'
+    />
+  ),
   eye: (
     <>
       <path

@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # CORS（支持逗号分隔字符串、JSON 数组或列表；兼容 docker/.env 多种写法）
     cors_origins: Any = ["http://localhost:5173", "http://localhost:5174"]
 
+    # 前端基础域名（用于生成「扫码上传」手机端落地页 URL）
+    # 设为 "auto" 时自动探测本机局域网 IP（开发期手机扫码方便，避免 IP 变动需手动改配置）
+    frontend_base_url: str = "auto"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, v: Any) -> List[str]:
@@ -68,9 +72,24 @@ class Settings(BaseSettings):
             raise ValueError(
                 "jwt_secret_key 必须由环境变量注入，禁止在生产环境使用默认弱密钥"
             )
+        if self.env != "development" and self.admin_password == "admin123":
+            raise ValueError(
+                "admin_password 必须由环境变量注入，禁止在生产环境使用默认弱口令"
+            )
         # 安全护栏：非开发环境下强制关闭开发期短信明文返回，避免生产泄漏验证码
         if self.env != "development":
             self.dev_sms_enabled = False
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_frontend_base_url(self) -> "Settings":
+        """frontend_base_url 为 'auto' 时，自动探测本机局域网 IP，避免 IP 变动需手动改配置。
+
+        开发期手机扫码访问落地页需要正确域名；生产环境应在 .env 显式配置真实域名。
+        """
+        if self.frontend_base_url.strip().lower() == "auto":
+            lan_ip = get_lan_ip()
+            self.frontend_base_url = f"http://{lan_ip}:5173" if lan_ip else "http://localhost:5173"
         return self
 
     # ===== 存储后端（资源与 AI 结果均存服务器本地磁盘） =====
@@ -137,3 +156,35 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_lan_ip() -> str:
+    """探测本机在局域网中的 IP 地址（非 127.0.0.1 / 169.254 链路本地）。
+
+    取第一个满足条件的 IPv4 网卡地址；探测失败返回空字符串（调用方回退 localhost）。
+    """
+    import socket
+
+    # 优先用 UDP 连接外网地址的方式获取「出口」网卡 IP（不真正发包）
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        if ip and ip != "127.0.0.1":
+            return ip
+    except OSError:
+        pass
+    finally:
+        s.close()
+
+    # 兜底：枚举主机所有 IPv4 地址，跳过回环与链路本地
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            addr = info[4][0]
+            if addr.startswith("127.") or addr.startswith("169.254."):
+                continue
+            return addr
+    except OSError:
+        pass
+    return ""

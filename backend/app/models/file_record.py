@@ -24,7 +24,6 @@ class FileRecord(UUIDMixin, TimestampMixin, Base):
     file_ext: Mapped[str] = mapped_column(String(16), default="")
     file_category: Mapped[str] = mapped_column(String(32), default="image")
     folder: Mapped[str] = mapped_column(String(32), default="")
-    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # 保留字段（不再用于去重，生成唯一默认值避免约束冲突）
     md5_hash: Mapped[str] = mapped_column(

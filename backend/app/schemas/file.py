@@ -16,7 +16,6 @@ class FileRecordResponse(BaseModel):
     file_category: str
     folder: str
     tenant_id: str
-    is_public: bool
     created_at: datetime
     updated_at: datetime
 
@@ -24,6 +23,5 @@ class FileRecordResponse(BaseModel):
 
 
 class FileUploadResponse(BaseModel):
-    file_id: str
-    content_key: str
-    url: str
+    image_key: str
+    image_url: str

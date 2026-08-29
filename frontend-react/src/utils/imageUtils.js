@@ -129,77 +129,77 @@ export function validateImageFile(file) {
   return { valid: true }
 }
 
-export const compressImage = (file, maxSizeMB = 5, maxWidth = 1920, maxHeight = 1920) =>
+export const compressImage = (file, maxSizeMB = 1, maxWidth = 1280, maxHeight = 1280) =>
   new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let { width } = img
-        let { height } = img
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      let { width } = img
+      let { height } = img
 
-        if (width > maxWidth || height > maxHeight) {
-          if (width > height) {
-            height = (height * maxWidth) / width
-            width = maxWidth
-          } else {
-            width = (width * maxHeight) / height
-            height = maxHeight
-          }
+      if (width > maxWidth || height > maxHeight) {
+        if (width > height) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        } else {
+          width = (width * maxHeight) / height
+          height = maxHeight
         }
+      }
 
-        canvas.width = width
-        canvas.height = height
+      canvas.width = width
+      canvas.height = height
 
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0, width, height)
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, width, height)
 
-        const targetSize = maxSizeMB * 1024 * 1024
-        const fileSize = file.size
+      const targetSize = maxSizeMB * 1024 * 1024
+      const fileSize = file.size
 
-        let initialQuality = 0.9
-        if (fileSize > targetSize * 2) {
-          initialQuality = 0.7
-        } else if (fileSize > targetSize * 1.5) {
-          initialQuality = 0.8
-        }
+      let initialQuality = 0.85
+      if (fileSize > targetSize * 2) {
+        initialQuality = 0.7
+      } else if (fileSize > targetSize * 1.5) {
+        initialQuality = 0.8
+      }
 
-        const compressWithQuality = quality =>
-          new Promise(res => {
-            canvas.toBlob(
-              blob => {
-                if (blob) {
-                  if (blob.size <= targetSize || quality <= 0.1) {
-                    if (blob.size > file.size) {
-                      res(file)
-                    } else {
-                      const compressedFile = new File([blob], file.name, {
-                        type: 'image/jpeg',
-                        lastModified: Date.now(),
-                      })
-                      res(compressedFile)
-                    }
+      const compressWithQuality = quality =>
+        new Promise(res => {
+          canvas.toBlob(
+            blob => {
+              if (blob) {
+                if (blob.size <= targetSize || quality <= 0.1) {
+                  if (blob.size > file.size) {
+                    res(file)
                   } else {
-                    const newQuality = Math.max(0.1, quality - 0.15)
-                    compressWithQuality(newQuality).then(res)
+                    const compressedFile = new File([blob], file.name, {
+                      type: 'image/jpeg',
+                      lastModified: Date.now(),
+                    })
+                    res(compressedFile)
                   }
                 } else {
-                  res(file)
+                  const newQuality = Math.max(0.1, quality - 0.15)
+                  compressWithQuality(newQuality).then(res)
                 }
-              },
-              'image/jpeg',
-              quality
-            )
-          })
+              } else {
+                res(file)
+              }
+            },
+            'image/jpeg',
+            quality
+          )
+        })
 
-        compressWithQuality(initialQuality).then(resolve)
-      }
-      img.onerror = () => reject(new Error('图片加载失败'))
-      img.src = e.target.result
+      compressWithQuality(initialQuality).then(resolve)
     }
-    reader.onerror = () => reject(new Error('文件读取失败'))
-    reader.readAsDataURL(file)
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('图片加载失败'))
+    }
+    img.src = url
   })
 
 export const truncateFileName = (fileName, maxLength = 30) => {

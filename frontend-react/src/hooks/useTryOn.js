@@ -85,10 +85,9 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
     setModelPhotosLoading(true)
     try {
       const response = await api.get(API_ENDPOINTS.COMMON.MODEL_PHOTOS)
-      if (response.success) {
-        const data = response.data?.data || response.data
-        setModelPhotos(data)
-      }
+      const payload = response?.data ?? response
+      const items = payload?.items ?? payload?.data ?? payload?.data?.data ?? []
+      setModelPhotos(Array.isArray(items) ? items : [])
     } catch (error) {
       console.error('Failed to fetch model photos:', error)
       setModelPhotos([])
@@ -247,8 +246,6 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
           const uploadResult = await uploadImage(avatarFile, 'avatar')
           finalAvatarKey = uploadResult.imageKey
           finalAvatarSource = 'user'
-          // eslint-disable-next-line no-console
-          console.log('Avatar uploaded, key:', finalAvatarKey)
         } else {
           // 用户上传或历史记录：使用传入的 key
           finalAvatarKey = keyToReuse || ''
@@ -261,16 +258,6 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
         if (finalAvatarSource !== 'system' && !finalAvatarKey) {
           throw new Error('请提供头像文件或头像key')
         }
-
-        // eslint-disable-next-line no-console
-        console.log(
-          'Using avatarSource:',
-          finalAvatarSource,
-          'avatarKey:',
-          finalAvatarKey,
-          'modelKey:',
-          finalModelKey
-        )
 
         // 2. 处理服装列表 - 只传服装ID（uuid）
         // 过滤掉正在上传的服装和没有uuid的服装
@@ -313,9 +300,6 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
         if (response.success) {
           const data = response.data?.data || response.data
 
-          console.warn('[useTryOn] 响应数据:', data)
-          console.warn('[useTryOn] estimated_time:', data.estimated_time)
-
           // 缓存返回的 avatar_key
           if (data.avatar_key) {
             setAvatarKey(data.avatar_key)
@@ -324,7 +308,6 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
           // 开始轮询状态
           if (data.record_uuid) {
             const estimated = data.estimated_time || 30
-            console.warn('[useTryOn] 设置预计时间:', estimated)
             setEstimatedTime(estimated)
             setRemainingTime(estimated)
 
@@ -339,7 +322,6 @@ export function useTryOn({ sessionId, onComplete, onError } = {}) {
               const elapsed = (Date.now() - startTime) / 1000
               const remaining = Math.max(0, estimated - elapsed)
               const remainingCeil = Math.ceil(remaining)
-              console.warn('[useTryOn] 倒计时:', remainingCeil)
               setRemainingTime(remainingCeil)
 
               // 根据时间计算进度

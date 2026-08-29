@@ -5,7 +5,7 @@ export default function AdminContactItem({ icon, label, value, maskedValue }) {
 
   return (
     <div className='flex items-center gap-3 rounded-xl border border-grayLight p-3'>
-      <div className='flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-champagne/20'>
+      <div className='bg-champagne/20 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full'>
         {icon}
       </div>
       <div className='min-w-0 flex-1'>

@@ -59,7 +59,7 @@ export default function GenerateSection({
   const isDisabled = isGenerating || !userConsent || !hasImage || !hasClothing || !canTryOn
 
   return (
-    <div className='border-t border-gray-100 bg-gray-50/50 p-3'>
+    <div className='bg-[var(--bg-secondary)]/50 border-t border-[var(--border-primary)] p-3'>
       {/* 免责声明 */}
       <div className='mb-3 flex items-start gap-2'>
         <Checkbox

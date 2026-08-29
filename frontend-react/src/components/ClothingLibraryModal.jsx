@@ -1,506 +1,477 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 
-import CachedImage from './CachedImage'
+import PropTypes from 'prop-types'
 
-export default function ClothingLibraryModal({
+import { api } from '../utils/request'
+import { API_ENDPOINTS } from '../config/api'
+import { CATEGORY_OPTIONS, FALLBACK_COLOR_TAGS } from '../data/clothingData'
+
+import ClothingGrid from './ClothingGrid'
+import { Icon } from './ui'
+
+function ClothingLibraryModal({
   isOpen,
   onClose,
-  clothing,
-  customClothing,
-  wardrobeClothing,
-  selected,
+  clothing = [],
+  customClothing = [],
+  wardrobeClothing = [],
+  selected = [],
   onToggleSelect,
   onRemoveSelected,
-  categories,
+  onRemoveWardrobeItem,
+  onAddWardrobeItem,
   t,
+  sessionId,
+  defaultCustomCategory = 'tops',
+  onCustomUploadFile,
 }) {
-  const [currentCategory, setCurrentCategory] = useState('tops')
-  const [currentSubcategory, setCurrentSubcategory] = useState('')
-  const [searchKeyword, setSearchKeyword] = useState('')
+  const [activeTab, setActiveTab] = useState('all')
+  const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedColor, setSelectedColor] = useState('all')
 
-  // 默认分类
-  const defaultCategories = [
-    { id: 'tops', name: t('cat_tops') || '上装', i18nKey: 'cat_tops' },
-    { id: 'bottoms', name: t('cat_bottoms') || '下装', i18nKey: 'cat_bottoms' },
-    { id: 'dresses', name: t('cat_dresses') || '连衣裙', i18nKey: 'cat_dresses' },
-    { id: 'outerwear', name: t('cat_outerwear') || '外套', i18nKey: 'cat_outerwear' },
-    { id: 'shoes', name: t('cat_shoes') || '鞋', i18nKey: 'cat_shoes' },
-    { id: 'accessories', name: t('cat_accessories') || '配饰', i18nKey: 'cat_accessories' },
-  ]
+  // 颜色标签：严格由后端返回（/api/v1/colors/），前端不臆造
+  const [colorTags, setColorTags] = useState(FALLBACK_COLOR_TAGS)
 
-  // 使用传入的分类或默认分类
-  const displayCategories = categories && categories.length > 0 ? categories : defaultCategories
-
-  // 为每个分类添加"全部"子分类
-  const allCategories = displayCategories.map(cat => ({
-    ...cat,
-    subcategories: [{ id: '', name: t('all') || '全部' }, ...(cat.subcategories || [])],
-  }))
-
-  // 搜索匹配函数
-  const matchKeyword = useCallback((item, keyword) => {
-    if (!keyword) {
-      return true
+  useEffect(() => {
+    let alive = true
+    api
+      .get(API_ENDPOINTS.COMMON.COLORS)
+      .then(res => {
+        const items = res?.items || res?.data?.items || res
+        if (alive && Array.isArray(items) && items.length) {
+          setColorTags(items)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
     }
-    const k = keyword.toLowerCase()
-    const name = (item.name || '').toLowerCase()
-    const colorName = (item.color_name || '').toLowerCase()
-    const categoryName = (item.category || '').toLowerCase()
-    return name.includes(k) || colorName.includes(k) || categoryName.includes(k)
   }, [])
 
-  // 服装过滤
-  const filterByCategoryAndSubcategory = useCallback(
-    item => {
-      if (currentCategory && item.category !== currentCategory) {
-        return false
+  const [showScan, setShowScan] = useState(false)
+  const [qrSvg, setQrSvg] = useState('')
+  const [scanError, setScanError] = useState('')
+  const scanTimer = useRef(null)
+
+  // 拍照上传：直接选图后按当前分类上传
+  const handlePhotoPick = e => {
+    const file = e.target.files && e.target.files[0]
+    if (file && onCustomUploadFile) {
+      onCustomUploadFile(file, defaultCustomCategory)
+    }
+    e.target.value = ''
+  }
+
+  // 轮询扫码状态：检查手机端是否已上传图片
+  const pollScan = ticketId => {
+    if (scanTimer.current) {
+      clearInterval(scanTimer.current)
+    }
+    scanTimer.current = setInterval(async () => {
+      try {
+        const res = await api.getNoRetry(API_ENDPOINTS.SCAN.STATUS(ticketId))
+        if (res.success && res.data?.uploaded && res.data.image_url) {
+          clearInterval(scanTimer.current)
+          scanTimer.current = null
+          setShowScan(false)
+          try {
+            const resp = await fetch(res.data.image_url)
+            const blob = await resp.blob()
+            const file = new File([blob], 'scan-upload.png', { type: blob.type || 'image/png' })
+            if (onCustomUploadFile) {
+              onCustomUploadFile(file, defaultCustomCategory)
+            }
+          } catch (e) {
+            setScanError(t('scanUploadImageFailed'))
+          }
+        } else if (res.status === 404 || res.status === 410) {
+          clearInterval(scanTimer.current)
+          scanTimer.current = null
+          setScanError(t('scanTicketExpired') || '二维码已过期，请刷新二维码')
+        }
+      } catch (e) {
+        /* 轮询中忽略错误 */
       }
-      if (currentSubcategory && item.subcategory !== currentSubcategory) {
-        return false
-      }
-      return true
-    },
-    [currentCategory, currentSubcategory]
-  )
+    }, 1500)
+  }
 
-  // 获取当前分类的服装列表
-  const getCategoryClothes = useCallback(() => {
-    if (searchKeyword) {
-      return clothing.filter(c => matchKeyword(c, searchKeyword))
+  // 扫码上传：申请 ticket + 二维码，轮询直到手机端上传完成
+  const startScan = async () => {
+    setScanError('')
+    setQrSvg('')
+    if (!sessionId) {
+      setScanError(t('sessionNotReady'))
+      return
     }
-    if (!currentCategory) {
-      return clothing
-    }
-    return clothing.filter(filterByCategoryAndSubcategory)
-  }, [clothing, searchKeyword, matchKeyword, filterByCategoryAndSubcategory, currentCategory])
-
-  // 自定义服装
-  const getCustomClothes = useCallback(() => {
-    const customList = customClothing || []
-    if (searchKeyword) {
-      return customList.filter(c => matchKeyword(c, searchKeyword))
-    }
-    if (!currentCategory) {
-      return customList
-    }
-    return customList.filter(filterByCategoryAndSubcategory)
-  }, [customClothing, searchKeyword, matchKeyword, filterByCategoryAndSubcategory, currentCategory])
-
-  // 衣橱服装
-  const getWardrobeClothes = useCallback(() => {
-    const wardrobeList = wardrobeClothing || []
-    if (searchKeyword) {
-      return wardrobeList.filter(c => matchKeyword(c, searchKeyword))
-    }
-    if (!currentCategory) {
-      return wardrobeList
-    }
-    return wardrobeList.filter(filterByCategoryAndSubcategory)
-  }, [
-    wardrobeClothing,
-    searchKeyword,
-    matchKeyword,
-    filterByCategoryAndSubcategory,
-    currentCategory,
-  ])
-
-  // 合并所有服装
-  const allClothes = useMemo(() => {
-    const categoryClothes = getCategoryClothes()
-    const customClothes = getCustomClothes()
-    const wardrobeClothes = getWardrobeClothes()
-    const seen = new Set()
-    return [...categoryClothes, ...wardrobeClothes, ...customClothes].filter(item => {
-      const key = item.id || item.uuid
-      if (key && !seen.has(key)) {
-        seen.add(key)
-        return true
-      }
-      return false
-    })
-  }, [getCategoryClothes, getCustomClothes, getWardrobeClothes])
-
-  // 判断是否选中
-  const isSelected = useCallback(
-    id => selected.some(item => item.id === id || item.uuid === id),
-    [selected]
-  )
-
-  // 切换选中（同类型只允许一件）
-  const handleToggle = useCallback(
-    item => {
-      if (!item || (item.id === undefined && item.uuid === undefined)) {
-        console.warn('handleToggle: 无效的服装项', item)
+    try {
+      const res = await api.post(API_ENDPOINTS.SCAN.CREATE, {
+        session_id: sessionId,
+        type: 'clothing',
+      })
+      const data = res?.data
+      if (!data || !data.qr_svg) {
+        setScanError(data?.error || t('qrCodeFailed'))
         return
       }
-      const itemId = item.id || item.uuid
-      const existing = selected.find(s => s.category === item.category)
-      if (existing && existing.id !== item.id && existing.uuid !== item.uuid) {
-        onRemoveSelected(existing.id || existing.uuid)
-      }
-      if (isSelected(itemId)) {
-        onRemoveSelected(itemId)
-      } else {
-        onToggleSelect({
-          id: itemId,
-          uuid: item.uuid,
-          color: item.color,
-          name: item.name,
-          category: item.category,
-          image: item.image,
-          imageFull: item.imageFull,
-          isCustom: item.isCustom,
-          isWardrobe: item.isWardrobe,
-          subcategory: item.subcategory,
-          price: item.price,
-          sizes: item.sizes,
-        })
+      setQrSvg(data.qr_svg)
+      setShowScan(true)
+      pollScan(data.ticket_id)
+    } catch (err) {
+      setScanError('创建扫码会话失败')
+    }
+  }
+
+  useEffect(
+    () => () => {
+      if (scanTimer.current) {
+        clearInterval(scanTimer.current)
       }
     },
-    [selected, onToggleSelect, onRemoveSelected, isSelected]
+    []
   )
 
-  // 选择主分类
-  const handleCategoryChange = useCallback(cat => {
-    setCurrentCategory(cat)
-    setCurrentSubcategory('')
-    setSearchKeyword('')
-  }, [])
-
-  // 格式化价格
-  const formatPrice = price => {
-    if (!price || price === 0) {
-      return ''
+  const allItems = useMemo(() => {
+    if (activeTab === 'wardrobe') {
+      return wardrobeClothing
     }
-    return `¥${parseFloat(price).toFixed(0)}`
+    if (activeTab === 'custom') {
+      return customClothing
+    }
+    return clothing
+  }, [activeTab, clothing, customClothing, wardrobeClothing])
+
+  // 颜色选项：严格使用后端返回的颜色标签（name 为入库值，hex 用于色块展示）
+  const colorOptions = useMemo(
+    () => colorTags.map(c => ({ value: c.name, label: c.name, swatch: c.hex })),
+    [colorTags]
+  )
+
+  // 分类选项：固定顺序（上装 -> 下装 -> 连衣裙 -> 外套 -> 鞋 -> 配饰），已含中文翻译
+  const categoryOptions = useMemo(() => CATEGORY_OPTIONS, [])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return allItems.filter(i => {
+      if (q) {
+        const matched =
+          (i.name || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q)
+        if (!matched) {
+          return false
+        }
+      }
+      if (selectedCategory !== 'all') {
+        if ((i.category || '').trim() !== selectedCategory) {
+          return false
+        }
+      }
+      if (selectedColor !== 'all') {
+        let list = []
+        if (Array.isArray(i.colors)) {
+          list = i.colors
+        } else if (i.color) {
+          list = [i.color]
+        }
+        const values = list.map(c => (typeof c === 'string' ? c : c?.color || c?.value))
+        if (!values.includes(selectedColor)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [allItems, search, selectedCategory, selectedColor])
+
+  // 切换 Tab 时重置筛选，避免跨 Tab 状态串扰
+  const handleTabChange = key => {
+    setActiveTab(key)
+    setSelectedCategory('all')
+    setSelectedColor('all')
+  }
+
+  const tabs = [
+    { key: 'all', label: t('allClothing') || '全部', count: clothing.length },
+    { key: 'wardrobe', label: t('myWardrobe') || '我的衣橱', count: wardrobeClothing.length },
+    { key: 'custom', label: t('customUploads') || '自定义上传', count: customClothing.length },
+  ]
+
+  // 心形 = 收藏（即加入/移出「我的衣橱」），所有 Tab 行为一致
+  const handleToggleFavorite = (item, next) => {
+    if (next) {
+      onAddWardrobeItem?.(item)
+    } else {
+      onRemoveWardrobeItem?.(item)
+    }
   }
 
   if (!isOpen) {
     return null
   }
 
-  return (
-    <div className='fixed inset-0 z-[100] flex items-center justify-center'>
-      {/* 遮罩层 - 点击不关闭 */}
-      <div className='absolute inset-0 bg-black/60 backdrop-blur-sm' />
+  const handleClose = () => {
+    setSearch('')
+    onClose?.()
+  }
 
-      {/* 模态框 */}
-      <div className='relative flex h-[85vh] w-[90vw] max-w-[1200px] animate-scale-in flex-col overflow-hidden rounded-2xl bg-white shadow-2xl'>
-        {/* 头部 */}
-        <div className='flex items-center justify-between border-b border-gray-200 px-6 py-4'>
-          <div className='flex items-center gap-1'>
-            {/* 全部按钮 */}
-            <button
-              type='button'
-              onClick={() => handleCategoryChange('')}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-                currentCategory === ''
-                  ? 'bg-champagne text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+  const selectedCount = selected.length
+
+  // 内容区：根据筛选结果和当前 Tab 决定渲染内容
+  let modalContent
+  if (filtered.length > 0) {
+    modalContent = (
+      <ClothingGrid
+        items={filtered}
+        variant='modal'
+        selected={selected}
+        favorites={wardrobeClothing}
+        onToggleSelect={onToggleSelect}
+        onToggleFavorite={handleToggleFavorite}
+        t={t}
+      />
+    )
+  } else if (activeTab === 'custom') {
+    modalContent = (
+      <div className='clothing-empty'>
+        <Icon name='image' className='h-10 w-10' />
+        <p>{t('libCustomUploadHint') || '上传你的自定义服装，支持拍照上传或扫码上传'}</p>
+        <div className='custom-upload-actions'>
+          <label className='btn-simple btn-simple-primary'>
+            <Icon name='camera' className='h-4 w-4' />
+            {t('libPhotoUpload') || '拍照上传'}
+            <input
+              type='file'
+              accept='image/*'
+              capture='environment'
+              className='hidden-file-input'
+              onChange={handlePhotoPick}
+            />
+          </label>
+          <button type='button' className='btn-simple btn-simple-primary' onClick={startScan}>
+            <Icon name='qr' className='h-4 w-4' />
+            {t('libScanUpload') || '扫码上传'}
+          </button>
+        </div>
+        {showScan && (
+          <div
+            className='scan-qr-overlay'
+            onClick={() => setShowScan(false)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                setShowScan(false)
+              }
+            }}
+            role='button'
+            tabIndex={-1}
+          >
+            <div
+              className='scan-qr-box'
+              onClick={e => e.stopPropagation()}
+              onKeyDown={e => e.stopPropagation()}
+              role='presentation'
+              tabIndex={-1}
             >
-              {t('all') || '全部'}
-            </button>
+              <p className='scan-qr-title'>{t('libScanQrHint') || '请使用手机扫码上传服装'}</p>
+              {qrSvg ? (
+                <img src={qrSvg} alt='scan qr' className='scan-qr-svg' />
+              ) : (
+                <p className='scan-qr-loading'>{t('libGeneratingQr') || '二维码生成中…'}</p>
+              )}
+              {scanError && (
+                <>
+                  <p className='scan-qr-error'>{scanError}</p>
+                  <button type='button' className='btn-simple' onClick={startScan}>
+                    {t('refreshQr') || '刷新二维码'}
+                  </button>
+                </>
+              )}
+              <button type='button' className='btn-simple' onClick={() => setShowScan(false)}>
+                {t('libCancel') || '取消'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  } else {
+    modalContent = (
+      <div className='clothing-empty'>
+        <Icon name='wardrobe' className='h-10 w-10' />
+        <p>
+          {search ? t('noSearchResult') || '没有匹配的服装' : t('noClothing') || '这里还没有服装'}
+        </p>
+      </div>
+    )
+  }
 
-            {/* 主分类标签 */}
-            {allCategories.map(cat => (
+  return (
+    <div
+      className='clothing-modal-overlay'
+      onMouseDown={e => {
+        if (e.target === e.currentTarget) {
+          handleClose()
+        }
+      }}
+      role='presentation'
+      tabIndex={-1}
+    >
+      <div
+        className='clothing-modal gc-scope'
+        role='dialog'
+        aria-modal='true'
+        aria-label={t('clothingLibrary') || '服装库'}
+      >
+        {/* 头部 */}
+        <header className='clothing-modal-header'>
+          <div>
+            <h2 className='clothing-modal-title'>{t('clothingLibrary') || '服装库'}</h2>
+            <p className='clothing-modal-sub'>
+              {selectedCount > 0
+                ? t('clothingModalSubtitleActive', { n: selectedCount }) ||
+                  `${selectedCount} 件已选 · 点击卡片调整搭配`
+                : t('clothingModalSubtitle') || '挑选心仪单品，开始你的虚拟试衣'}
+            </p>
+          </div>
+          <button
+            type='button'
+            className='clothing-modal-close'
+            onClick={handleClose}
+            aria-label={t('close')}
+          >
+            <Icon name='close' className='h-5 w-5' />
+          </button>
+        </header>
+
+        {/* 搜索 + 分类筛选 */}
+        <div className='clothing-modal-toolbar'>
+          <label className='clothing-search'>
+            <input
+              type='text'
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={t('searchClothing') || '搜索服装名称 / 分类'}
+            />
+            {search && (
+              <button type='button' className='clothing-search-clear' onClick={() => setSearch('')}>
+                <Icon name='close' className='h-3.5 w-3.5' />
+              </button>
+            )}
+          </label>
+
+          <div className='clothing-tabs' role='tablist'>
+            {tabs.map(tab => (
               <button
+                key={tab.key}
                 type='button'
-                key={cat.id}
-                onClick={() => handleCategoryChange(cat.id)}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-                  currentCategory === cat.id
-                    ? 'bg-champagne text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                role='tab'
+                aria-selected={activeTab === tab.key}
+                className={`clothing-tab${activeTab === tab.key ? ' is-active' : ''}`}
+                onClick={() => handleTabChange(tab.key)}
               >
-                {cat.name || t(cat.i18nKey)}
+                {tab.label}
+                <span className='clothing-tab-count'>{tab.count}</span>
               </button>
             ))}
           </div>
+        </div>
 
-          <div className='flex items-center gap-4'>
-            {/* 搜索框 */}
-            <div className='relative w-64'>
-              <svg
-                className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
-                />
-              </svg>
-              <input
-                type='text'
-                placeholder={t('search') || '搜索服装...'}
-                value={searchKeyword}
-                onChange={e => setSearchKeyword(e.target.value)}
-                className='w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 text-sm focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
-              />
-              {searchKeyword && (
-                <button
-                  type='button'
-                  onClick={() => setSearchKeyword('')}
-                  className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                  aria-label={t('clear') || '清除'}
-                >
-                  <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M6 18L18 6M6 6l12 12'
-                    />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* 关闭按钮 */}
+        {/* 分类筛选按钮组 */}
+        <div className='clothing-filter-row'>
+          <span className='clothing-filter-label'>{t('category') || '分类'}</span>
+          <div className='clothing-category-chips'>
             <button
               type='button'
-              onClick={onClose}
-              className='rounded-lg p-1.5 transition-colors hover:bg-gray-100'
-              aria-label='关闭'
+              className={`clothing-chip${selectedCategory === 'all' ? ' is-active' : ''}`}
+              onClick={() => setSelectedCategory('all')}
             >
-              <svg
-                className='h-5 w-5 text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M6 18L18 6M6 6l12 12'
-                />
-              </svg>
+              {t('all') || '全部'}
             </button>
+            {categoryOptions.map(cat => (
+              <button
+                key={cat.value}
+                type='button'
+                className={`clothing-chip${selectedCategory === cat.value ? ' is-active' : ''}`}
+                onClick={() => setSelectedCategory(cat.value)}
+              >
+                <span>{t(cat.i18nKey)}</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* 子分类标签 */}
-        {!searchKeyword && (
-          <div className='border-b border-gray-100 px-6 py-3'>
-            <div className='flex flex-wrap gap-2'>
-              {(allCategories.find(c => c.id === currentCategory)?.subcategories || []).map(sub => (
+        {/* 颜色筛选 */}
+        {colorOptions.length > 0 && (
+          <div className='clothing-filter-row'>
+            <span className='clothing-filter-label'>{t('color') || '颜色'}</span>
+            <div className='clothing-color-swatches'>
+              <button
+                type='button'
+                className={`clothing-color-swatch clothing-color-all${selectedColor === 'all' ? ' is-active' : ''}`}
+                onClick={() => setSelectedColor('all')}
+                title={t('all') || '全部'}
+              >
+                {t('all') || '全部'}
+              </button>
+              {colorOptions.map(opt => (
                 <button
+                  key={opt.value}
                   type='button'
-                  key={sub.id || 'all'}
-                  onClick={() => setCurrentSubcategory(sub.id)}
-                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
-                    currentSubcategory === sub.id
-                      ? 'bg-champagne/15 font-medium text-champagne'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`clothing-color-swatch${selectedColor === opt.value ? ' is-active' : ''}`}
+                  style={{ '--swatch': opt.swatch }}
+                  onClick={() => setSelectedColor(opt.value)}
+                  title={opt.label}
+                  aria-label={opt.label}
                 >
-                  {sub.name}
+                  <span className='clothing-color-dot' style={{ background: opt.swatch }} />
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {/* 服装网格 */}
-        <div className='flex-1 overflow-y-auto p-6'>
-          {allClothes.length === 0 ? (
-            <div className='flex h-full flex-col items-center justify-center text-center'>
-              <svg
-                className='mb-4 h-16 w-16 text-gray-300'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={1}
-                  d='M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'
-                />
-              </svg>
-              <p className='text-gray-500'>{t('noClothing') || '暂无服装'}</p>
-              <p className='mt-1 text-sm text-gray-400'>
-                {t('uploadClothingHint') || '请上传或添加服装'}
-              </p>
-            </div>
-          ) : (
-            <div className='grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'>
-              {allClothes.map(item => {
-                const itemSelected = isSelected(item.id || item.uuid)
-                const itemHasImage = !!(item.image || item.imageFull)
+        {/* 内容区 */}
+        <div className='clothing-modal-content'>{modalContent}</div>
 
-                return (
-                  <div
-                    key={item.id || item.uuid}
-                    className={`group relative overflow-hidden rounded-xl border transition-all ${
-                      itemSelected
-                        ? 'border-champagne shadow-lg'
-                        : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                    }`}
-                  >
-                    {/* 图片区域 */}
-                    <div
-                      className='relative aspect-[3/4] cursor-pointer overflow-hidden bg-gray-50'
-                      style={{ backgroundColor: item.color || '#f9fafb' }}
-                    >
-                      {itemHasImage ? (
-                        <CachedImage
-                          src={item.imageFull || item.image}
-                          alt={item.name}
-                          className='h-full w-full object-cover'
-                        />
-                      ) : (
-                        <div className='flex h-full w-full items-center justify-center'>
-                          <svg
-                            className='h-12 w-12 text-gray-300'
-                            fill='none'
-                            stroke='currentColor'
-                            viewBox='0 0 24 24'
-                          >
-                            <path
-                              strokeLinecap='round'
-                              strokeLinejoin='round'
-                              strokeWidth={1}
-                              d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'
-                            />
-                          </svg>
-                        </div>
-                      )}
-
-                      {/* 选中标记 */}
-                      {itemSelected && (
-                        <div className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-champagne text-white'>
-                          <svg
-                            className='h-4 w-4'
-                            fill='none'
-                            stroke='currentColor'
-                            viewBox='0 0 24 24'
-                          >
-                            <path
-                              strokeLinecap='round'
-                              strokeLinejoin='round'
-                              strokeWidth={3}
-                              d='M5 13l4 4L19 7'
-                            />
-                          </svg>
-                        </div>
-                      )}
-
-                      {/* 悬停添加按钮 */}
-                      <div
-                        className={`absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity ${
-                          itemSelected ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        <button
-                          type='button'
-                          onClick={() => handleToggle(item)}
-                          className='rounded-full bg-white px-4 py-2 text-sm font-medium text-charcoal transition-transform hover:scale-105'
-                        >
-                          {t('select') || '选择'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 信息区域 */}
-                    <div className='p-3'>
-                      <p className='truncate text-sm font-medium text-charcoal'>{item.name}</p>
-                      <div className='mt-1 flex items-center justify-between'>
-                        <span className='text-xs font-semibold text-champagne'>
-                          {formatPrice(item.price)}
-                        </span>
-                        <div className='flex items-center gap-1'>
-                          {item.sizes && (
-                            <span className='truncate text-[10px] text-gray-500'>{item.sizes}</span>
-                          )}
-                          {item.isWardrobe && (
-                            <span className='rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700'>
-                              {t('wardrobe') || '衣橱'}
-                            </span>
-                          )}
-                          {item.isCustom && !item.isWardrobe && (
-                            <span className='rounded bg-champagne/15 px-1.5 py-0.5 text-[10px] text-champagne'>
-                              {t('custom') || '自定义'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 点击卡片也可选择 */}
-                    <button
-                      type='button'
-                      onClick={() => handleToggle(item)}
-                      className='absolute inset-0 z-10'
-                      aria-label={
-                        itemSelected ? t('deselect') || '取消选择' : t('select') || '选择'
-                      }
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* 底部已选栏 */}
-        <div className='border-t border-gray-200 bg-gray-50 px-6 py-4'>
-          <div className='flex items-center justify-between'>
-            <div className='flex items-center gap-3'>
-              <span className='text-sm font-medium text-gray-700'>
-                {t('selected') || '已选'} ({selected.length}):
-              </span>
-              {selected.length === 0 ? (
-                <span className='text-sm text-gray-400'>{t('noSelection') || '未选择服装'}</span>
-              ) : (
-                <div className='flex items-center gap-2'>
-                  {selected.map(item => (
-                    <div
-                      key={item.id}
-                      className='flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm shadow-sm'
-                    >
-                      <span className='max-w-[100px] truncate'>{item.name}</span>
-                      <button
-                        type='button'
-                        onClick={() => onRemoveSelected(item.id)}
-                        className='text-gray-400 hover:text-red-500'
-                        aria-label={t('remove') || '移除'}
-                      >
-                        <svg
-                          className='h-4 w-4'
-                          fill='none'
-                          stroke='currentColor'
-                          viewBox='0 0 24 24'
-                        >
-                          <path
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                            strokeWidth={2}
-                            d='M6 18L18 6M6 6l12 12'
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              type='button'
-              onClick={onClose}
-              className='rounded-xl bg-champagne px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-champagne/90'
-            >
-              {t('confirm') || '确认'}
+        {/* 底部交互层 */}
+        <footer className='clothing-modal-footer'>
+          <span className={`clothing-modal-footinfo${selectedCount > 0 ? ' is-selected' : ''}`}>
+            {selectedCount > 0 ? (
+              <>
+                <Icon name='check' className='h-4 w-4' />
+                {t('n_clothingSelected', { n: selectedCount }) || `${selectedCount} 件已选`}
+              </>
+            ) : (
+              t('selectClothingHint') || '尚未选择服装'
+            )}
+          </span>
+          <div className='clothing-modal-actions'>
+            {selectedCount > 0 && (
+              <button type='button' className='btn-simple' onClick={onRemoveSelected}>
+                {t('clearSelection') || '清空选择'}
+              </button>
+            )}
+            <button type='button' className='btn-simple btn-simple-primary' onClick={handleClose}>
+              {t('done') || '完成'}
             </button>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   )
 }
+
+ClothingLibraryModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  clothing: PropTypes.arrayOf(PropTypes.object),
+  customClothing: PropTypes.arrayOf(PropTypes.object),
+  wardrobeClothing: PropTypes.arrayOf(PropTypes.object),
+  selected: PropTypes.arrayOf(PropTypes.object).isRequired,
+  onToggleSelect: PropTypes.func.isRequired,
+  onRemoveSelected: PropTypes.func.isRequired,
+  onRemoveWardrobeItem: PropTypes.func,
+  t: PropTypes.func.isRequired,
+  sessionId: PropTypes.string,
+  defaultCustomCategory: PropTypes.string,
+  onCustomUploadFile: PropTypes.func,
+}
+
+export default ClothingLibraryModal

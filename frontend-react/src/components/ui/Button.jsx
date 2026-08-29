@@ -4,7 +4,7 @@ const VARIANTS = {
   primary: 'btn-primary',
   secondary: 'btn-secondary',
   danger: 'bg-error text-white hover:bg-error/90',
-  ghost: 'hover:bg-gray-100 text-gray-600',
+  ghost: 'hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)]',
 }
 
 const SIZES = {

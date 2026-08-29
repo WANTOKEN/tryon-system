@@ -18,7 +18,7 @@ from app.models.tryon_record import TryOnRecord
 from app.models.file_record import FileRecord
 from app.api.deps import get_current_user
 from app.services import tryon_service
-from app.storage.service import upload_file
+from app.storage.service import read_upload_file, upload_file
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -38,16 +38,15 @@ async def _serialize_record(db, record) -> dict:
             avatar_key = rec.uuid
     return {
         "id": record.id,
-        "uuid": record.uuid,
         "session_id": record.session_id,
         "avatar_url": record.avatar_url,
         "avatar_source": record.avatar_source,
         "avatar_key": avatar_key,
         "result_url": record.result_url,
-        "result_thumb_url": record.result_url,
+        "result_thumb_url": record.result_thumb_url,
         "status": record.status,
         "status_text": record.status_text,
-        "ai_engine": record.ai_engine,
+        "engine": record.engine,
         "is_saved": record.is_saved,
         "clothing": record.selected_clothing or [],
         "error_message": record.error_message,
@@ -63,7 +62,7 @@ async def upload_avatar(
     current_user: Merchant = Depends(get_current_user),
 ):
     """上传人像，返回 image_key（供 generate 复用）"""
-    content = await file.read()
+    content = await read_upload_file(file, require_image=True)
     rec, url = await upload_file(
         db,
         content,
@@ -82,7 +81,7 @@ async def upload_clothing_image(
     current_user: Merchant = Depends(get_current_user),
 ):
     """上传服装图（顾客自定义），返回 image_key"""
-    content = await file.read()
+    content = await read_upload_file(file, require_image=True)
     rec, url = await upload_file(
         db,
         content,
@@ -119,7 +118,9 @@ async def generate_tryon(
     if current_user.quota_remaining <= 0:
         raise HTTPException(status_code=403, detail="Quota exhausted")
 
-    avatar_data = await form.file.read() if form.file else None
+    avatar_data = (
+        await read_upload_file(form.file, require_image=True) if form.file else None
+    )
 
     # 后端以 uuid 解析服装；兼容前端传入 csv
     clothing_uuids = [c for c in (form.clothing_ids or "").split(",") if c]
@@ -146,7 +147,7 @@ async def generate_tryon(
     await db.commit()
 
     return {
-        "record_uuid": record.uuid,
+        "record_uuid": record.id,
         "status": record.status,
         "status_text": record.status_text,
         "estimated_time": settings.mock_tryon_seconds,
@@ -195,7 +196,7 @@ async def save_record(
     current_user: Merchant = Depends(get_current_user),
 ):
     record = (
-        await db.execute(select(TryOnRecord).where(TryOnRecord.uuid == uuid, TryOnRecord.merchant_id == current_user.id))
+        await db.execute(select(TryOnRecord).where(TryOnRecord.id == uuid, TryOnRecord.merchant_id == current_user.id))
     ).scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -211,7 +212,7 @@ async def delete_record(
     current_user: Merchant = Depends(get_current_user),
 ):
     record = (
-        await db.execute(select(TryOnRecord).where(TryOnRecord.uuid == uuid, TryOnRecord.merchant_id == current_user.id))
+        await db.execute(select(TryOnRecord).where(TryOnRecord.id == uuid, TryOnRecord.merchant_id == current_user.id))
     ).scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")

@@ -17,6 +17,7 @@ from app.db import AsyncSessionLocal
 from app.core.config import get_settings
 from app.models.tryon_record import TryOnRecord
 from app.models.file_record import FileRecord
+from app.models.merchant import Merchant
 from app.storage import storage
 from app.storage.service import upload_file
 from app.services.tryon_engine import get_engine
@@ -99,8 +100,8 @@ async def generate(
         merchant_id=merchant_id,
         session_id=session_id,
         avatar_source=avatar_source,
-        status="pending",
-        ai_engine=ai_engine,
+        status=0,
+        engine=ai_engine,
         selected_clothing=clothing_uuids,
     )
     if avatar_url:
@@ -118,7 +119,7 @@ async def generate(
     db.add(record)
     await db.flush()
     await db.refresh(record)
-    rec_uuid = record.uuid
+    rec_uuid = record.id
     await db.commit()
 
     # 后台驱动生成（开发/演示用进程内任务；生产可换 Celery）
@@ -140,12 +141,12 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
         record = None
         try:
             record = (
-                await db.execute(select(TryOnRecord).where(TryOnRecord.uuid == record_uuid))
+                await db.execute(select(TryOnRecord).where(TryOnRecord.id == record_uuid))
             ).scalar_one_or_none()
             if not record:
                 return
 
-            record.status = "processing"
+            record.status = 1  # processing
             await db.commit()
 
             avatar_bytes = await _read_avatar_bytes(avatar_key, avatar_data)
@@ -165,21 +166,35 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
             )
             record.result_file_id = rec.id
             record.result_url = url
-            record.status = "completed"
+            record.status = 2  # completed
             record.status_text = "已完成"
             record.duration_ms = int((time.time() - record.created_at.timestamp()) * 1000) if record.created_at else 0
             await db.commit()
         except Exception as e:  # noqa: BLE001
             logger.exception("试穿任务 %s 处理失败", record_uuid)
             if record is not None:
-                record.status = "failed"
+                record.status = 3  # failed
                 record.status_text = "生成失败"
                 record.error_message = str(e)
+                # 退还配额：任务失败不应消耗商户配额
+                try:
+                    merchant = (
+                        await db.execute(
+                            select(Merchant).where(Merchant.id == record.merchant_id)
+                        )
+                    ).scalar_one_or_none()
+                    if merchant:
+                        merchant.quota_used = max(0, merchant.quota_used - 1)
+                        merchant.quota_remaining = max(
+                            0, merchant.quota_total - merchant.quota_used
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.exception("退还配额失败 (task=%s)", record_uuid)
                 await db.commit()
 
 
 async def get_status(db: AsyncSession, record_uuid: str) -> Optional[TryOnRecord]:
-    stmt = select(TryOnRecord).where(TryOnRecord.uuid == record_uuid)
+    stmt = select(TryOnRecord).where(TryOnRecord.id == record_uuid)
     return (await db.execute(stmt)).scalar_one_or_none()
 
 

@@ -53,7 +53,7 @@ export default function ConsentModal({ isOpen, onClose, onAgree, t }) {
         </>
       }
     >
-      <div className='space-y-4 text-sm text-gray-700'>
+      <div className='space-y-4 text-sm text-[var(--text-secondary)]'>
         {sections.map(section => (
           <div key={section.title}>
             <p className='font-medium'>{section.title}</p>

@@ -4,7 +4,7 @@ export default function LoadingOverlay({ progress, remainingTime, t }) {
   return (
     <div
       className={`absolute inset-0 z-20 flex items-center justify-center rounded-2xl backdrop-blur-sm transition-colors duration-500 ${
-        progress >= 100 ? 'bg-white/98' : 'bg-ivory/95'
+        progress >= 100 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-secondary)]/95'
       }`}
       role='alert'
       aria-live='assertive'
@@ -12,7 +12,7 @@ export default function LoadingOverlay({ progress, remainingTime, t }) {
       <div className='w-72 px-4 text-center md:w-80'>
         {/* 进度条 */}
         <div className='mb-4'>
-          <div className='h-4 w-full overflow-hidden rounded-full bg-gray-100 shadow-inner'>
+          <div className='h-4 w-full overflow-hidden rounded-full bg-[var(--bg-card)] shadow-inner'>
             <div
               className='h-full rounded-full shadow-sm transition-all duration-300 ease-out'
               style={{
@@ -22,7 +22,7 @@ export default function LoadingOverlay({ progress, remainingTime, t }) {
               }}
             />
           </div>
-          <p className='mt-3 text-xl font-bold text-gray-700'>
+          <p className='mt-3 text-xl font-bold text-[var(--text-secondary)]'>
             {progress < 100 ? `${Math.floor(progress)}%` : '100%'}
           </p>
         </div>

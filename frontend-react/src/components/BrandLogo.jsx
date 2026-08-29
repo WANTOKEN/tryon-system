@@ -3,8 +3,8 @@
 export default function BrandLogo({ size = 28, className = '', style = {} }) {
   return (
     <img
-      src="/logo.png"
-      alt="AI TryOn"
+      src='/logo.png'
+      alt='AI TryOn'
       width={size}
       height={size}
       className={className}

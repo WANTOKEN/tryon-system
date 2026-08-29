@@ -203,6 +203,20 @@ export const categoryIcons = {
   // 自定义上传
   custom_upload:
     '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
+  // 常见别名（后端 clothing.category 实际值兜底映射到对应图标）
+  top: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l4-2h8l4 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M8 4v4m8-4v4M8 8c0 2 2 4 4 4s4-2 4-4"/>',
+  bottoms_alias:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 4h12v2H6V4zM6 6v14a2 2 0 002 2h2V10m4 12h2a2 2 0 002-2V6M10 22V10m0 0h4"/>',
+  pants:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 4h12v2H6V4zM6 6v14a2 2 0 002 2h2V10m4 12h2a2 2 0 002-2V6M10 22V10m0 0h4"/>',
+  skirt:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 4h6l3 16H6L9 4zM8 4c0-1 1-2 2-2h4c1 0 2 1 2 2"/>',
+  dress:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a3 3 0 100 6 3 3 0 000-6zM8 8l-3 14h14l-3-14H8z"/>',
+  coat: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6l3-2h10l3 2M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6M7 4v6m10-6v6M4 6l3 3m13-3l-3 3M12 9v11"/>',
+  // 默认/兜底图标（任意未识别 category 也显示一个通用服装图标）
+  default:
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7l4-3h8l4 3M4 7v11a2 2 0 002 2h12a2 2 0 002-2V7M8 4v4m8-4v4"/>',
 }
 
 // 分类列表
@@ -213,6 +227,36 @@ export const categories = [
   { id: 'outerwear', i18nKey: 'cat_outerwear' },
   { id: 'shoes', i18nKey: 'cat_shoes' },
   { id: 'accessories', i18nKey: 'cat_accessories' },
+]
+
+// 服装库筛选用的固定分类顺序（与后端 CLOTHING_CATEGORIES 一致）
+// 顺序：上装 -> 下装 -> 连衣裙 -> 外套 -> 鞋 -> 配饰
+export const CATEGORY_OPTIONS = [
+  { value: 'tops', label: '上装', i18nKey: 'cat_tops' },
+  { value: 'bottoms', label: '下装', i18nKey: 'cat_bottoms' },
+  { value: 'dresses', label: '连衣裙', i18nKey: 'cat_dresses' },
+  { value: 'outerwear', label: '外套', i18nKey: 'cat_outerwear' },
+  { value: 'shoes', label: '鞋', i18nKey: 'cat_shoes' },
+  { value: 'accessories', label: '配饰', i18nKey: 'cat_accessories' },
+]
+
+// 颜色标签兜底（后端 /api/v1/colors/ 不可用时使用）。
+// name 为入库值（中文），hex 用于色块展示。与后端 app/constants.py COLOR_TAGS 保持一致。
+export const FALLBACK_COLOR_TAGS = [
+  { name: '黑色', hex: '#111827' },
+  { name: '白色', hex: '#F9FAFB' },
+  { name: '灰色', hex: '#9CA3AF' },
+  { name: '米色', hex: '#E7DCC9' },
+  { name: '卡其色', hex: '#C3B091' },
+  { name: '棕色', hex: '#92400E' },
+  { name: '红色', hex: '#DC2626' },
+  { name: '粉色', hex: '#EC4899' },
+  { name: '橙色', hex: '#EA580C' },
+  { name: '黄色', hex: '#FACC15' },
+  { name: '绿色', hex: '#16A34A' },
+  { name: '蓝色', hex: '#2563EB' },
+  { name: '牛仔蓝', hex: '#1E3A8A' },
+  { name: '紫色', hex: '#7C3AED' },
 ]
 
 // 获取某分类下的所有服装数量

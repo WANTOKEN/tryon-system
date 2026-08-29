@@ -7,6 +7,9 @@ import { useI18n } from '../hooks/useI18n'
 import { Sidebar, MainStage } from './layout'
 import { ModelSelectModal, ConsentModal, HistoryModal } from './modals'
 import ClothingLibraryModal from './ClothingLibraryModal'
+import AvatarSourceModal from './modals/AvatarSourceModal'
+import ImageDisplayModal from './modals/ImageDisplayModal'
+import { Icon } from './ui'
 
 export default function MainLayout({
   avatarPreview = null,
@@ -17,6 +20,8 @@ export default function MainLayout({
   onToggleSelect,
   selectedClothing,
   onRemoveSelected,
+  onRemoveWardrobeItem,
+  onAddWardrobeItem,
   history = [],
   status = 'idle',
   resultUrl = null,
@@ -40,6 +45,10 @@ export default function MainLayout({
   requireConsent = true,
   showHistoryModal,
   onCloseHistoryModal,
+  sessionCustomer,
+  onCustomUploadFile,
+  onEndSession,
+  onDeleteAvatar,
 }) {
   const { t } = useI18n()
 
@@ -47,6 +56,11 @@ export default function MainLayout({
   const [showModelModal, setShowModelModal] = useState(false)
   const [showClothingLibrary, setShowClothingLibrary] = useState(false)
   const [showConsentModal, setShowConsentModal] = useState(false)
+  // 小屏"我的形象"：用悬浮按钮打开居中模态（复用形象来源弹窗）
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
+  // 图片展示模块框（槽位复用）
+  const [showImageDisplay, setShowImageDisplay] = useState(false)
+  const [imageDisplayData, setImageDisplayData] = useState({ src: '', title: '' })
 
   // 本地状态
   const [historyFilter, setHistoryFilter] = useState('all')
@@ -122,6 +136,7 @@ export default function MainLayout({
         wardrobeClothing={wardrobeClothing}
         onRemoveSelected={onRemoveSelected}
         onClearSelection={onClearSelection}
+        sessionId={sessionCustomer}
         t={t}
         showToast={showToast}
       />
@@ -131,9 +146,16 @@ export default function MainLayout({
         hasImage={hasImage}
         hasClothing={hasClothing}
         resultUrl={resultUrl}
+        avatarPreview={avatarPreview}
         selectedClothing={selectedClothing}
         onOpenPreviewModal={onOpenPreviewModal}
         onClearSelection={onClearSelection}
+        onOpenModelModal={() => setShowModelModal(true)}
+        onOpenClothingLibrary={() => setShowClothingLibrary(true)}
+        onAvatarChange={onAvatarChange}
+        onSetAvatarPreview={onSetAvatarPreview}
+        sessionId={sessionCustomer}
+        showToast={showToast}
         userConsent={userConsent}
         onConsentChange={setUserConsent}
         onShowDisclaimer={() => setShowConsentModal(true)}
@@ -143,6 +165,11 @@ export default function MainLayout({
         tryOnBtnText={tryOnBtnText}
         progress={progress}
         remainingTime={remainingTime}
+        onEndSession={onEndSession}
+        onOpenImageDisplay={data => {
+          setImageDisplayData(data)
+          setShowImageDisplay(true)
+        }}
         t={t}
       />
 
@@ -156,8 +183,12 @@ export default function MainLayout({
         selected={selected}
         onToggleSelect={onToggleSelect}
         onRemoveSelected={onRemoveSelected}
+        onRemoveWardrobeItem={onRemoveWardrobeItem}
+        onAddWardrobeItem={onAddWardrobeItem}
         categories={categories}
         t={t}
+        sessionId={sessionCustomer}
+        onCustomUploadFile={onCustomUploadFile}
       />
 
       {/* 模特选择模态框 */}
@@ -194,6 +225,60 @@ export default function MainLayout({
         formatTime={formatTime}
         t={t}
       />
+
+      {/* 小屏"我的形象"居中模态：悬浮按钮打开，复用形象来源弹窗 */}
+      <AvatarSourceModal
+        isOpen={showAvatarModal}
+        onClose={() => setShowAvatarModal(false)}
+        avatarPreview={avatarPreview}
+        onAvatarChange={e => {
+          onAvatarChange(e)
+          if (e?.target?.files) {
+            setShowAvatarModal(false)
+          }
+        }}
+        onAvatarDelete={onDeleteAvatar}
+        onOpenPreviewModal={onOpenPreviewModal}
+        onShowModelModal={() => {
+          setShowAvatarModal(false)
+          setShowModelModal(true)
+        }}
+        onSetAvatarPreview={onSetAvatarPreview}
+        sessionId={sessionCustomer}
+        showToast={showToast}
+        t={t}
+      />
+
+      {/* 图片展示模块框：槽位复用 */}
+      <ImageDisplayModal
+        isOpen={showImageDisplay}
+        onClose={() => setShowImageDisplay(false)}
+        src={imageDisplayData.src}
+        title={imageDisplayData.title}
+        t={t}
+      />
+
+      {/* 小屏悬浮按钮：我的形象 / 服装库 */}
+      <div className='mobile-fab-group'>
+        <button
+          type='button'
+          className='mobile-fab'
+          onClick={() => setShowAvatarModal(true)}
+          aria-label={t('myAvatar') || '我的形象'}
+        >
+          <Icon name='user' className='h-5 w-5' />
+          <span>{t('myAvatar') || '我的形象'}</span>
+        </button>
+        <button
+          type='button'
+          className='mobile-fab'
+          onClick={() => setShowClothingLibrary(true)}
+          aria-label={t('openClothingLibrary') || '服装库'}
+        >
+          <Icon name='wardrobe' className='h-5 w-5' />
+          <span>{t('clothingLibrary') || '服装库'}</span>
+        </button>
+      </div>
     </div>
   )
 }
@@ -230,4 +315,6 @@ MainLayout.propTypes = {
   requireConsent: PropTypes.bool,
   showHistoryModal: PropTypes.bool.isRequired,
   onCloseHistoryModal: PropTypes.func.isRequired,
+  onEndSession: PropTypes.func,
+  onDeleteAvatar: PropTypes.func,
 }

@@ -27,7 +27,7 @@ export default function HistoryModal({
       title={
         <div className='flex items-center gap-3'>
           <span>{t('tryOnHistory')}</span>
-          <span className='rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500'>
+          <span className='rounded-full bg-[var(--bg-secondary)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)]'>
             {filteredHistory.length}
           </span>
         </div>
@@ -36,13 +36,13 @@ export default function HistoryModal({
     >
       {/* 筛选和操作 */}
       <div className='mb-4 flex items-center justify-between'>
-        <div className='flex rounded-lg bg-gray-100 p-1'>
+        <div className='flex rounded-lg bg-[var(--bg-secondary)] p-1'>
           <button
             type='button'
             className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
               historyFilter === 'all'
-                ? 'bg-white text-charcoal shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-[var(--bg-card)] text-charcoal shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
             onClick={() => onFilterChange('all')}
           >
@@ -52,8 +52,8 @@ export default function HistoryModal({
             type='button'
             className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
               historyFilter === 'saved'
-                ? 'bg-white text-pink-500 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-[var(--bg-card)] text-[var(--accent-strong)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             }`}
             onClick={() => onFilterChange('saved')}
           >
@@ -65,7 +65,7 @@ export default function HistoryModal({
         {(history || []).length > 0 && (
           <button
             type='button'
-            className='rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-500'
+            className='rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-red-500'
             onClick={onClearHistory}
             title='清空记录'
           >
@@ -77,10 +77,10 @@ export default function HistoryModal({
       {/* 历史记录列表 */}
       {filteredHistory.length === 0 ? (
         <div className='flex flex-col items-center justify-center py-20 text-center'>
-          <div className='mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gray-100'>
-            <Icon name='clock' className='h-10 w-10 text-gray-300' />
+          <div className='mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-secondary)]'>
+            <Icon name='clock' className='h-10 w-10 text-[var(--text-tertiary)]' />
           </div>
-          <p className='text-gray-500'>
+          <p className='text-[var(--text-muted)]'>
             {historyFilter === 'saved' ? t('noSaved') : t('noHistory')}
           </p>
         </div>
@@ -100,7 +100,7 @@ export default function HistoryModal({
             return (
               <div
                 key={recordId}
-                className='group relative overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md'
+                className='group relative overflow-hidden rounded-xl bg-[var(--bg-card)] shadow-sm transition-shadow hover:shadow-md'
               >
                 {/* 图片区域 */}
                 <div
@@ -124,7 +124,7 @@ export default function HistoryModal({
                       className='h-full w-full object-cover transition-transform duration-300 group-hover:scale-105'
                     />
                   ) : (
-                    <div className='flex h-full w-full items-center justify-center bg-gray-100 text-gray-300'>
+                    <div className='flex h-full w-full items-center justify-center bg-[var(--bg-secondary)] text-[var(--text-tertiary)]'>
                       <Icon name='image' className='h-10 w-10' />
                     </div>
                   )}
@@ -139,14 +139,16 @@ export default function HistoryModal({
                           onPreview(imgSrc, names)
                         }
                       }}
-                      className='flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg transition-transform hover:scale-110'
+                      className='flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-secondary)] shadow-lg transition-transform hover:scale-110'
                     >
                       <Icon name='eye' className='h-4 w-4' />
                     </button>
                     <button
                       type='button'
                       className={`flex h-9 w-9 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110 ${
-                        isSaved ? 'bg-pink-500 text-white' : 'bg-white text-gray-600'
+                        isSaved
+                          ? 'bg-[var(--accent-strong)] text-white'
+                          : 'bg-[var(--bg-card)] text-[var(--text-secondary)]'
                       }`}
                       onClick={e => {
                         e.stopPropagation()
@@ -161,7 +163,7 @@ export default function HistoryModal({
                     </button>
                     <button
                       type='button'
-                      className='flex h-9 w-9 items-center justify-center rounded-full bg-white text-red-500 shadow-lg transition-transform hover:scale-110'
+                      className='flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-card)] text-red-500 shadow-lg transition-transform hover:scale-110'
                       onClick={e => {
                         e.stopPropagation()
                         onDelete(recordId)
@@ -173,18 +175,20 @@ export default function HistoryModal({
 
                   {/* 收藏标记 */}
                   {isSaved && (
-                    <div className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-pink-500 text-white shadow-md'>
+                    <div className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-strong)] text-white shadow-md'>
                       <Icon name='heartFilled' className='h-3 w-3' />
                     </div>
                   )}
                 </div>
 
                 {/* 底部信息 */}
-                <div className='border-t border-gray-100 p-3'>
-                  <p className='truncate text-xs font-medium text-gray-700'>
+                <div className='border-t border-[var(--border-primary)] p-3'>
+                  <p className='truncate text-xs font-medium text-[var(--text-secondary)]'>
                     {names || '未选择服装'}
                   </p>
-                  <p className='mt-1 text-[11px] text-gray-400'>{formatTime(record.created_at)}</p>
+                  <p className='mt-1 text-[11px] text-[var(--text-muted)]'>
+                    {formatTime(record.created_at)}
+                  </p>
                 </div>
               </div>
             )

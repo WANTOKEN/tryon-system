@@ -25,7 +25,7 @@ from app.services import hash_password
 from app.services.config_service import get_grouped_configs, update_configs
 from app.storage.service import upload_file
 from app.schemas.merchant import QuotaAdjustRequest, MerchantCreate, MerchantUpdate, MerchantResponse
-from app.schemas.clothing import ClothingResponse, ClothingUpdate, ClothingCreate
+from app.schemas.clothing import ClothingResponse
 from app.schemas.tryon import TryOnRecordResponse
 from app.schemas.file import FileRecordResponse
 from app.core.config import get_settings
@@ -54,8 +54,7 @@ async def log_operation(
 ):
     """记录后台操作日志"""
     log = OperationLog(
-        admin_id=admin.id,
-        admin_username=admin.username,
+        operator_id=admin.id,
         action=action,
         target_type=target_type,
         target_id=str(target_id),
@@ -163,7 +162,7 @@ async def create_merchant(
         )
     await db.refresh(merchant)
     await log_operation(db, admin, "create_merchant", "merchant", str(merchant.id), merchant.username)
-    return {"id": merchant.id, "uuid": merchant.uuid}
+    return {"id": merchant.id}
 
 
 @router.patch("/merchants/{merchant_id}/")
@@ -200,14 +199,13 @@ async def adjust_quota(
     db.add(
         QuotaHistory(
             merchant_id=merchant.id,
-            change_type="adjust",
+            action="adjust",
             old_total=old_total,
             new_total=merchant.quota_total,
             old_used=old_used,
             new_used=merchant.quota_used,
-            reason=quota_data.reason or "",
+            note=quota_data.reason or "",
             operator_id=admin.id,
-            operator_name=admin.username,
         )
     )
     await db.commit()
@@ -267,7 +265,7 @@ async def get_stats(
         await db.execute(
             select(func.count()).select_from(TryOnRecord).where(
                 cast(TryOnRecord.created_at, Date) == today,
-                TryOnRecord.status == "completed",
+                TryOnRecord.status_text == "completed",
             )
         )
     ).scalar() or 0
@@ -275,7 +273,7 @@ async def get_stats(
         await db.execute(
             select(func.coalesce(func.avg(TryOnRecord.duration_ms), 0)).select_from(TryOnRecord).where(
                 cast(TryOnRecord.created_at, Date) == today,
-                TryOnRecord.status == "completed",
+                TryOnRecord.status_text == "completed",
             )
         )
     ).scalar() or 0
@@ -295,7 +293,7 @@ async def get_stats(
             await db.execute(
                 select(func.count()).select_from(TryOnRecord).where(
                     cast(TryOnRecord.created_at, Date) == day,
-                    TryOnRecord.status == "completed",
+                    TryOnRecord.status_text == "completed",
                 )
             )
         ).scalar() or 0
@@ -386,66 +384,76 @@ async def admin_delete_clothing(
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
-    clothing = (await db.execute(select(Clothing).where(Clothing.uuid == clothing_id))).scalar_one_or_none()
+    clothing = (await db.execute(select(Clothing).where(Clothing.id == clothing_id))).scalar_one_or_none()
     if not clothing:
         raise HTTPException(status_code=404, detail="Clothing not found")
     clothing.is_active = False
     await db.commit()
-    await log_operation(db, admin, "delete_clothing", "clothing", clothing.uuid)
+    await log_operation(db, admin, "delete_clothing", "clothing", clothing.id)
     return {"success": True}
 
 
 @router.patch("/clothing/{clothing_id}/")
 async def admin_update_clothing(
     clothing_id: str,
-    clothing_in: ClothingUpdate,
+    clothing_in: ClothingResponse,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
-    clothing = (await db.execute(select(Clothing).where(Clothing.uuid == clothing_id))).scalar_one_or_none()
+    clothing = (await db.execute(select(Clothing).where(Clothing.id == clothing_id))).scalar_one_or_none()
     if not clothing:
         raise HTTPException(status_code=404, detail="Clothing not found")
     for key, value in clothing_in.model_dump(exclude_unset=True).items():
+        if key == "id" or key == "created_at" or key == "merchant_id":
+            continue
         setattr(clothing, key, value)
     await db.commit()
-    await log_operation(db, admin, "update_clothing", "clothing", clothing.uuid)
+    await log_operation(db, admin, "update_clothing", "clothing", clothing.id)
     return {"success": True}
 
 
 @router.post("/clothing/")
 async def admin_create_clothing(
-    data: ClothingCreate,
+    data: ClothingResponse,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
     """管理后台创建服装记录（无图，仅超管）"""
     clothing = Clothing(
         merchant_id=admin.id,
-        name=data.name,
-        category=data.category,
-        subcategory=data.subcategory,
-        color=data.color,
-        price=data.price,
-        sizes=data.sizes,
+        name=data.name or "未命名服装",
+        category=data.category or "top",
+        color=data.color or "",
+        price=float(data.price) if data.price else 0.0,
+        size=data.size or "",
+        brand=data.brand or "",
+        season=data.season or "",
+        style=data.style or "",
+        material=data.material or "",
+        description=data.description or "",
         image_url="",
-        image_thumb_url="",
+        image_key="",
+        thumb_url="",
         source="admin_upload",
     )
     db.add(clothing)
     await db.commit()
     await db.refresh(clothing)
-    await log_operation(db, admin, "create_clothing", "clothing", clothing.uuid)
+    await log_operation(db, admin, "create_clothing", "clothing", clothing.id)
     return ClothingResponse.model_validate(clothing).model_dump()
 
 
 @router.post("/clothing/upload/")
 async def admin_upload_clothing(
     name: str = Form("未命名服装"),
-    category: str = Form("upper"),
-    subcategory: str = Form("t-shirt"),
-    color: str = Form("#000000"),
-    price: int = Form(0),
-    sizes: str = Form("[]"),
+    category: str = Form("top"),
+    color: str = Form(""),
+    price: float = Form(0.0),
+    size: str = Form("M"),
+    brand: str = Form(""),
+    season: str = Form("四季"),
+    style: str = Form("休闲"),
+    material: str = Form(""),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
@@ -455,37 +463,40 @@ async def admin_upload_clothing(
     rec, url = await upload_file(
         db,
         content,
-        folder="clothing",
-        tenant_id=str(current_user.id),
+        folder="clothes",
+        tenant_id=str(admin.id),
         content_type=file.content_type or "image/png",
-        file_category="clothing",
+        file_category="image",
     )
     clothing = Clothing(
         merchant_id=admin.id,
         name=name,
         category=category,
-        subcategory=subcategory,
         color=color,
-        price=price,
-        sizes=json.loads(sizes) if isinstance(sizes, str) else sizes,
+        price=float(price) if isinstance(price, (int, float)) else 0.0,
+        size=size,
+        brand=brand,
+        season=season,
+        style=style,
+        material=material,
         image_url=url,
-        image_thumb_url=url,
-        file_id=rec.id,
+        image_key=rec.uuid,
+        thumb_url=url,
         source="admin_upload",
     )
     db.add(clothing)
     await db.commit()
     await db.refresh(clothing)
-    await log_operation(db, admin, "upload_clothing", "clothing", clothing.uuid)
+    await log_operation(db, admin, "upload_clothing", "clothing", clothing.id)
     return {
-        "uuid": clothing.uuid,
+        "id": clothing.id,
         "name": clothing.name,
         "category": clothing.category,
-        "subcategory": clothing.subcategory,
         "color": clothing.color,
         "price": clothing.price,
+        "size": clothing.size,
         "image_url": url,
-        "image_thumb_url": url,
+        "thumb_url": url,
         "image_key": rec.uuid,
     }
 
@@ -503,7 +514,7 @@ async def admin_list_records(
     if merchant_id:
         stmt = stmt.where(TryOnRecord.merchant_id == merchant_id)
     if status:
-        stmt = stmt.where(TryOnRecord.status == status)
+        stmt = stmt.where(TryOnRecord.status_text == status)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar()
     stmt = stmt.order_by(TryOnRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     items = (await db.execute(stmt)).scalars().all()
@@ -551,14 +562,13 @@ async def reset_quota(
     db.add(
         QuotaHistory(
             merchant_id=merchant.id,
-            change_type="reset",
+            action="reset",
             old_total=merchant.quota_total,
             new_total=merchant.quota_total,
             old_used=old_used,
             new_used=0,
-            reason="",
+            note="",
             operator_id=admin.id,
-            operator_name=admin.username,
         )
     )
     await db.commit()
@@ -592,14 +602,13 @@ async def get_merchant_quota_history(
         {
             "id": h.id,
             "merchant_id": h.merchant_id,
-            "change_type": h.change_type,
+            "action": h.action,
             "old_total": h.old_total,
             "new_total": h.new_total,
             "old_used": h.old_used,
             "new_used": h.new_used,
-            "reason": h.reason,
+            "note": h.note,
             "operator_id": h.operator_id,
-            "operator_name": h.operator_name,
             "created_at": h.created_at.isoformat() if h.created_at else "",
         }
         for h in rows
@@ -727,7 +736,7 @@ async def files_cleanup(
 # ===== 试穿记录删除（管理后台） =====
 @router.delete("/tryon-records/{record_id}/")
 async def admin_delete_record(
-    record_id: int,
+    record_id: str,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
@@ -768,20 +777,20 @@ async def admin_create_model_photo(
             fields = {}
     if not image_bytes:
         raise HTTPException(status_code=400, detail="请上传模特照片")
-    rec, url, _ = await upload_file(
+    rec, url = await upload_file(
         db,
         image_bytes,
-        folder="model",
+        folder="models",
         tenant_id=str(admin.id),
         content_type=image_content_type or "image/png",
-        file_category="model",
+        file_category="image",
     )
     photo = ModelPhoto(
+        merchant_id=str(admin.id),
+        name=fields.get("name", ""),
         image_url=url,
-        image_thumb_url=url,
-        file_id=rec.id,
-        sort_order=int(fields.get("sort_order") or 0),
-        is_active=str(fields.get("is_active", "true")).lower() in ("true", "1", "yes"),
+        image_key=rec.uuid,
+        description=fields.get("description", ""),
     )
     db.add(photo)
     await db.commit()
@@ -789,18 +798,18 @@ async def admin_create_model_photo(
     await log_operation(db, admin, "create_model", "model_photo", str(photo.id))
     return {
         "id": photo.id,
-        "uuid": photo.uuid,
+        "merchant_id": photo.merchant_id,
+        "name": photo.name,
         "image_url": photo.image_url,
-        "image_thumb_url": photo.image_thumb_url,
-        "sort_order": photo.sort_order,
-        "is_active": photo.is_active,
+        "image_key": photo.image_key,
+        "description": photo.description,
         "created_at": photo.created_at.isoformat() if photo.created_at else "",
     }
 
 
 @router.patch("/model-photos/{photo_id}/")
 async def admin_update_model_photo(
-    photo_id: int,
+    photo_id: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
@@ -827,41 +836,37 @@ async def admin_update_model_photo(
             fields = await request.json()
         except Exception:
             fields = {}
-    if "is_active" in fields:
-        photo.is_active = str(fields["is_active"]).lower() in ("true", "1", "yes")
-    if "sort_order" in fields:
-        try:
-            photo.sort_order = int(fields["sort_order"])
-        except (ValueError, TypeError):
-            pass
+    if "name" in fields:
+        photo.name = fields["name"]
+    if "description" in fields:
+        photo.description = fields["description"]
     if image_bytes:
-        rec, url, _ = await upload_file(
+        rec, url = await upload_file(
             db,
             image_bytes,
-            folder="model",
+            folder="models",
             tenant_id=str(admin.id),
             content_type=image_content_type or "image/png",
-            file_category="model",
+            file_category="image",
         )
         photo.image_url = url
-        photo.image_thumb_url = url
-        photo.file_id = rec.id
+        photo.image_key = rec.uuid
     await db.commit()
     await log_operation(db, admin, "update_model", "model_photo", str(photo.id))
     return {
         "id": photo.id,
-        "uuid": photo.uuid,
+        "merchant_id": photo.merchant_id,
+        "name": photo.name,
         "image_url": photo.image_url,
-        "image_thumb_url": photo.image_thumb_url,
-        "sort_order": photo.sort_order,
-        "is_active": photo.is_active,
+        "image_key": photo.image_key,
+        "description": photo.description,
         "created_at": photo.created_at.isoformat() if photo.created_at else "",
     }
 
 
 @router.delete("/model-photos/{photo_id}/")
 async def admin_delete_model_photo(
-    photo_id: int,
+    photo_id: str,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
@@ -935,7 +940,7 @@ async def create_admin_user(
 
 @router.patch("/admin-users/{user_id}/")
 async def update_admin_user(
-    user_id: int,
+    user_id: str,
     data: AdminUserUpdate,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
@@ -962,7 +967,7 @@ async def update_admin_user(
 
 @router.delete("/admin-users/{user_id}/")
 async def delete_admin_user(
-    user_id: int,
+    user_id: str,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
@@ -1011,14 +1016,14 @@ async def list_operation_logs(
     items = [
         {
             "id": r.id,
-            "admin_username": r.admin_username,
+            "operator_id": r.operator_id,
             "action": r.action,
             "action_text": ACTION_TEXT_MAP.get(r.action, r.action),
             "target_type": r.target_type,
             "target_id": r.target_id,
             "target_name": r.target_name,
             "detail": _safe_detail(r.detail),
-            "ip_address": r.ip,
+            "ip": r.ip,
             "created_at": r.created_at.isoformat() if r.created_at else "",
         }
         for r in rows

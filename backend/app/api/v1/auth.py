@@ -17,6 +17,7 @@ from app.schemas.auth import (
     SendSmsRequest,
     TokenResponse,
     RefreshTokenRequest,
+    VerifyPasswordRequest,
 )
 from app.schemas.merchant import MerchantResponse, MerchantCreate
 from app.services import (
@@ -138,7 +139,7 @@ async def refresh_token(token_data: RefreshTokenRequest, db: AsyncSession = Depe
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-    user_id = int(payload.get("sub"))
+    user_id = payload.get("sub")
     user = await get_user_by_id(db, user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
@@ -160,3 +161,22 @@ async def logout(current_user: Merchant = Depends(get_current_user)):
 async def get_current_user_info(current_user: Merchant = Depends(get_current_user)):
     """获取当前用户信息（含 role / is_superuser，供管理后台鉴权）"""
     return current_user
+
+
+@router.post("/verify-password/")
+async def verify_password(
+    payload: VerifyPasswordRequest,
+    current_user: Merchant = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """校验当前商户登录密码（用于解锁设置中的商户敏感信息展示，不返回明文）"""
+    from app.services.auth_service import verify_password as check_pwd
+
+    user = (
+        await db.execute(select(Merchant).where(Merchant.id == current_user.id))
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+
+    valid = bool(user.password_hash) and check_pwd(payload.password, user.password_hash)
+    return {"success": True, "valid": valid}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 
 import { useI18n } from '../hooks/useI18n'
+
 import BrandLogo from './BrandLogo'
 
 export default function LoginModal({
@@ -71,7 +72,7 @@ export default function LoginModal({
     onRegister(username.trim(), phone.trim(), password, storeName.trim())
   }
 
-  const handleSendSms = async purpose => {
+  const handleSendSms = async _purpose => {
     if (countdown > 0 || !phone.trim()) {
       return
     }
@@ -93,7 +94,7 @@ export default function LoginModal({
 
   return (
     <div
-      className='fixed inset-0 z-[90] flex items-center justify-center p-4'
+      className='fixed inset-0 z-[var(--z-modal-2)] flex items-center justify-center p-4'
       role='dialog'
       aria-modal='true'
     >
@@ -109,24 +110,24 @@ export default function LoginModal({
         tabIndex={-1}
         aria-label={t('loginClose')}
       />
-      <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-white shadow-2xl'>
-        <div className='bg-gradient-to-r from-[#1A1A1A] to-[#2A2A2A] px-6 py-6 text-center'>
-          <div className='mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-2 border-champagne/40 bg-champagne/20'>
+      <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-[var(--bg-card)] shadow-2xl'>
+        <div className='bg-gradient-to-r from-[var(--header-bg-1)] to-[var(--header-bg-2)] px-6 py-6 text-center'>
+          <div className='mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/20 bg-white/10'>
             <BrandLogo size={32} />
           </div>
           <h2 className='text-lg font-semibold text-white'>{titles[mode]}</h2>
-          <p className='mt-1 text-xs text-gray-400'>{subtitles[mode]}</p>
+          <p className='mt-1 text-xs text-white/70'>{subtitles[mode]}</p>
         </div>
 
         <div className='px-6 pt-5'>
           {mode === 'login' && (
             <>
-              <div className='mb-5 flex rounded-xl bg-gray-100 p-1'>
+              <div className='mb-5 flex rounded-xl bg-[var(--bg-secondary)] p-1'>
                 <button
                   type='button'
                   className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
                     tab === 'password'
-                      ? 'bg-white text-charcoal shadow-sm'
+                      ? 'bg-[var(--bg-card)] text-charcoal shadow-sm'
                       : 'text-grayMuted hover:text-charcoal'
                   }`}
                   onClick={() => setTab('password')}
@@ -137,7 +138,7 @@ export default function LoginModal({
                   type='button'
                   className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
                     tab === 'sms'
-                      ? 'bg-white text-charcoal shadow-sm'
+                      ? 'bg-[var(--bg-card)] text-charcoal shadow-sm'
                       : 'text-grayMuted hover:text-charcoal'
                   }`}
                   onClick={() => setTab('sms')}
@@ -160,7 +161,7 @@ export default function LoginModal({
                       type='text'
                       value={username}
                       onChange={e => setUsername(e.target.value)}
-                      className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                      className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                       placeholder={t('loginUsernamePlaceholder')}
                     />
                   </div>
@@ -176,14 +177,14 @@ export default function LoginModal({
                       type='password'
                       value={password}
                       onChange={e => setPassword(e.target.value)}
-                      className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                      className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                       placeholder={t('loginPasswordPlaceholder')}
                     />
                   </div>
                   <button
                     type='submit'
                     disabled={loading || !username.trim() || !password.trim()}
-                    className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
+                    className='hover:bg-charcoal/90 mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50'
                   >
                     {loading ? (
                       <>
@@ -225,7 +226,7 @@ export default function LoginModal({
                       type='tel'
                       value={phone}
                       onChange={e => setPhone(e.target.value)}
-                      className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                      className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                       placeholder={t('loginPhonePlaceholder')}
                     />
                   </div>
@@ -243,14 +244,14 @@ export default function LoginModal({
                         value={smsCode}
                         onChange={e => setSmsCode(e.target.value)}
                         maxLength={6}
-                        className='flex-1 rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                        className='placeholder:text-grayMuted/60 focus:ring-champagne/20 flex-1 rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                         placeholder={t('loginSmsPlaceholder')}
                       />
                       <button
                         type='button'
                         onClick={() => handleSendSms('login')}
                         disabled={countdown > 0 || !phone.trim()}
-                        className='whitespace-nowrap rounded-xl border border-champagne/30 px-4 py-2.5 text-sm font-medium text-champagne transition-colors hover:bg-champagne/5 disabled:cursor-not-allowed disabled:opacity-50'
+                        className='border-champagne/30 hover:bg-champagne/5 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-medium text-champagne transition-colors disabled:cursor-not-allowed disabled:opacity-50'
                       >
                         {countdown > 0
                           ? t('loginSendSmsCountdown', { n: countdown })
@@ -261,7 +262,7 @@ export default function LoginModal({
                   <button
                     type='submit'
                     disabled={loading || !phone.trim() || !smsCode.trim()}
-                    className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors hover:bg-charcoal/90 disabled:cursor-not-allowed disabled:opacity-50'
+                    className='hover:bg-charcoal/90 mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50'
                   >
                     {loading ? (
                       <>
@@ -316,7 +317,7 @@ export default function LoginModal({
                   type='text'
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                   placeholder={t('registerUsernamePlaceholder', '请输入用户名')}
                 />
               </div>
@@ -332,7 +333,7 @@ export default function LoginModal({
                   type='tel'
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                   placeholder={t('registerPhonePlaceholder', '请输入手机号')}
                 />
               </div>
@@ -348,7 +349,7 @@ export default function LoginModal({
                   type='password'
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                   placeholder={t('registerPasswordPlaceholder', '请输入密码（至少6位）')}
                 />
               </div>
@@ -364,14 +365,14 @@ export default function LoginModal({
                   type='text'
                   value={storeName}
                   onChange={e => setStoreName(e.target.value)}
-                  className='w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all placeholder:text-grayMuted/60 focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/20'
+                  className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm transition-all focus:border-champagne focus:outline-none focus:ring-2'
                   placeholder={t('registerStoreNamePlaceholder', '请输入门店名称')}
                 />
               </div>
               <button
                 type='submit'
                 disabled={loading || !username.trim() || !phone.trim() || !password.trim()}
-                className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-champagne py-3 text-sm font-semibold text-white transition-colors hover:bg-yellow-600 disabled:cursor-not-allowed disabled:opacity-50'
+                className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-champagne py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50'
               >
                 {loading ? (
                   <>
@@ -408,7 +409,6 @@ export default function LoginModal({
               </div>
             </form>
           )}
-
 
           <button
             type='button'

@@ -30,6 +30,10 @@ class RefreshTokenRequest(BaseModel):
 
 
 class TokenPayload(BaseModel):
-    sub: int  # user id
+    sub: str  # user id (uuid hex)
     type: str  # access or refresh
     exp: int
+
+
+class VerifyPasswordRequest(BaseModel):
+    password: str = Field(..., min_length=1)

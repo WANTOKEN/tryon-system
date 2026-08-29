@@ -10,7 +10,6 @@ class MerchantBase(BaseModel):
     username: Optional[str] = None
     phone: Optional[str] = None
     store_name: Optional[str] = None
-    store_address: Optional[str] = None
     avatar_url: Optional[str] = None
 
 

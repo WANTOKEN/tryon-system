@@ -9,12 +9,12 @@ from abc import ABC, abstractmethod
 
 class StorageBackend(ABC):
     @abstractmethod
-    async def upload(self, content: bytes, storage_key: str, content_type: str, is_public: bool) -> str:
+    async def upload(self, content: bytes, storage_key: str, content_type: str) -> str:
         """上传内容，返回可访问 URL"""
         raise NotImplementedError
 
     @abstractmethod
-    def get_access_url(self, storage_key: str, is_public: bool, expires: int = 3600) -> str:
+    def get_access_url(self, storage_key: str, expires: int = 3600) -> str:
         """根据 storage_key 返回可访问 URL"""
         raise NotImplementedError
 

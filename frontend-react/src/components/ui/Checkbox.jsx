@@ -17,7 +17,7 @@ export default function Checkbox({
           id={id}
           checked={checked}
           onChange={onChange}
-          className={`peer h-5 w-5 cursor-pointer appearance-none rounded border-2 border-gray-300 transition-all checked:border-green-500 checked:bg-green-500 hover:border-green-400 ${checkboxClassName}`}
+          className={`peer h-5 w-5 cursor-pointer appearance-none rounded border-2 border-[var(--border-primary)] transition-all checked:border-[var(--accent-strong)] checked:bg-[var(--accent-strong)] hover:border-[var(--accent)] ${checkboxClassName}`}
           {...props}
         />
         <svg
@@ -32,7 +32,7 @@ export default function Checkbox({
       {label && (
         <label
           htmlFor={id}
-          className={`block cursor-pointer text-xs leading-relaxed text-gray-600 ${labelClassName}`}
+          className={`block cursor-pointer text-xs leading-relaxed text-[var(--text-secondary)] ${labelClassName}`}
         >
           {label}
         </label>

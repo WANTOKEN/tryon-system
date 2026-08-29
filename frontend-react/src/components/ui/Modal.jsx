@@ -11,6 +11,7 @@ export default function Modal({
   size = 'md',
   showCloseButton = true,
   closeOnOverlayClick = true,
+  zIndex = 'var(--z-modal-1)',
 }) {
   useEffect(() => {
     const handleEscape = e => {
@@ -43,7 +44,7 @@ export default function Modal({
   }
 
   return (
-    <div className='fixed inset-0 z-50 flex items-center justify-center'>
+    <div className='fixed inset-0 flex items-center justify-center' style={{ zIndex }}>
       <div
         className='absolute inset-0 bg-black/50 backdrop-blur-sm'
         onClick={closeOnOverlayClick ? onClose : undefined}
@@ -136,4 +137,5 @@ Modal.propTypes = {
   size: PropTypes.oneOf(['sm', 'md', 'lg', 'xl', 'full']),
   showCloseButton: PropTypes.bool,
   closeOnOverlayClick: PropTypes.bool,
+  zIndex: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 }

@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
     REGISTER: `${API_BASE}/auth/register/`,
     LOGOUT: `${API_BASE}/auth/logout/`,
     ME: `${API_BASE}/auth/me/`,
+    VERIFY_PASSWORD: `${API_BASE}/auth/verify-password/`,
     SEND_SMS: `${API_BASE}/auth/send-sms/`,
     REFRESH: `${API_BASE}/auth/refresh/`,
     ADMIN_CONTACT: `${API_BASE}/common/admin-contact/`,
@@ -31,9 +32,17 @@ export const API_ENDPOINTS = {
     UPLOAD_AVATAR: `${API_BASE}/tryon/upload/avatar/`,
     UPLOAD_CLOTHING: `${API_BASE}/tryon/upload/clothing/`,
   },
+  // 扫码上传
+  SCAN: {
+    CREATE: `${API_BASE}/scan/create/`,
+    STATUS: ticketId => `${API_BASE}/scan/status/${ticketId}/`,
+    UPLOAD: ticketId => `${API_BASE}/scan/upload/${ticketId}/`,
+  },
   // 通用
   COMMON: {
     MODEL_PHOTOS: `${API_BASE}/common/model-photos/`,
+    COLORS: `${API_BASE}/common/colors/`,
+    CATEGORIES: `${API_BASE}/common/categories/`,
   },
   // 文件
   FILE: {

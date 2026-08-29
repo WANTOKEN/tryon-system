@@ -46,12 +46,8 @@ function applyTheme(theme, mode) {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState(() =>
-    readStored(THEME_STORAGE_KEY, 'luxury-gold')
-  )
-  const [mode, setModeState] = useState(() =>
-    readStored(MODE_STORAGE_KEY, 'light')
-  )
+  const [theme, setThemeState] = useState(() => readStored(THEME_STORAGE_KEY, 'luxury-gold'))
+  const [mode, setModeState] = useState(() => readStored(MODE_STORAGE_KEY, 'light'))
 
   useEffect(() => {
     applyTheme(theme, mode)
@@ -99,8 +95,7 @@ export function useTheme() {
     })
   }, [])
 
-  const currentThemeMeta =
-    THEMES.find(t => t.key === theme) || THEMES[0]
+  const currentThemeMeta = THEMES.find(t => t.key === theme) || THEMES[0]
 
   return {
     theme,

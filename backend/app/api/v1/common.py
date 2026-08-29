@@ -9,6 +9,7 @@ from app.db import get_db
 from app.models.merchant import Merchant
 from app.models.model_photo import ModelPhoto
 from app.api.deps import get_optional_user
+from app.constants import COLOR_TAGS, CLOTHING_CATEGORIES
 
 router = APIRouter()
 
@@ -17,17 +18,14 @@ router = APIRouter()
 async def get_model_photos(
     db: AsyncSession = Depends(get_db),
     current_user: Merchant | None = Depends(get_optional_user),
-    is_active: bool = None,
     page: int = 1,
     page_size: int = 50,
 ):
     """获取系统模特照片列表"""
     stmt = select(ModelPhoto)
-    if is_active is not None:
-        stmt = stmt.where(ModelPhoto.is_active == is_active)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar()
     stmt = (
-        stmt.order_by(ModelPhoto.sort_order.asc(), ModelPhoto.created_at.desc())
+        stmt.order_by(ModelPhoto.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -35,16 +33,32 @@ async def get_model_photos(
     items = [
         {
             "id": p.id,
-            "uuid": p.uuid,
+            "merchant_id": p.merchant_id,
+            "name": p.name,
             "image_url": p.image_url,
-            "image_thumb_url": p.image_thumb_url,
-            "sort_order": p.sort_order,
-            "is_active": p.is_active,
+            "image_key": p.image_key,
+            "description": p.description,
             "created_at": p.created_at.isoformat() if p.created_at else "",
         }
         for p in photos
     ]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+# ---------------------------------------------------------------------------
+# 枚举类公共数据（前端严格按后端返回的标签渲染）
+# ---------------------------------------------------------------------------
+
+@router.get("/colors/")
+async def get_colors():
+    """获取系统颜色标签列表（name 为入库值，hex 用于前端色块展示）"""
+    return {"items": COLOR_TAGS}
+
+
+@router.get("/categories/")
+async def get_categories():
+    """获取服装分类配置（固定顺序：上装->下装->连衣裙->外套->鞋->配饰）"""
+    return {"items": CLOTHING_CATEGORIES}
 
 
 @router.get("/admin-contact/")

@@ -107,7 +107,7 @@ export default function Toast({ message, type = 'info', duration = 2000, onClose
 
   return (
     <div
-      className={`fixed left-1/2 top-24 z-[200] flex min-w-[320px] max-w-[480px] -translate-x-1/2 flex-col overflow-hidden rounded-xl border shadow-xl backdrop-blur-sm transition-all duration-300 ${STYLES[type]} ${SHADOWS[type]} ${
+      className={`fixed left-1/2 top-24 z-[calc(var(--z-top)+100)] flex min-w-[320px] max-w-[480px] -translate-x-1/2 flex-col overflow-hidden rounded-xl border shadow-xl backdrop-blur-sm transition-all duration-300 ${STYLES[type]} ${SHADOWS[type]} ${
         visible ? 'translate-y-0 scale-100 opacity-100' : '-translate-y-4 scale-95 opacity-0'
       }`}
       role='alert'

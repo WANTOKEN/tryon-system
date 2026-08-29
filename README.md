@@ -16,13 +16,15 @@ my_project/
 │   │   ├── schemas/         # Pydantic 请求/响应模型
 │   │   ├── services/        # 业务服务（auth / tryon / tryon_engine / storage）
 │   │   └── storage/         # 存储抽象层（Local，资源与 AI 结果存服务器）
+│   ├── scripts/             # 一次性脚本（seed_test_data.py 测试数据种子）
 │   ├── tests/test_smoke.py  # 端到端冒烟测试
+│   ├── .env                 # 后端实际读取的环境配置（DATABASE_URL 等）
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend-react/          # 用户端（React 18 + Vite + Tailwind）
-├── frontend-admin/          # 管理后台（React 18 + Vite + Antd + TS）
+├── frontend-react/          # 用户端（React 18 + Vite + Tailwind，端口 5173）
+├── frontend-admin/          # 管理后台（React 18 + Vite + Antd + TS，端口 5174）
 ├── nginx/                   # 统一网关：构建并托管两个前端静态资源 + 反向代理后端 API
-└── docker-compose.yml       # 一键编排全部服务（含 Nginx 网关）
+└── docker-compose.yml       # 编排（默认仅 db；backend/nginx 已注释，需时手动开启）
 ```
 
 ## 技术栈（已校正）
@@ -49,57 +51,131 @@ my_project/
 
 **未纳入 MVP（移除以聚焦核心）**：短信/邮件找回密码、多语言、系统模特库、WebP 优化、MD5 去重之外的存储增强、RBAC 子角色、操作日志、系统监控、配额重置调度。
 
-## 快速开始（本地）
+## 运行操作（本地开发）
+
+本项目统一使用**仓库根目录的 `.venv`**（不要在 `backend/` 下另建虚拟环境）。后端实际读取的是 `backend/.env`，不是根目录 `.env`。
+
+### 0. 首次准备（只需执行一次）
 
 ```bash
-# 在仓库根目录创建并激活虚拟环境（统一使用根目录 .venv）
-python3 -m venv .venv && source .venv/bin/activate
-cd backend
-pip install -r requirements.txt
+# 1) 创建虚拟环境（仓库根目录）
+cd /Users/apple/my_project
+python3 -m venv .venv
 
-cp .env.example .env        # 可选，默认 local 模式即可运行
-pytest tests/test_smoke.py -q     # 端到端闭环冒烟测试（应为绿色）
+# 2) 安装后端依赖
+.venv/bin/pip install -r backend/requirements.txt
 
-uvicorn app.main:app --reload --port 8000   # 启动后访问 http://localhost:8000/docs
+# 3) 安装前端依赖
+cd frontend-react && npm install && cd ..
+cd frontend-admin && npm install && cd ..
 ```
 
-启动后自动建表并创建超级管理员：**admin / admin123**
-
-前端：
+### 1. 启动数据库（MySQL 8，Docker）
 
 ```bash
-# 用户端
-cd frontend-react && npm install && npm run dev      # http://localhost:5173
-# 管理后台
-cd frontend-admin && npm install && npm run dev      # http://localhost:5174
+cd /Users/apple/my_project
+docker compose up -d db        # 仅拉起 MySQL，监听 3306，库名 tryon
+docker compose ps              # 确认状态为 healthy
 ```
 
-> 前端通过相对路径 `/api/v1/...` 调用后端；开发时请确保 Vite 已配置后端代理（如未配置，设置 `VITE_API_BASE_URL=http://localhost:8000`）。
+> 首次启动会自动执行 `db/init/01-init.sql` 建库与 `tryon` 账户（`mysql_native_password`，兼容 aiomysql）。
+> 若此前用旧数据卷初始化过、出现 `Access denied`，需重建卷（**会清空数据**）：
+> `docker compose down -v && docker compose up -d db`
 
-## 快速开始（Docker 一键编排）
+### 2. 启动后端（FastAPI，端口 8000）
 
 ```bash
-docker compose up --build
-# 用户端:   http://localhost:8080   （由 Nginx 网关托管静态 + 反代 /api）
-# 管理后台: http://localhost:8081   （由 Nginx 网关托管静态 + 反代 /api）
+cd /Users/apple/my_project/backend
+../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+看到 `Application startup complete.` 即启动成功，此时会自动建表并创建超级管理员 **admin / admin123**。
+
+验证：浏览器打开 <http://localhost:8000/docs> 查看接口文档；或 `curl http://localhost:8000/health`。
+
+> `--host 0.0.0.0` 是必需的：手机扫码上传需通过局域网 IP 访问后端，仅 `127.0.0.1` 时手机连不上。
+
+### 3. 启动前端
+
+```bash
+# 用户端（端口 5173）
+cd /Users/apple/my_project/frontend-react && npm run dev
+
+# 管理后台（端口 5174）
+cd /Users/apple/my_project/frontend-admin && npm run dev
+```
+
+两个前端均已配置 Vite 代理，将 `/api`、`/static/uploads`、`/file` 转发到 `http://127.0.0.1:8000`，无需额外配置 `VITE_API_BASE_URL`。
+
+### 4. 访问地址
+
+| 服务 | 地址 |
+|---|---|
+| 用户端 | <http://localhost:5173> |
+| 管理后台 | <http://localhost:5174> |
+| 后端接口文档 | <http://localhost:8000/docs> |
+| 健康检查 | <http://localhost:8000/health> |
+
+### 5. 停止服务
+
+```bash
+# 前端 / 后端：在各自终端按 Ctrl + C
+# 数据库：
+cd /Users/apple/my_project && docker compose stop db      # 停止（保留数据）
+docker compose down                                        # 停止并移除容器（保留卷数据）
+```
+
+### 6. 常见问题
+
+| 现象 | 原因与处理 |
+|---|---|
+| `Access denied for user 'tryon'` | MySQL 数据卷是旧数据，`init.sql` 未重跑。执行 `docker compose down -v && docker compose up -d db` 重建卷 |
+| 后端启动报 `can not connect to localhost:3306` | 数据库未启动，先执行 `docker compose up -d db` 并等 healthy |
+| 后端连的是默认库而非 `backend/.env` 配置 | 必须从 `backend/` 目录启动 uvicorn，`backend/.env` 才会被加载 |
+| 上传的图片无法显示 | 图片存于 `backend/storage/`，经 `/static/uploads` 暴露；确认后端已启动且前端代理生效 |
+| 手机扫码打不开上传页 | 后端未用 `--host 0.0.0.0`；手机需与电脑在同一局域网，且访问的是本机局域网 IP 而非 localhost |
+
+### 7. 准备测试数据（可选，用于功能测试）
+
+项目提供一个一次性种子脚本，会创建商家账号并从网络下载公开服装图写入服装数据：
+
+```bash
+cd /Users/apple/my_project/backend
+../.venv/bin/python scripts/seed_test_data.py
+```
+
+脚本执行后：
+
+- 商家账号：`test_merchant` / 密码 `test123456`（手机 `13900000001`，店名「测试服装店」，配额 100）
+- 服装数据：12 条，覆盖 `top / coat / pants / dress / skirt / shoes` 等类目，图片下载后落到 `backend/storage/clothes/`，经 `/static/uploads/...` 可访问
+
+脚本带去重（同名同商家自动跳过），可重复运行。功能测试完成后可删除该脚本。
+
+## Docker 编排
+
+`docker-compose.yml` 当前**默认只拉起 MySQL**（`backend` 与 `nginx` 两个服务已注释，日常开发直接本地运行后端，见上文运行步骤）：
+
+```bash
+docker compose up -d db
+```
+
+需要整组编排（后端 + Nginx 网关容器化）时，先取消 `docker-compose.yml` 中 `backend:` 与 `nginx:` 两段的注释，再执行：
+
+```bash
+docker compose up --build -d
+# 用户端:   http://localhost:8080
+# 管理后台: http://localhost:8081
 # 后端 API: http://localhost:8000/docs
 ```
 
-> 统一 Nginx 网关（`nginx/` 服务）在镜像内构建并托管用户端/管理后台静态资源，
-> 同时将 `/api/`、`/static/uploads/`、`/file/` 反向代理到 `backend` 服务，
-> 浏览器全程同源访问，无需额外配置 CORS。
->
-> 服务编排要点：`backend` 提供 `/health` 健康检查，`nginx` 通过 `depends_on: service_healthy`
-> 在其就绪后才启动；`backend` 启用 `init: true`（tini）实现信号托管与优雅退出；
-> 共享反向代理片段位于 `nginx/proxy.conf`。原 `frontend-react/`、`frontend-admin/` 下的
-> 独立 Dockerfile/nginx.conf 已被网关取代并删除，避免重复构建。
+> Nginx 网关在镜像内构建并托管两个前端静态资源，同时将 `/api/`、`/static/uploads/`、`/file/` 反向代理到 `backend`，浏览器全程同源访问，无需额外配置 CORS。
+> `backend` 提供 `/health` 健康检查，`nginx` 通过 `depends_on: service_healthy` 在其就绪后启动；共享反向代理片段位于 `nginx/proxy.conf`。
 
-数据（MySQL 8 + 本地存储）持久化：`mysql-data` 卷存数据库，`backend-data` 卷存上传文件。
+数据持久化：`mysql-data` 卷存数据库，`backend-data` 卷存上传文件。
 
-> 数据库初始化脚本位于 `db/init/01-init.sql`，会在 MySQL 容器首次启动时自动执行：
-> 创建 `tryon` 库（utf8mb4）与应用账户 `tryon`（使用 `mysql_native_password` 认证，规避 MySQL 8 默认 `caching_sha2_password` 与 Python 驱动的兼容问题）。
+> 数据库初始化脚本位于 `db/init/01-init.sql`，会在 MySQL 容器首次启动时自动执行：创建 `tryon` 库（utf8mb4）与应用账户 `tryon`（使用 `mysql_native_password`，规避 MySQL 8 默认 `caching_sha2_password` 与 aiomysql 的兼容问题）。
 
-> 本地无 Docker 时，可安装 MySQL 8 并建库后设置环境变量运行后端：
+> 本地无 Docker 时，可安装 MySQL 8 并建库后设置环境变量：
 > ```bash
 > mysql -uroot -p -e "CREATE DATABASE tryon CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 > export DATABASE_URL=mysql+aiomysql://tryon:tryon@localhost:3306/tryon?charset=utf8mb4

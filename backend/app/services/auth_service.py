@@ -25,13 +25,13 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
 
 
-def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=settings.jwt_access_token_expire_minutes))
     payload = {"sub": str(user_id), "type": "access", "exp": expire}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
+def create_refresh_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(days=settings.jwt_refresh_token_expire_days))
     payload = {"sub": str(user_id), "type": "refresh", "exp": expire}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
@@ -54,7 +54,7 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> O
     return None
 
 
-async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[Merchant]:
+async def get_user_by_id(db: AsyncSession, user_id: str) -> Optional[Merchant]:
     stmt = select(Merchant).where(Merchant.id == user_id)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()

@@ -146,6 +146,16 @@ function extractError(data) {
   }
 
   if (data.detail) {
+    if (Array.isArray(data.detail)) {
+      const first = data.detail[0]
+      if (first && typeof first === 'object' && first.msg) {
+        const loc = Array.isArray(first.loc) ? first.loc.join('.') : ''
+        return loc ? `${loc}: ${first.msg}` : first.msg
+      }
+      if (data.detail.length > 0 && typeof data.detail[0] === 'string') {
+        return parseErrorDetail(data.detail[0])
+      }
+    }
     return parseErrorDetail(data.detail)
   }
 
@@ -383,6 +393,9 @@ export const api = {
 
   upload: (url, formData, options = {}) =>
     request(url, { method: 'POST', body: formData, requiresAuth: true, ...options }),
+  // 免登录上传（如扫码上传落地页，凭 ticket 校验）
+  uploadPublic: (url, formData, options = {}) =>
+    request(url, { method: 'POST', body: formData, requiresAuth: false, ...options }),
 
   // 禁用重试的请求
   getNoRetry: (url, params) => {

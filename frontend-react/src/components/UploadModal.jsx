@@ -44,15 +44,15 @@ export default function UploadModal({ categories, onClose, onUpload }) {
   }
 
   return (
-    <div className='fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-4 backdrop-blur-sm'>
+    <div className='fixed inset-0 z-[var(--z-modal-1)] flex animate-fade-in items-center justify-center bg-black/50 p-4 backdrop-blur-sm'>
       <div className='glass-card w-full max-w-md animate-scale-in overflow-hidden rounded-2xl'>
         {/* Header */}
-        <div className='flex items-center justify-between border-b border-grayLight px-6 py-4 dark:border-gray-700'>
-          <h3 className='text-lg font-semibold text-charcoal dark:text-white'>添加服装</h3>
+        <div className='flex items-center justify-between border-b border-grayLight px-6 py-4'>
+          <h3 className='text-lg font-semibold text-charcoal'>添加服装</h3>
           <button
             type='button'
             onClick={onClose}
-            className='rounded-lg p-1.5 transition-colors hover:bg-grayLight/50 dark:hover:bg-gray-700'
+            className='hover:bg-grayLight/50 rounded-lg p-1.5 transition-colors'
             aria-label='关闭'
           >
             <svg
@@ -75,9 +75,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
         <form onSubmit={handleSubmit} className='space-y-5 p-6'>
           {/* Image Upload */}
           <div>
-            <span className='mb-2 block text-sm font-medium text-grayMedium dark:text-grayLight'>
-              服装图片
-            </span>
+            <span className='mb-2 block text-sm font-medium text-grayMedium'>服装图片</span>
             <div
               onClick={() => fileInputRef.current?.click()}
               onKeyDown={e => {
@@ -125,7 +123,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
           <div>
             <label
               htmlFor='clothing-name'
-              className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+              className='mb-1.5 block text-sm font-medium text-grayMedium'
             >
               服装名称
             </label>
@@ -136,7 +134,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
               value={formData.name}
               onChange={handleChange}
               placeholder='例如：蓝色休闲衬衫'
-              className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+              className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2'
               required
             />
           </div>
@@ -145,7 +143,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
           <div>
             <label
               htmlFor='clothing-category'
-              className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+              className='mb-1.5 block text-sm font-medium text-grayMedium'
             >
               分类
             </label>
@@ -154,7 +152,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
               name='category'
               value={formData.category}
               onChange={handleChange}
-              className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+              className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-2.5 text-charcoal transition-all focus:border-champagne focus:outline-none focus:ring-2'
             >
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>
@@ -168,7 +166,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
           <div>
             <label
               htmlFor='clothing-color'
-              className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+              className='mb-1.5 block text-sm font-medium text-grayMedium'
             >
               颜色
             </label>
@@ -179,7 +177,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
               value={formData.color}
               onChange={handleChange}
               placeholder='例如：深蓝色'
-              className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+              className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2'
             />
           </div>
 
@@ -188,7 +186,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
             <div>
               <label
                 htmlFor='clothing-price'
-                className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+                className='mb-1.5 block text-sm font-medium text-grayMedium'
               >
                 价格 (¥)
               </label>
@@ -201,13 +199,13 @@ export default function UploadModal({ categories, onClose, onUpload }) {
                 placeholder='0.00'
                 min='0'
                 step='0.01'
-                className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+                className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2'
               />
             </div>
             <div>
               <label
                 htmlFor='clothing-sizes'
-                className='mb-1.5 block text-sm font-medium text-grayMedium dark:text-grayLight'
+                className='mb-1.5 block text-sm font-medium text-grayMedium'
               >
                 尺码
               </label>
@@ -218,7 +216,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
                 value={formData.sizes}
                 onChange={handleChange}
                 placeholder='如: S,M,L,XL'
-                className='w-full rounded-xl border border-grayLight bg-white px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white'
+                className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-2.5 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2'
               />
             </div>
           </div>
@@ -228,7 +226,7 @@ export default function UploadModal({ categories, onClose, onUpload }) {
             <button
               type='button'
               onClick={onClose}
-              className='flex-1 rounded-xl border border-grayLight py-2.5 text-charcoal transition-colors hover:bg-grayLight/50 dark:border-gray-600 dark:text-grayLight dark:hover:bg-gray-700'
+              className='hover:bg-grayLight/50 flex-1 rounded-xl border border-grayLight py-2.5 text-charcoal transition-colors'
             >
               取消
             </button>

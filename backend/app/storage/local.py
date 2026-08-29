@@ -17,14 +17,14 @@ class LocalStorageBackend(StorageBackend):
         self.root = settings.storage_local_dir
         os.makedirs(self.root, exist_ok=True)
 
-    async def upload(self, content: bytes, storage_key: str, content_type: str, is_public: bool) -> str:
+    async def upload(self, content: bytes, storage_key: str, content_type: str) -> str:
         dest = os.path.join(self.root, storage_key)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(dest, "wb") as f:
             f.write(content)
         return f"{settings.storage_public_base}/{storage_key}"
 
-    def get_access_url(self, storage_key: str, is_public: bool, expires: int = 3600) -> str:
+    def get_access_url(self, storage_key: str, expires: int = 3600) -> str:
         return f"{settings.storage_public_base}/{storage_key}"
 
     async def delete(self, storage_key: str) -> bool:

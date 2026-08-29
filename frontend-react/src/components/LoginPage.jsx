@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import BrandLogo from './BrandLogo'
 
 export default function LoginPage({ onLogin }) {
@@ -21,10 +22,10 @@ export default function LoginPage({ onLogin }) {
   }
 
   return (
-    <div className='flex min-h-screen items-center justify-center bg-[#F7F5F0] px-4 dark:bg-[#121212]'>
+    <div className='flex min-h-screen items-center justify-center bg-[var(--bg-secondary)] px-4'>
       {/* Background Decoration */}
       <div className='pointer-events-none fixed inset-0 overflow-hidden'>
-        <div className='absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-champagne/[0.03] blur-3xl' />
+        <div className='bg-champagne/[0.03] absolute left-1/4 top-1/4 h-96 w-96 rounded-full blur-3xl' />
         <div className='absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-purple-500/[0.02] blur-3xl' />
       </div>
 
@@ -34,22 +35,17 @@ export default function LoginPage({ onLogin }) {
           <div className='gold-glow mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-champagne to-champagne-dark p-3 shadow-lg'>
             <BrandLogo size={40} />
           </div>
-          <h1 className='text-2xl font-bold text-charcoal dark:text-grayLight'>
-            AI Virtual Try-on
-          </h1>
-          <p className='mt-1 text-grayMuted dark:text-grayMedium'>智能虚拟试衣系统</p>
+          <h1 className='text-2xl font-bold text-charcoal'>AI Virtual Try-on</h1>
+          <p className='mt-1 text-grayMuted'>智能虚拟试衣系统</p>
         </div>
 
         {/* Login Form */}
         <div className='glass-card rounded-3xl p-8'>
-          <h2 className='mb-6 text-xl font-semibold text-charcoal dark:text-white'>登录账户</h2>
+          <h2 className='mb-6 text-xl font-semibold text-charcoal'>登录账户</h2>
 
           <form onSubmit={handleSubmit} className='space-y-5'>
             <div>
-              <label
-                htmlFor='username'
-                className='mb-2 block text-sm font-medium text-grayMedium dark:text-grayLight'
-              >
+              <label htmlFor='username' className='mb-2 block text-sm font-medium text-grayMedium'>
                 用户名
               </label>
               <input
@@ -58,16 +54,13 @@ export default function LoginPage({ onLogin }) {
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 placeholder='请输入用户名'
-                className='w-full rounded-xl border border-grayLight bg-white px-4 py-3 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white dark:placeholder-grayMedium'
+                className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-3 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2'
                 required
               />
             </div>
 
             <div>
-              <label
-                htmlFor='password'
-                className='mb-2 block text-sm font-medium text-grayMedium dark:text-grayLight'
-              >
+              <label htmlFor='password' className='mb-2 block text-sm font-medium text-grayMedium'>
                 密码
               </label>
               <input
@@ -76,7 +69,7 @@ export default function LoginPage({ onLogin }) {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder='请输入密码'
-                className='w-full rounded-xl border border-grayLight bg-white px-4 py-3 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2 focus:ring-champagne/50 dark:border-gray-600 dark:bg-[#252525] dark:text-white dark:placeholder-grayMedium'
+                className='focus:ring-champagne/50 w-full rounded-xl border border-grayLight bg-[var(--bg-secondary)] px-4 py-3 text-charcoal placeholder-grayMuted transition-all focus:border-champagne focus:outline-none focus:ring-2'
                 required
               />
             </div>
@@ -111,7 +104,7 @@ export default function LoginPage({ onLogin }) {
             </button>
           </form>
 
-          <p className='mt-6 text-center text-sm text-grayMuted dark:text-grayMedium'>
+          <p className='mt-6 text-center text-sm text-grayMuted'>
             还没有账户？
             <a href='#' className='text-champagne hover:underline'>
               联系管理员

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import get_settings
+from app.core.config import get_settings, get_lan_ip
 from app.api.v1 import router as api_v1_router
 from app.db import engine, Base, AsyncSessionLocal
 from app.services.auth_service import ensure_admin
@@ -40,9 +40,23 @@ app = FastAPI(
 )
 
 # CORS middleware
+# 开发模式下自动把本机局域网 IP 的两个端口（前端 5173 / 后端 8000）加入允许来源，
+# 免去 IP 变动时手动改 .env。生产环境请在 backend/.env 显式配置 CORS_ORIGINS。
+_cors_origins = list(settings.cors_origins)
+if settings.env == "development":
+    _lan_ip = get_lan_ip()
+    if _lan_ip:
+        for _origin in (
+            f"http://{_lan_ip}:5173",
+            f"http://{_lan_ip}:8000",
+            f"http://{_lan_ip}",
+        ):
+            if _origin not in _cors_origins:
+                _cors_origins.append(_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,10 +1,10 @@
 export default function GlobalLoading() {
   return (
-    <div className='fixed inset-0 z-[100] flex items-center justify-center bg-gradient-to-br from-[#FAFAF8] to-[#F5F4F0]'>
+    <div className='fixed inset-0 z-[var(--z-top)] flex items-center justify-center bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card)]'>
       <div className='flex flex-col items-center'>
         {/* Logo 动画 */}
         <div className='relative mb-6 h-16 w-16'>
-          <div className='absolute inset-0 animate-pulse rounded-xl bg-gradient-to-br from-champagne to-yellow-600' />
+          <div className='absolute inset-0 animate-pulse rounded-xl bg-gradient-to-br from-champagne to-[var(--accent-strong)]' />
           <div className='absolute inset-0 flex items-center justify-center'>
             <svg
               className='h-10 w-10 animate-spin text-charcoal'
@@ -27,8 +27,8 @@ export default function GlobalLoading() {
         <p className='mb-4 text-base font-medium text-charcoal'>Loading...</p>
 
         {/* 加载条 */}
-        <div className='h-1 w-32 overflow-hidden rounded-full bg-gray-200'>
-          <div className='animate-loading-bar h-full rounded-full bg-gradient-to-r from-champagne to-yellow-600' />
+        <div className='h-1 w-32 overflow-hidden rounded-full bg-[var(--border-primary)]'>
+          <div className='animate-loading-bar h-full rounded-full bg-gradient-to-r from-champagne to-[var(--accent-strong)]' />
         </div>
       </div>
     </div>
