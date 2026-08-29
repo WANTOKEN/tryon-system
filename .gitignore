@@ -68,3 +68,15 @@ Thumbs.db
 
 # ============ Git ============
 .git
+
+# ============ 本地运行时数据（勿提交） ============
+backend/app/storage/scan_tickets.json
+
+# ============ 临时诊断/验证脚本（勿提交） ============
+frontend-react/_*.mjs
+frontend-react/shot.cjs
+frontend-react/verify-*.png
+
+# ============ codebuddy 工具内部生成（勿提交，memory 目录除外） ============
+.codebuddy/*
+!.codebuddy/memory/
