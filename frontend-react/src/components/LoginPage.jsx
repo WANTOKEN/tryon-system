@@ -26,7 +26,7 @@ export default function LoginPage({ onLogin }) {
       {/* Background Decoration */}
       <div className='pointer-events-none fixed inset-0 overflow-hidden'>
         <div className='bg-champagne/[0.03] absolute left-1/4 top-1/4 h-96 w-96 rounded-full blur-3xl' />
-        <div className='absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-purple-500/[0.02] blur-3xl' />
+        <div className='bg-[var(--accent-dark)]/[0.04] absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full blur-3xl' />
       </div>
 
       <div className='relative w-full max-w-md animate-scale-in'>

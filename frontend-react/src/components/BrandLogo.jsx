@@ -1,14 +1,33 @@
-// 品牌 Logo：直接渲染 public/logo.png 原图（金棕色图标，带透明边）
-// 不再使用 mask 染色方案，避免原图被染成色块；干净显示原始 logo。
-export default function BrandLogo({ size = 28, className = '', style = {} }) {
+export default function BrandLogo({ size = 28, showText = false, className = '', style = {} }) {
+  if (!showText) {
+    return (
+      <img
+        src='/logo.png'
+        alt='AI TryOn'
+        width={size}
+        height={size}
+        className={className}
+        style={{ display: 'block', objectFit: 'contain', flexShrink: 0, ...style }}
+      />
+    )
+  }
+
   return (
-    <img
-      src='/logo.png'
-      alt='AI TryOn'
-      width={size}
-      height={size}
-      className={className}
-      style={{ display: 'block', objectFit: 'contain', ...style }}
-    />
+    <div className={`flex items-center gap-2 ${className}`} style={style}>
+      <img
+        src='/logo.png'
+        alt='AI TryOn'
+        width={size}
+        height={size}
+        style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }}
+      />
+      <span
+        className='text-[1.05em] font-bold tracking-tight'
+        style={{ color: 'var(--text-primary)' }}
+      >
+        <span style={{ color: 'var(--accent)' }}>AI</span>
+        <span>TryOn</span>
+      </span>
+    </div>
   )
 }

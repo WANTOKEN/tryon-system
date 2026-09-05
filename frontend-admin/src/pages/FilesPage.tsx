@@ -1,6 +1,6 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, message, Tag, Space, Popconfirm, Statistic, Card, Row, Col, Dropdown } from 'antd';
+import { Button, Modal, message, Tag, Space, Popconfirm, Statistic, Card, Row, Col, Dropdown, theme } from 'antd';
 import { DeleteOutlined, UndoOutlined, ReloadOutlined, MoreOutlined } from '@ant-design/icons';
 import { useRef, useState, useEffect } from 'react';
 import type { FileRecord } from '../types';
@@ -8,6 +8,7 @@ import { fileApi } from '../api';
 import type { MenuProps } from 'antd';
 
 export default function FilesPage() {
+  const { token } = theme.useToken();
   const actionRef = useRef<ActionType>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [stats, setStats] = useState<{
@@ -50,17 +51,33 @@ export default function FilesPage() {
 
   const columns: ProColumns<FileRecord>[] = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      width: 80,
+      title: '文件UUID',
+      dataIndex: 'uuid',
+      width: 280,
+      copyable: true,
+      ellipsis: true,
       hideInSearch: true,
+      tooltip: '对外暴露的业务标识，对应 image_key / FileRecord.uuid',
     },
     {
       title: '文件名',
-      dataIndex: 'filename',
+      dataIndex: 'original_name',
       copyable: true,
       ellipsis: true,
       width: 200,
+    },
+    {
+      title: '访问地址',
+      dataIndex: 'access_url',
+      width: 240,
+      copyable: true,
+      ellipsis: true,
+      hideInSearch: true,
+      render: (_, record) => (
+        <a href={record.access_url} target="_blank" rel="noreferrer">
+          {record.access_url}
+        </a>
+      ),
     },
     {
       title: '搜索',
@@ -109,32 +126,6 @@ export default function FilesPage() {
       valueType: 'select',
       width: 100,
       hideInSearch: true,
-    },
-    {
-      title: '是否公开',
-      dataIndex: 'is_public',
-      hideInSearch: true,
-      width: 80,
-      render: (_, record) => (
-        <Tag color={record.is_public ? 'blue' : 'default'}>
-          {record.is_public ? '公开' : '私有'}
-        </Tag>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'is_deleted',
-      valueType: 'select',
-      width: 80,
-      valueEnum: {
-        'false': { text: '正常', status: 'Success' },
-        'true': { text: '已删除', status: 'Error' },
-      },
-      render: (_, record) => (
-        <Tag color={record.is_deleted ? 'red' : 'green'}>
-          {record.is_deleted ? '已删除' : '正常'}
-        </Tag>
-      ),
     },
     {
       title: '上传时间',
@@ -251,15 +242,15 @@ export default function FilesPage() {
               <Statistic title="总存储大小" value={formatSize(stats.total_size)} />
             </Col>
             <Col span={4}>
-              <Statistic title="已删除文件" value={stats.deleted_files} valueStyle={{ color: '#cf1322' }} />
+              <Statistic title="已删除文件" value={stats.deleted_files} valueStyle={{ color: token.colorError }} />
             </Col>
             <Col span={4}>
-              <Statistic title="已删除大小" value={formatSize(stats.deleted_size)} valueStyle={{ color: '#cf1322' }} />
+              <Statistic title="已删除大小" value={formatSize(stats.deleted_size)} valueStyle={{ color: token.colorError }} />
             </Col>
             <Col span={8}>
               <Space direction="vertical" size="small">
-                <div style={{ fontSize: 12, color: '#666' }}>
-                  存储类型：OSS
+                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                  存储类型：本地磁盘（/static/uploads）
                 </div>
               </Space>
             </Col>

@@ -8,6 +8,7 @@ from sqlalchemy import select, func
 from app.db import get_db
 from app.models.merchant import Merchant
 from app.models.model_photo import ModelPhoto
+from app.models.system_config import SystemConfig
 from app.api.deps import get_optional_user
 from app.constants import COLOR_TAGS, CLOTHING_CATEGORIES
 
@@ -61,19 +62,29 @@ async def get_categories():
     return {"items": CLOTHING_CATEGORIES}
 
 
+# 联系信息在 SystemConfig 中的键（与管理后台「设置-联系方式」保持一致的种子键）
+_CONTACT_KEYS = {
+    "name": "admin_contact_name",
+    "phone": "admin_contact_phone",
+    "wechat": "admin_contact_wechat",
+    "email": "admin_contact_email",
+}
+
+
 @router.get("/admin-contact/")
 async def get_admin_contact(
     db: AsyncSession = Depends(get_db),
 ):
-    """获取管理员联系信息（公开接口）"""
-    # 返回默认的管理员联系信息
-    # 可以从环境变量或数据库配置
+    """获取管理员联系信息（公开接口，读 SystemConfig，未配置则返回空字符串）"""
+    rows = (
+        await db.execute(
+            select(SystemConfig.key, SystemConfig.value).where(
+                SystemConfig.key.in_(list(_CONTACT_KEYS.values()))
+            )
+        )
+    ).all()
+    values = {key: value or "" for key, value in rows}
     return {
         "success": True,
-        "data": {
-            "name": "客服支持",
-            "phone": "400-xxx-xxxx",
-            "wechat": "AI试衣助手",
-            "email": "support@example.com",
-        }
+        "data": {field: values.get(key, "") for field, key in _CONTACT_KEYS.items()},
     }

@@ -17,6 +17,13 @@ body {
   background-color: #f5f7fa;
 }
 
+/* body 在 antd ConfigProvider 之外，拿不到 --ant-color-* 变量（变量注册在
+   ConfigProvider 根容器的 .css-var-* class 上，不作用于 html/body）。
+   因此暗色模式只能用 .dark 类选择器单独指定，值对齐 antd darkAlgorithm 的 colorBgLayout。 */
+html.dark body {
+  background-color: #000;
+}
+
 /* 滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;
@@ -36,9 +43,18 @@ body {
   background: #bfbfbf;
 }
 
+/* 滚动条同样在变量作用域外，暗色下需单独降亮 */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #434343;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
+
 /* 用户下拉菜单悬停效果 */
 .user-dropdown-trigger:hover {
-  background: #f5f7fa;
+  background: var(--ant-color-fill-tertiary);
 }
 
 /* ProTable 样式优化 */
@@ -48,21 +64,21 @@ body {
 
 .ant-pro-table .ant-card {
   border-radius: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--ant-color-border-secondary);
 }
 
 .ant-pro-table .ant-card-bordered {
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--ant-color-border-secondary);
 }
 
 /* 表格样式优化 */
 .ant-table-thead > tr > th {
-  background: #fafafa !important;
+  background: var(--ant-color-fill-quaternary);
   font-weight: 600;
 }
 
 .ant-table-tbody > tr:hover > td {
-  background: #f5f7fa !important;
+  background: var(--ant-color-primary-bg-hover);
 }
 
 /* 卡片样式优化 */
@@ -71,7 +87,7 @@ body {
 }
 
 .ant-card-bordered {
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--ant-color-border-secondary);
 }
 
 /* 按钮样式优化 */
@@ -142,12 +158,12 @@ body {
 
 /* 空状态优化 */
 .ant-empty-description {
-  color: #999;
+  color: var(--ant-color-text-tertiary);
 }
 
 /* 加载状态优化 */
 .ant-spin-dot-item {
-  background-color: #1677ff;
+  background-color: var(--ant-color-primary);
 }
 
 /* 徽章优化 */
@@ -157,7 +173,7 @@ body {
 
 /* 分割线优化 */
 .ant-divider {
-  border-color: #f0f0f0;
+  border-color: var(--ant-color-border-secondary);
 }
 
 /* 表单项优化 */
@@ -215,28 +231,28 @@ body {
 .ant-input:focus,
 .ant-input-affix-wrapper:focus,
 .ant-input-affix-wrapper-focused {
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  box-shadow: 0 0 0 2px var(--ant-color-primary-bg);
 }
 
 /* 选中行样式 */
 .ant-table-tbody > tr.ant-table-row-selected > td {
-  background: #e6f4ff !important;
+  background: var(--ant-color-primary-bg);
 }
 
 /* 链接样式 */
 a {
-  color: #1677ff;
+  color: var(--ant-color-primary);
   text-decoration: none;
   transition: color 0.2s;
 }
 
 a:hover {
-  color: #4096ff;
+  color: var(--ant-color-primary-hover);
 }
 
 /* 代码块样式 */
 code {
-  background: #f5f5f5;
+  background: var(--ant-color-fill-quaternary);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;

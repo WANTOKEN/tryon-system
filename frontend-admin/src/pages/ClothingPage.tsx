@@ -6,19 +6,19 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, LinkOutline
 import { useState, useRef, useEffect } from 'react';
 import type { Clothing } from '../types';
 import { clothingApi } from '../api';
+import api from '../api';
 
 /** 图片来源类型：本地上传 或 URL 输入 */
 type ImageSourceType = 'upload' | 'url';
 
-/** 服装表单数据 */
+/** 服装表单数据（字段与后端 ClothingCreate/ClothingUpdate 严格对齐） */
 interface ClothingFormData {
   name: string;
   image_url: string;
   category: string;
-  subcategory: string;
   color: string;
   price: number;
-  sizes: string;
+  size: string;
   is_active: boolean;
 }
 
@@ -139,6 +139,72 @@ const truncateId = (id: string | undefined) => {
   return id.length > 16 ? `${id.substring(0, 8)}...${id.substring(id.length - 8)}` : id;
 };
 
+// 系统颜色名兜底表（与后端 COLOR_TAGS / react 端 FALLBACK_COLOR_TAGS 一致）
+const FALLBACK_COLOR_TAGS: Array<{ name: string; hex: string }> = [
+  { name: '黑色', hex: '#111827' },
+  { name: '白色', hex: '#F9FAFB' },
+  { name: '灰色', hex: '#9CA3AF' },
+  { name: '米色', hex: '#E7DCC9' },
+  { name: '卡其色', hex: '#C3B091' },
+  { name: '棕色', hex: '#92400E' },
+  { name: '红色', hex: '#DC2626' },
+  { name: '粉色', hex: '#EC4899' },
+  { name: '橙色', hex: '#EA580C' },
+  { name: '黄色', hex: '#FACC15' },
+  { name: '绿色', hex: '#16A34A' },
+  { name: '蓝色', hex: '#2563EB' },
+  { name: '牛仔蓝', hex: '#1E3A8A' },
+  { name: '紫色', hex: '#7C3AED' },
+];
+
+// 颜色名缓存（name+hex 对照表），首次从后端 /common/colors/ 拉取，失败回落本地兜底
+let COLOR_TAGS_CACHE: Array<{ name: string; hex: string }> | null = null;
+
+const loadColorTags = async () => {
+  if (COLOR_TAGS_CACHE) return COLOR_TAGS_CACHE;
+  try {
+    const { data } = await api.get('/common/colors/');
+    const items = data?.items || data?.data?.items || data;
+    if (Array.isArray(items) && items.length) {
+      COLOR_TAGS_CACHE = items;
+      return COLOR_TAGS_CACHE;
+    }
+  } catch {
+    /* 忽略，回落兜底表 */
+  }
+  COLOR_TAGS_CACHE = FALLBACK_COLOR_TAGS;
+  return COLOR_TAGS_CACHE;
+};
+
+const hexToRgb = (hex: string): [number, number, number] | null => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+/**
+ * 将十六进制主色调转换为系统颜色名（最近邻匹配）。
+ * 匹配不到时返回 null，调用方据此「不传 color 字段」，绝不直接传 hex。
+ */
+const hexToColorName = async (hex: string): Promise<string | null> => {
+  const tags = await loadColorTags();
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (const tag of tags) {
+    const t = hexToRgb(tag.hex);
+    if (!t) continue;
+    const dist = (rgb[0] - t[0]) ** 2 + (rgb[1] - t[1]) ** 2 + (rgb[2] - t[2]) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = tag.name;
+    }
+  }
+  return best;
+};
+
 export default function ClothingPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingClothing, setEditingClothing] = useState<Clothing | null>(null);
@@ -154,7 +220,6 @@ export default function ClothingPage() {
   const [batchModalVisible, setBatchModalVisible] = useState(false);
   const [batchFiles, setBatchFiles] = useState<UploadFile[]>([]);
   const [batchCategory, setBatchCategory] = useState<string>('tops');
-  const [batchSubcategory, setBatchSubcategory] = useState<string>('');
   const [batchUploading, setBatchUploading] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [batchResults, setBatchResults] = useState<Array<{ name: string; status: 'success' | 'error'; message?: string }>>([]);
@@ -172,24 +237,15 @@ export default function ClothingPage() {
     label: cat.name,
   }));
 
-  // 根据选中的分类获取子分类选项
-  const getSubcategoryOptions = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId);
-    if (!category) return [];
-    return category.subcategories.map(sub => ({
-      value: sub.id,
-      label: sub.name,
-    }));
-  };
-
-  // 加载分类数据
+  // 加载分类数据（接口异常或返回结构异常时保持空数组，绝不把非数组塞进 state）
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const data = await clothingApi.getCategories();
-        setCategories(data);
+        setCategories(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('加载分类失败:', error);
+        setCategories([]);
       }
     };
     loadCategories();
@@ -234,16 +290,6 @@ export default function ClothingPage() {
     return DEFAULT_CATEGORY_NAMES[categoryId] || categoryId;
   };
 
-  const getSubcategoryName = (categoryId: string, subcategoryId: string) => {
-    if (categories.length > 0) {
-      const category = categories.find(cat => cat.id === categoryId);
-      if (!category) return subcategoryId;
-      const subcategory = category.subcategories.find(sub => sub.id === subcategoryId);
-      return subcategory?.name || subcategoryId;
-    }
-    return subcategoryId;
-  };
-
   const columns: ProColumns<Clothing>[] = [
     {
       title: 'ID',
@@ -268,7 +314,7 @@ export default function ClothingPage() {
       align: 'center',
       fixed: 'left',
       render: (_, record) => {
-        const imageUrl = record.image_thumb_url || record.image_url;
+        const imageUrl = record.thumb_url || record.image_url;
         const hasImage = !!imageUrl;
         return hasImage && showImages ? (
           <Image
@@ -297,14 +343,6 @@ export default function ClothingPage() {
           {getCategoryName(record.category)}
         </Tag>
       ),
-    },
-    {
-      title: '子分类',
-      dataIndex: 'subcategory',
-      hideInSearch: true,
-      width: 100,
-      ellipsis: true,
-      render: (_, record) => getSubcategoryName(record.category, record.subcategory),
     },
     {
       title: '颜色',
@@ -340,26 +378,6 @@ export default function ClothingPage() {
         ) : (
           <span style={{ color: '#999' }}>未定价</span>
         );
-      },
-    },
-    {
-      title: '尺码',
-      dataIndex: 'sizes',
-      hideInSearch: true,
-      width: 120,
-      render: (_, record) => {
-        if (!record.sizes || record.sizes.length === 0) return <span style={{ color: '#999' }}>-</span>;
-        const sizes = record.sizes.filter((s: string) => s.trim());
-        return sizes.length > 0 ? (
-          <Space size={4} wrap>
-            {sizes.slice(0, 5).map((size: string, index: number) => (
-              <Tag key={index} color="blue">{size.trim()}</Tag>
-            ))}
-            {sizes.length > 5 && (
-              <Tag color="gray">+{sizes.length - 5}</Tag>
-            )}
-          </Space>
-        ) : <span style={{ color: '#999' }}>-</span>;
       },
     },
     {
@@ -426,10 +444,25 @@ export default function ClothingPage() {
     },
   ];
 
+  // 表单初始值：由 Modal 内的 Form 通过 initialValues + key 重挂载消费，
+  // 避免在 Form 尚未挂载时调用 form.setFieldsValue（会触发 useForm 未连接告警）
+  const initialFormValues: Partial<ClothingFormData> = editingClothing
+    ? {
+        name: editingClothing.name,
+        image_url: editingClothing.image_url,
+        category: editingClothing.category,
+        color: editingClothing.color || '#000000',
+        price: editingClothing.price || 0,
+        is_active: editingClothing.is_active,
+      }
+    : {
+        is_active: true,
+        color: '#000000',
+        price: 0,
+      };
+
   const handleAdd = () => {
     setEditingClothing(null);
-    form.resetFields();
-    form.setFieldsValue({ is_active: true, color: '#000000', price: 0, sizes: '' });
     setImageSource('upload');
     setFileList([]);
     setModalVisible(true);
@@ -437,16 +470,6 @@ export default function ClothingPage() {
 
   const handleEdit = (clothing: Clothing) => {
     setEditingClothing(clothing);
-    form.setFieldsValue({
-      name: clothing.name,
-      image_url: clothing.image_url,
-      category: clothing.category,
-      subcategory: clothing.subcategory,
-      color: clothing.color || '#000000',
-      price: clothing.price || 0,
-      sizes: clothing.sizes?.join(',') || '',
-      is_active: clothing.is_active,
-    });
     // 编辑模式下默认使用URL方式，但允许用户切换到上传
     setImageSource(clothing.image_url ? 'url' : 'upload');
     setFileList([]);
@@ -477,8 +500,6 @@ export default function ClothingPage() {
     try {
       setUploading(true);
       
-      const sizesArray = values.sizes ? values.sizes.split(',').map(s => s.trim()).filter(Boolean) : [];
-      
       if (imageSource === 'upload') {
         // 上传图片模式（新建和编辑都支持）
         if (fileList.length === 0 || !fileList[0].originFileObj) {
@@ -496,25 +517,29 @@ export default function ClothingPage() {
         }
         
         const formData = new FormData();
-        formData.append('image', file);
+        formData.append('file', file);
         formData.append('name', values.name);
         formData.append('category', values.category || 'tops');
-        formData.append('subcategory', values.subcategory || 't-shirt');
-        
+
+        // 颜色：取表单值或主色调，统一转为系统颜色名；匹配不到则不传（绝不直接传 hex）
         const dominantColor = await extractDominantColor(file);
-        formData.append('color', values.color || dominantColor);
-        
+        const colorName = await hexToColorName(values.color || dominantColor);
+        if (colorName) {
+          formData.append('color', colorName);
+        }
+
         if (values.price && values.price > 0) {
           formData.append('price', values.price.toString());
         }
-        
-        if (sizesArray.length > 0) {
-          formData.append('sizes', JSON.stringify(sizesArray));
-        }
-        
+
         if (editingClothing) {
-          // 编辑模式上传新图片
-          await clothingApi.updateClothingWithImage(editingClothing.id, formData);
+          // 编辑模式：两步 —— 先上传新图（创建带图记录），再把图与字段同步到原记录
+          const created = await clothingApi.uploadClothing(formData);
+          await clothingApi.updateClothing(editingClothing.id, {
+            ...values,
+            image_url: created.image_url,
+            thumb_url: created.thumb_url,
+          });
           message.success('更新成功');
         } else {
           // 新建模式上传图片
@@ -526,13 +551,11 @@ export default function ClothingPage() {
         if (editingClothing) {
           await clothingApi.updateClothing(editingClothing.id, {
             ...values,
-            sizes: sizesArray,
           });
           message.success('更新成功');
         } else {
           await clothingApi.createClothing({
             ...values,
-            sizes: sizesArray,
           });
           message.success('创建成功');
         }
@@ -559,7 +582,6 @@ export default function ClothingPage() {
     setBatchModalVisible(true);
     setBatchFiles([]);
     setBatchCategory('tops');
-    setBatchSubcategory('');
     setBatchResults([]);
   };
 
@@ -608,14 +630,16 @@ export default function ClothingPage() {
 
       try {
         const formData = new FormData();
-        formData.append('image', file.originFileObj);
+        formData.append('file', file.originFileObj);
         const name = truncateFileName(file.name.replace(/\.[^.]+$/, ''));
         formData.append('name', name);
         formData.append('category', batchCategory);
-        formData.append('subcategory', batchSubcategory || getSubcategoryOptions(batchCategory)[0]?.value || '');
 
         const dominantColor = await extractDominantColor(file.originFileObj);
-        formData.append('color', dominantColor);
+        const colorName = await hexToColorName(dominantColor);
+        if (colorName) {
+          formData.append('color', colorName);
+        }
 
         await clothingApi.uploadClothing(formData);
         return { name: file.name, status: 'success' as const };
@@ -658,9 +682,6 @@ export default function ClothingPage() {
       setBatchResults([]);
     }
   };
-
-  const currentCategory = Form.useWatch('category', form) || 'tops';
-  const subcategoryOptions = getSubcategoryOptions(currentCategory);
 
   return (
     <div style={{ padding: 24 }}>
@@ -733,9 +754,15 @@ export default function ClothingPage() {
           cancelText="取消"
           confirmLoading={uploading}
           width={620}
-          destroyOnClose
+          destroyOnHidden
         >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+          <Form
+            key={editingClothing?.id ?? 'create'}
+            form={form}
+            layout="vertical"
+            initialValues={initialFormValues}
+            onFinish={handleSubmit}
+          >
             <Form.Item 
               name="name" 
               label="服装名称" 
@@ -831,16 +858,6 @@ export default function ClothingPage() {
                 <Select 
                   options={categoryOptions} 
                   placeholder="请选择分类"
-                  onChange={() => {
-                    form.setFieldsValue({ subcategory: undefined });
-                  }}
-                />
-              </Form.Item>
-              <Form.Item name="subcategory" label="子分类" style={{ flex: 1 }}>
-                <Select 
-                  options={subcategoryOptions} 
-                  placeholder="请选择子分类"
-                  allowClear
                 />
               </Form.Item>
             </Space>
@@ -857,9 +874,6 @@ export default function ClothingPage() {
                   />
                 </Space.Compact>
               </Form.Item>
-              <Form.Item name="sizes" label="尺码" style={{ flex: 1 }} extra="多个尺码用逗号分隔">
-                <Input placeholder="如：S,M,L,XL" />
-              </Form.Item>
             </Space>
             
             <Space style={{ width: '100%', alignItems: 'center' }} size="large">
@@ -875,10 +889,18 @@ export default function ClothingPage() {
                   />
                 </div>
               </Form.Item>
-              <Form.Item name="is_active" label="启用状态" valuePropName="checked" initialValue={true} style={{ flex: 1 }}>
+              <Form.Item label="启用状态" style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Switch />
-                  <span>{form.getFieldValue('is_active') ? '启用' : '禁用'}</span>
+                  {/* Switch 必须直接作为 Form.Item 的子节点才能被 value/onChange 接管 */}
+                  <Form.Item name="is_active" valuePropName="checked" noStyle>
+                    <Switch />
+                  </Form.Item>
+                  {/* 用 shouldUpdate 读取值，避免在 Form 未挂载时页面级读取 form 实例触发 antd 告警 */}
+                  <Form.Item shouldUpdate noStyle>
+                    {({ getFieldValue }) => (
+                      <span>{getFieldValue('is_active') ? '启用' : '禁用'}</span>
+                    )}
+                  </Form.Item>
                 </div>
               </Form.Item>
             </Space>
@@ -895,7 +917,7 @@ export default function ClothingPage() {
           confirmLoading={batchUploading}
           width={800}
           okButtonProps={{ disabled: batchFiles.length === 0 || batchUploading }}
-          destroyOnClose
+          destroyOnHidden
         >
           <div style={{ marginBottom: 16 }}>
             <Space size="large">
@@ -905,22 +927,9 @@ export default function ClothingPage() {
                   value={batchCategory}
                   onChange={(val) => {
                     setBatchCategory(val);
-                    setBatchSubcategory('');
                   }}
                   options={categoryOptions}
                   style={{ width: 120 }}
-                  disabled={batchUploading}
-                />
-              </div>
-              <div>
-                <span style={{ marginRight: 8, fontSize: 14, color: '#666' }}>子分类：</span>
-                <Select
-                  value={batchSubcategory}
-                  onChange={setBatchSubcategory}
-                  options={getSubcategoryOptions(batchCategory)}
-                  style={{ width: 150 }}
-                  allowClear
-                  placeholder="可选"
                   disabled={batchUploading}
                 />
               </div>

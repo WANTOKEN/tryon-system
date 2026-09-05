@@ -6,8 +6,10 @@ TryOn service - 虚拟试穿服务
 - 状态机: pending -> processing -> completed | failed
 """
 import asyncio
+import json
 import logging
 import time
+from datetime import timezone
 from typing import List, Optional, Set
 
 from sqlalchemy import select
@@ -21,6 +23,13 @@ from app.models.merchant import Merchant
 from app.storage import storage
 from app.storage.service import upload_file
 from app.services.tryon_engine import get_engine
+from app.constants import (
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_LABEL_MAP,
+)
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -81,6 +90,21 @@ async def _db_scalar(stmt):
         return (await db.execute(stmt)).scalar_one_or_none()
 
 
+def _elapsed_ms(created_at) -> int:
+    """从 created_at 到现在耗时（毫秒）
+
+    TimestampMixin 写入的是 UTC 时间，而 MySQL 的 DATETIME 不带时区，
+    读回来是 naive datetime。对它直接调 .timestamp() 会被按本地时区解释，
+    在 UTC+8 环境下会凭空多算 8 小时（曾观测到 duration_ms=28800146）。
+    这里显式按 UTC 解释，保证与写入口径一致。
+    """
+    if not created_at:
+        return 0
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return max(0, int((time.time() - created_at.timestamp()) * 1000))
+
+
 async def generate(
     db: AsyncSession,
     merchant_id: str,
@@ -100,9 +124,12 @@ async def generate(
         merchant_id=merchant_id,
         session_id=session_id,
         avatar_source=avatar_source,
-        status=0,
+        status=STATUS_PENDING,
+        status_text=STATUS_LABEL_MAP[STATUS_PENDING],
         engine=ai_engine,
-        selected_clothing=clothing_uuids,
+        # Text 列：必须存 JSON 字符串，直接塞 list 会在 flush 时
+        # 触发 InterfaceError: Error binding parameter
+        selected_clothing=json.dumps(clothing_uuids, ensure_ascii=False),
     )
     if avatar_url:
         record.avatar_url = avatar_url
@@ -115,6 +142,19 @@ async def generate(
         if avatar_rec:
             record.avatar_file_id = avatar_rec.id
             record.avatar_url = avatar_rec.access_url
+    elif avatar_data:
+        # 直接上传的人像字节流：若不落库，历史记录里 avatar_url 与 avatar_file_id
+        # 恒为空，列表页读不到人像，故此处统一存档
+        avatar_rec, avatar_url = await upload_file(
+            db,
+            avatar_data,
+            folder="avatars",
+            tenant_id=str(merchant_id),
+            content_type="image/png",
+            file_category="avatar",
+        )
+        record.avatar_file_id = avatar_rec.id
+        record.avatar_url = avatar_url
 
     db.add(record)
     await db.flush()
@@ -146,7 +186,8 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
             if not record:
                 return
 
-            record.status = 1  # processing
+            record.status = STATUS_PROCESSING
+            record.status_text = STATUS_LABEL_MAP[STATUS_PROCESSING]
             await db.commit()
 
             avatar_bytes = await _read_avatar_bytes(avatar_key, avatar_data)
@@ -166,15 +207,15 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
             )
             record.result_file_id = rec.id
             record.result_url = url
-            record.status = 2  # completed
-            record.status_text = "已完成"
-            record.duration_ms = int((time.time() - record.created_at.timestamp()) * 1000) if record.created_at else 0
+            record.status = STATUS_COMPLETED
+            record.status_text = STATUS_LABEL_MAP[STATUS_COMPLETED]
+            record.duration_ms = _elapsed_ms(record.created_at)
             await db.commit()
         except Exception as e:  # noqa: BLE001
             logger.exception("试穿任务 %s 处理失败", record_uuid)
             if record is not None:
-                record.status = 3  # failed
-                record.status_text = "生成失败"
+                record.status = STATUS_FAILED
+                record.status_text = STATUS_LABEL_MAP[STATUS_FAILED]
                 record.error_message = str(e)
                 # 退还配额：任务失败不应消耗商户配额
                 try:
@@ -198,10 +239,19 @@ async def get_status(db: AsyncSession, record_uuid: str) -> Optional[TryOnRecord
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def list_records(db: AsyncSession, merchant_id: str, page: int = 1, page_size: int = 20):
+async def list_records(
+    db: AsyncSession,
+    merchant_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    session_id: Optional[str] = None,
+):
+    """按商户（可选再按 session）分页查询试穿记录"""
     from sqlalchemy import func
 
     stmt = select(TryOnRecord).where(TryOnRecord.merchant_id == merchant_id)
+    if session_id:
+        stmt = stmt.where(TryOnRecord.session_id == session_id)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar()
     stmt = stmt.order_by(TryOnRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     items = (await db.execute(stmt)).scalars().all()

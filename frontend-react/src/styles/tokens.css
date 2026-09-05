@@ -1,0 +1,156 @@
+/* Design Tokens — z-index / colors / typography / spacing / shadows / dark fallback */
+
+/* ============================================================
+   z-index 分层体系（集中管理，避免弹窗互相穿透）
+   --z-fab        悬浮按钮
+   --z-popover    Header 下拉面板（语言/主题）
+   --z-modal-1    一级模态（设置、服装库）
+   --z-modal-2    二级模态（形象来源、图片预览、独立扫码）
+   ============================================================ */
+:root {
+  --z-fab: 50;
+  --z-popover: 100;
+  --z-modal-1: 1000;
+  --z-modal-2: 2000;
+  --z-top: 3000;
+}
+
+/* ===== 高级感 CSS 变量系统 ===== */
+:root {
+  /* 背景色 - 优雅白色系 */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-hover: #eeeeee;
+  --bg-card: #ffffff;
+
+  /* 文字色 - 优雅深色系 */
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #777777;
+  --text-light: #999999;
+
+  /* 边框色 - 精致灰色 */
+  --border-primary: #e0e0e0;
+  --border-secondary: #f0f0f0;
+  --border-strong: color-mix(in srgb, var(--text-primary) 38%, transparent);
+
+  /* 通用别名（兼容旧代码使用 --text/--border/--hover-bg） */
+  --text: var(--text-primary);
+  --border: var(--border-primary);
+  --hover-bg: var(--bg-hover);
+
+  /* 卡片设计系统(garment-card)所用令牌
+     少色原则：三者均由既有令牌派生，不引入新色 */
+  --accent-strong: var(--accent-dark);
+  --bg-elevated: var(--bg-secondary);
+  --text-tertiary: var(--text-muted);
+
+  /* 品牌色 - 典雅香槟金 */
+  --accent: #c9a962;
+  --accent-dark: #b89500;
+  --accent-light: rgba(201, 169, 98, 0.08);
+  --accent-medium: rgba(201, 169, 98, 0.15);
+  --accent-glow: color-mix(in srgb, var(--accent) 30%, transparent);
+
+  /* Logo 品牌色 — 金色渐变（跟随主题切换） */
+  --logo-gold-1: #e4c483;
+  --logo-gold-2: #c8a45c;
+  --logo-gold-3: #9c7d38;
+  --logo-accent: #b8923f;
+  --logo-garment-1: #ffffff;
+  --logo-garment-2: #f2e8d2;
+
+  /* 功能色 */
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+
+  /* 阴影 - 高级感层次 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.15);
+  --shadow-accent: 0 0 20px rgba(201, 169, 98, 0.15);
+
+  /* 圆角 */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+
+  /* 动画 */
+  --duration-fast: 0.15s;
+  --duration-normal: 0.25s;
+  --duration-slow: 0.4s;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 字体大小 */
+  --font-xs: 10px;
+  --font-sm: 12px;
+  --font-base: 14px;
+  --font-md: 15px;
+  --font-lg: 16px;
+  --font-xl: 18px;
+  --font-2xl: 20px;
+  --font-3xl: 24px;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+}
+
+
+/* 深色模式（无 data-theme 时的默认暗色兜底） */
+.dark {
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1a1a1a;
+  --bg-card: #1e1e1e;
+  --bg-hover: #252525;
+  --text-primary: #fafafa;
+  --text-secondary: #c0c0c0;
+  --text-muted: #888888;
+  --text-light: #666666;
+  --border-primary: #2a2a2a;
+  --border-secondary: #252525;
+
+  /* 通用别名 */
+  --text: var(--text-primary);
+  --border: var(--border-primary);
+  --hover-bg: var(--bg-hover);
+
+  --accent: #d4af37;
+  --accent-dark: #c9a962;
+  --accent-light: rgba(212, 175, 55, 0.1);
+  --accent-medium: rgba(212, 175, 55, 0.15);
+  --accent-strong: var(--accent-dark);
+
+  /* Logo 品牌色 — 暗色模式 */
+  --logo-gold-1: #e8d29a;
+  --logo-gold-2: #d4af37;
+  --logo-gold-3: #a07c1e;
+  --logo-accent: #d4af37;
+  --logo-garment-1: #ffffff;
+  --logo-garment-2: #f0e6cc;
+
+  --bg-elevated: var(--bg-secondary);
+  --text-tertiary: var(--text-muted);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  font-family:
+    'Noto Sans SC',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+

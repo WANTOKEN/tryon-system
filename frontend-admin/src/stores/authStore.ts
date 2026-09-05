@@ -16,7 +16,7 @@ interface AuthState {
   getRole: () => UserRole | null;
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
-  getMerchantId: () => number | null;
+  getMerchantId: () => string | null;
 }
 
 export const useAuthStore = create<AuthState>()(

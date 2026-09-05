@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import React from 'react';
-import { ConfigProvider, App as AntApp } from 'antd';
+import { ConfigProvider, App as AntApp, theme as antdTheme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useAuthStore, initAuth } from './stores/authStore';
 import { MENU_PERMISSIONS, PERMISSIONS } from './types';
+import { useTheme } from './hooks/useTheme';
 
 import AdminLayout from './layouts/AdminLayout';
 import LoginPage from './pages/LoginPage';
@@ -56,21 +57,24 @@ function PermissionRoute({
 }
 
 function App() {
+  const { mode, current } = useTheme();
+  const isDark = mode === 'dark';
+
   return (
     <ConfigProvider
       locale={zhCN}
       theme={{
+        cssVar: true,
         token: {
-          // 主色调 - 使用更现代的蓝色
-          colorPrimary: '#1677ff',
+          // 主色调跟随主题色系（亮/暗分别取主色与暗色主色）
+          colorPrimary: isDark ? current.primaryDark : current.primary,
+          colorInfo: isDark ? current.primaryDark : current.primary,
           // 成功色
           colorSuccess: '#52c41a',
           // 警告色
           colorWarning: '#faad14',
           // 错误色
           colorError: '#ff4d4f',
-          // 信息色
-          colorInfo: '#1677ff',
           // 圆角
           borderRadius: 8,
           borderRadiusLG: 12,
@@ -91,22 +95,22 @@ function App() {
         components: {
           // Layout 组件样式
           Layout: {
-            headerBg: '#fff',
+            headerBg: 'var(--ant-color-bg-container)',
             headerHeight: 64,
             headerPadding: '0 24px',
-            bodyBg: '#f5f7fa',
-            siderBg: '#fff',
-            triggerBg: '#f5f7fa',
+            bodyBg: 'var(--ant-color-bg-layout)',
+            siderBg: 'var(--ant-color-bg-container)',
+            triggerBg: 'var(--ant-color-bg-layout)',
           },
           // Menu 组件样式
           Menu: {
             itemBg: 'transparent',
-            itemSelectedBg: '#e6f4ff',
-            itemSelectedColor: '#1677ff',
-            itemHoverBg: '#f5f7fa',
+            itemSelectedBg: 'var(--ant-color-primary-bg)',
+            itemSelectedColor: isDark ? current.primaryDark : current.primary,
+            itemHoverBg: 'var(--ant-color-primary-bg-hover)',
             subMenuItemBg: 'transparent',
             itemBorderRadius: 8,
-            groupTitleColor: '#8c8c8c',
+            groupTitleColor: 'var(--ant-color-text-tertiary)',
           },
           // Card 组件样式
           Card: {
@@ -115,37 +119,40 @@ function App() {
           },
           // Table 组件样式
           Table: {
-            headerBg: '#fafafa',
-            rowHoverBg: '#f5f7fa',
-            borderColor: '#f0f0f0',
+            headerBg: 'var(--ant-color-fill-quaternary)',
+            rowHoverBg: 'var(--ant-color-primary-bg-hover)',
+            borderColor: 'var(--ant-color-border)',
           },
           // Button 组件样式
           Button: {
-            primaryShadow: '0 2px 4px rgba(22, 119, 255, 0.2)',
+            primaryShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
             defaultShadow: '0 2px 4px rgba(0, 0, 0, 0.04)',
           },
           // Input 组件样式
           Input: {
-            hoverBorderColor: '#1677ff',
-            activeBorderColor: '#1677ff',
+            hoverBorderColor: isDark ? current.primaryDark : current.primary,
+            activeBorderColor: isDark ? current.primaryDark : current.primary,
           },
           // Select 组件样式
           Select: {
-            optionSelectedBg: '#e6f4ff',
+            optionSelectedBg: 'var(--ant-color-primary-bg)',
           },
           // Modal 组件样式
           Modal: {
-            contentBg: '#fff',
-            headerBg: '#fff',
+            contentBg: 'var(--ant-color-bg-elevated)',
+            headerBg: 'var(--ant-color-bg-elevated)',
           },
         },
-        algorithm: [
-          // 使用默认算法，保持亮色主题
-        ],
+        algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
       }}
     >
       <AntApp>
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <Routes>
             {/* 公开路由 */}
             <Route path="/login" element={<LoginPage />} />

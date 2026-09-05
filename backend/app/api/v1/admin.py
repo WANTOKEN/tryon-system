@@ -25,10 +25,22 @@ from app.services import hash_password
 from app.services.config_service import get_grouped_configs, update_configs
 from app.storage.service import upload_file
 from app.schemas.merchant import QuotaAdjustRequest, MerchantCreate, MerchantUpdate, MerchantResponse
-from app.schemas.clothing import ClothingResponse
+from app.schemas.clothing import (
+    CLOTHING_EDITABLE_FIELDS,
+    ClothingCreate,
+    ClothingUpdate,
+    ClothingResponse,
+)
 from app.schemas.tryon import TryOnRecordResponse
 from app.schemas.file import FileRecordResponse
 from app.core.config import get_settings
+from app.constants import (
+    CATEGORY_ID_SET,
+    COLOR_NAME_SET,
+    STATUS_TEXT_MAP,
+    STATUS_LABEL_MAP,
+    STATUS_COMPLETED,
+)
 
 settings = get_settings()
 
@@ -40,6 +52,17 @@ def require_superadmin(current_user: Merchant = Depends(get_current_user)) -> Me
     if not current_user.is_superuser:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
     return current_user
+
+
+async def _merchant_usernames(db: AsyncSession, operator_ids) -> dict:
+    """把 operator_id 批量换成用户名（空 id 由调用方兜底为「系统」）"""
+    ids = {str(i) for i in operator_ids if i}
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(Merchant.id, Merchant.username).where(Merchant.id.in_(ids))
+    )
+    return {str(row[0]): row[1] for row in rows}
 
 
 async def log_operation(
@@ -265,7 +288,7 @@ async def get_stats(
         await db.execute(
             select(func.count()).select_from(TryOnRecord).where(
                 cast(TryOnRecord.created_at, Date) == today,
-                TryOnRecord.status_text == "completed",
+                TryOnRecord.status == STATUS_COMPLETED,
             )
         )
     ).scalar() or 0
@@ -273,7 +296,7 @@ async def get_stats(
         await db.execute(
             select(func.coalesce(func.avg(TryOnRecord.duration_ms), 0)).select_from(TryOnRecord).where(
                 cast(TryOnRecord.created_at, Date) == today,
-                TryOnRecord.status_text == "completed",
+                TryOnRecord.status == STATUS_COMPLETED,
             )
         )
     ).scalar() or 0
@@ -293,7 +316,7 @@ async def get_stats(
             await db.execute(
                 select(func.count()).select_from(TryOnRecord).where(
                     cast(TryOnRecord.created_at, Date) == day,
-                    TryOnRecord.status_text == "completed",
+                    TryOnRecord.status == STATUS_COMPLETED,
                 )
             )
         ).scalar() or 0
@@ -336,12 +359,26 @@ async def list_files(
     page: int = 1,
     page_size: int = 20,
     file_category: str = None,
+    search: str = None,
+    is_deleted: bool = None,
 ):
     from app.models.file_record import FileRecord
 
-    stmt = select(FileRecord).where(FileRecord.is_deleted == False)  # noqa: E712
+    stmt = select(FileRecord)
+    # 默认只看正常文件；传 is_deleted=true 时查看回收站（软删除文件需可恢复）
+    if is_deleted is None:
+        stmt = stmt.where(FileRecord.is_deleted == False)  # noqa: E712
+    else:
+        stmt = stmt.where(FileRecord.is_deleted == is_deleted)
     if file_category:
         stmt = stmt.where(FileRecord.file_category == file_category)
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(
+            FileRecord.original_name.like(pattern)
+            | FileRecord.storage_key.like(pattern)
+            | FileRecord.tenant_id.like(pattern)
+        )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar()
     stmt = stmt.order_by(FileRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     items = (await db.execute(stmt)).scalars().all()
@@ -396,17 +433,17 @@ async def admin_delete_clothing(
 @router.patch("/clothing/{clothing_id}/")
 async def admin_update_clothing(
     clothing_id: str,
-    clothing_in: ClothingResponse,
+    clothing_in: ClothingUpdate,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
     clothing = (await db.execute(select(Clothing).where(Clothing.id == clothing_id))).scalar_one_or_none()
     if not clothing:
         raise HTTPException(status_code=404, detail="Clothing not found")
+    # 只写白名单内字段，杜绝客户端通过 body 覆盖 id / merchant_id / created_at
     for key, value in clothing_in.model_dump(exclude_unset=True).items():
-        if key == "id" or key == "created_at" or key == "merchant_id":
-            continue
-        setattr(clothing, key, value)
+        if key in CLOTHING_EDITABLE_FIELDS or key == "is_active":
+            setattr(clothing, key, value)
     await db.commit()
     await log_operation(db, admin, "update_clothing", "clothing", clothing.id)
     return {"success": True}
@@ -414,28 +451,27 @@ async def admin_update_clothing(
 
 @router.post("/clothing/")
 async def admin_create_clothing(
-    data: ClothingResponse,
+    data: ClothingCreate,
     db: AsyncSession = Depends(get_db),
     admin: Merchant = Depends(require_superadmin),
 ):
     """管理后台创建服装记录（无图，仅超管）"""
+    payload = data.model_dump(exclude_none=True)
     clothing = Clothing(
         merchant_id=admin.id,
-        name=data.name or "未命名服装",
-        category=data.category or "top",
-        color=data.color or "",
-        price=float(data.price) if data.price else 0.0,
-        size=data.size or "",
-        brand=data.brand or "",
-        season=data.season or "",
-        style=data.style or "",
-        material=data.material or "",
-        description=data.description or "",
-        image_url="",
+        source="admin_upload",
         image_key="",
         thumb_url="",
-        source="admin_upload",
+        **{k: v for k, v in payload.items() if k in CLOTHING_EDITABLE_FIELDS},
     )
+    clothing.name = clothing.name or "未命名服装"
+    if clothing.category not in CATEGORY_ID_SET:
+        clothing.category = "tops"
+    if clothing.color and clothing.color not in COLOR_NAME_SET:
+        raise HTTPException(
+            status_code=400,
+            detail=f"颜色必须是系统颜色标签之一，收到：{clothing.color}",
+        )
     db.add(clothing)
     await db.commit()
     await db.refresh(clothing)
@@ -446,7 +482,8 @@ async def admin_create_clothing(
 @router.post("/clothing/upload/")
 async def admin_upload_clothing(
     name: str = Form("未命名服装"),
-    category: str = Form("top"),
+    # "top" 不在 CATEGORY_ID_SET 中，默认必须是 "tops"
+    category: str = Form("tops"),
     color: str = Form(""),
     price: float = Form(0.0),
     size: str = Form("M"),
@@ -459,6 +496,14 @@ async def admin_upload_clothing(
     admin: Merchant = Depends(require_superadmin),
 ):
     """管理后台上传服装图片（真实落库）"""
+    # 校验分类与颜色标签，保证数据规范（与用户端 wardrobe 一致）
+    if category not in CATEGORY_ID_SET:
+        raise HTTPException(status_code=400, detail=f"无效的分类：{category}")
+    if color and color not in COLOR_NAME_SET:
+        raise HTTPException(
+            status_code=400,
+            detail=f"颜色必须是系统颜色标签之一，收到：{color}",
+        )
     content = await file.read()
     rec, url = await upload_file(
         db,
@@ -514,12 +559,36 @@ async def admin_list_records(
     if merchant_id:
         stmt = stmt.where(TryOnRecord.merchant_id == merchant_id)
     if status:
-        stmt = stmt.where(TryOnRecord.status_text == status)
+        # 前端传语义字符串（pending/processing/completed/failed），也兼容中文文案
+        code = next(
+            (k for k, v in STATUS_TEXT_MAP.items() if v == status),
+            next((k for k, v in STATUS_LABEL_MAP.items() if v == status), None),
+        )
+        if code is None:
+            stmt = stmt.where(TryOnRecord.status == -1)  # 未知状态：返回空列表而不是全量
+        else:
+            stmt = stmt.where(TryOnRecord.status == code)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar()
     stmt = stmt.order_by(TryOnRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     items = (await db.execute(stmt)).scalars().all()
+
+    # 附带商户名称，避免前端只能渲染 merchant_id
+    merchant_names = {}
+    if items:
+        ids = {r.merchant_id for r in items if r.merchant_id}
+        rows = (await db.execute(select(Merchant.id, Merchant.store_name).where(Merchant.id.in_(ids)))).all()
+        merchant_names = {str(row[0]): row[1] for row in rows}
+
+    records = []
+    for r in items:
+        data = TryOnRecordResponse.model_validate(r).model_dump()
+        data["status"] = STATUS_TEXT_MAP.get(r.status, "pending")
+        data["status_text"] = STATUS_LABEL_MAP.get(r.status, r.status_text)
+        data["merchant_name"] = merchant_names.get(str(r.merchant_id), "")
+        records.append(data)
+
     return {
-        "items": [TryOnRecordResponse.model_validate(r).model_dump() for r in items],
+        "items": records,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -598,6 +667,8 @@ async def get_merchant_quota_history(
         .order_by(QuotaHistory.created_at.desc())
     )
     rows = (await db.execute(stmt)).scalars().all()
+    # operator_username 出参时 join Merchant 派生，不在表里冗余存用户名列
+    operator_names = await _merchant_usernames(db, [h.operator_id for h in rows])
     return [
         {
             "id": h.id,
@@ -609,6 +680,7 @@ async def get_merchant_quota_history(
             "new_used": h.new_used,
             "note": h.note,
             "operator_id": h.operator_id,
+            "operator_username": operator_names.get(h.operator_id or "", "系统"),
             "created_at": h.created_at.isoformat() if h.created_at else "",
         }
         for h in rows
@@ -665,17 +737,30 @@ async def files_stats(
             .where(FileRecord.is_deleted == False)  # noqa: E712
         )
     ).scalar()
+    deleted_files = (
+        await db.execute(
+            select(func.count()).select_from(FileRecord).where(FileRecord.is_deleted == True)  # noqa: E712
+        )
+    ).scalar()
+    deleted_size = (
+        await db.execute(
+            select(func.coalesce(func.sum(FileRecord.file_size), 0))
+            .select_from(FileRecord)
+            .where(FileRecord.is_deleted == True)  # noqa: E712
+        )
+    ).scalar()
+    # quota_* 恒为 0 且与文件统计无关（配额在 Merchant 上），已移除
     return {
         "total_files": total or 0,
         "total_storage_bytes": int(total_bytes or 0),
-        "quota_total": 0,
-        "quota_used": 0,
-        "quota_remaining": 0,
+        "deleted_files": deleted_files or 0,
+        "deleted_size": int(deleted_size or 0),
     }
 
 
 class FileBatchRequest(BaseModel):
-    ids: List[int]
+    # FileRecord.id 是 uuid hex 字符串，声明为 int 会导致批量操作永远匹配不到记录
+    ids: List[str]
     action: str  # soft_delete | restore | hard_delete
 
 
@@ -1013,10 +1098,14 @@ async def list_operation_logs(
         except (ValueError, TypeError):
             return {"raw": d}
 
+    # 只查本页涉及的 operator_id，一次 join 出用户名，避免逐条回查
+    operator_names = await _merchant_usernames(db, [r.operator_id for r in rows])
+
     items = [
         {
             "id": r.id,
             "operator_id": r.operator_id,
+            "operator_username": operator_names.get(r.operator_id or "", "系统"),
             "action": r.action,
             "action_text": ACTION_TEXT_MAP.get(r.action, r.action),
             "target_type": r.target_type,

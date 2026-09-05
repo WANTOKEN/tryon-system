@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 
 import { createPortal } from 'react-dom'
 import PropTypes from 'prop-types'
@@ -28,19 +28,40 @@ export default function AvatarSection({
   const [scanDone, setScanDone] = useState(false)
   const [scanError, setScanError] = useState(null)
   const pollTimer = useRef(null)
+  const closeTimer = useRef(null)
+
+  // 组件卸载时清理轮询与延时关闭定时器，避免卸载后继续发请求
+  useEffect(
+    () => () => {
+      if (pollTimer.current) {
+        clearInterval(pollTimer.current)
+        pollTimer.current = null
+      }
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current)
+        closeTimer.current = null
+      }
+    },
+    []
+  )
 
   const handleAvatarFileChange = useCallback(
     e => {
-      const file = e.target.files?.[0]
+      const input = e.target
+      const file = input.files?.[0]
       if (file) {
         if (file.size > 10 * 1024 * 1024) {
-          showToast?.('图片大小不能超过 10MB', 'warning')
+          showToast?.(t('n_imgTooLarge') || '图片大小不能超过 10MB', 'warning')
+          // 必须清空 value，否则用户再次选择同一文件时 onChange 不会触发
+          input.value = ''
           return
         }
         onAvatarChange(e)
       }
+      // 成功路径同样要清空，保证删除形象后可以重新选择同一张照片
+      input.value = ''
     },
-    [onAvatarChange, showToast]
+    [onAvatarChange, showToast, t]
   )
 
   // 轮询 ticket 状态，手机端上传完成后自动刷新形象
@@ -59,9 +80,17 @@ export default function AvatarSection({
             setScanPolling(false)
             setScanDone(true)
             if (res.data.image_url) {
-              onSetAvatarPreview?.(res.data.image_url)
+              // 第二个参数是 image_key（FileRecord.uuid）：试穿时可直接复用该 key，
+              // 无需再把图片下载下来重新上传一次。
+              onSetAvatarPreview?.(res.data.image_url, res.data.image_key)
             }
-            setTimeout(() => setShowScan(false), 1200)
+            if (closeTimer.current) {
+              clearTimeout(closeTimer.current)
+            }
+            closeTimer.current = setTimeout(() => {
+              setShowScan(false)
+              closeTimer.current = null
+            }, 1200)
           } else if (res.status === 404 || res.status === 410) {
             // 票据失效（404 not found 通常因后端重启/多进程，410 已过期）。
             // 继续轮询只会永久空转刷屏，停止并提示用户重新扫码。
@@ -105,6 +134,10 @@ export default function AvatarSection({
     if (pollTimer.current) {
       clearInterval(pollTimer.current)
       pollTimer.current = null
+    }
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current)
+      closeTimer.current = null
     }
     setScanPolling(false)
     setShowScan(false)

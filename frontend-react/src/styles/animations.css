@@ -1,0 +1,154 @@
+/* Animations — base / loading / logo / scrollbar */
+
+/* ===== 基础动画 ===== */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in var(--duration-normal) var(--ease-out);
+}
+
+.animate-slide-up {
+  animation: slide-up var(--duration-normal) var(--ease-out);
+}
+
+.animate-scale-in {
+  animation: scale-in var(--duration-normal) var(--ease-out);
+}
+
+/* ===== 加载动画 - 高级感设计 ===== */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================================
+   Logo 动画系统（GlobalLoading 品牌加载页）
+   ============================================================ */
+
+/* 裙装实心填充淡入动画 */
+@keyframes logoGarmentIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.logo-garment {
+  opacity: 0;
+  animation: logoGarmentIn 0.6s ease-out 0.4s forwards;
+}
+
+/* 闪光星淡入 + 缩放 */
+@keyframes logoSparkleFade {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.logo-sparkle {
+  opacity: 0;
+  transform-origin: center;
+  animation: logoSparkleFade 0.5s ease-out 1.5s forwards;
+}
+
+/* 金色光泽扫过 */
+@keyframes logoShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.logo-shimmer-bar {
+  animation: logoShimmer 2.5s ease-in-out 1.8s infinite;
+}
+
+/* 加载进度条扫描 */
+@keyframes logoBarSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+.logo-bar-fill {
+  animation: logoBarSweep 1.4s ease-in-out infinite;
+}

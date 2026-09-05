@@ -1,10 +1,12 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 
 import PropTypes from 'prop-types'
 
 import { api } from '../utils/request'
 import { API_ENDPOINTS } from '../config/api'
-import { CATEGORY_OPTIONS, FALLBACK_COLOR_TAGS } from '../data/clothingData'
+import { CATEGORY_OPTIONS } from '../data/clothingData'
+import useColorTags from '../hooks/useColorTags'
+import useModalBehavior from '../hooks/useModalBehavior'
 
 import ClothingGrid from './ClothingGrid'
 import { Icon } from './ui'
@@ -12,6 +14,9 @@ import { Icon } from './ui'
 function ClothingLibraryModal({
   isOpen,
   onClose,
+  initialCategory = 'all',
+  replaceMode = false,
+  onReplaceConfirm,
   clothing = [],
   customClothing = [],
   wardrobeClothing = [],
@@ -30,24 +35,8 @@ function ClothingLibraryModal({
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedColor, setSelectedColor] = useState('all')
 
-  // 颜色标签：严格由后端返回（/api/v1/colors/），前端不臆造
-  const [colorTags, setColorTags] = useState(FALLBACK_COLOR_TAGS)
-
-  useEffect(() => {
-    let alive = true
-    api
-      .get(API_ENDPOINTS.COMMON.COLORS)
-      .then(res => {
-        const items = res?.items || res?.data?.items || res
-        if (alive && Array.isArray(items) && items.length) {
-          setColorTags(items)
-        }
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [])
+  // 颜色标签：严格由后端返回（/api/v1/common/colors/），前端不臆造
+  const colorTags = useColorTags()
 
   const [showScan, setShowScan] = useState(false)
   const [qrSvg, setQrSvg] = useState('')
@@ -118,7 +107,7 @@ function ClothingLibraryModal({
       setShowScan(true)
       pollScan(data.ticket_id)
     } catch (err) {
-      setScanError('创建扫码会话失败')
+      setScanError(t('scanSessionFailed') || '创建扫码会话失败')
     }
   }
 
@@ -149,6 +138,38 @@ function ClothingLibraryModal({
 
   // 分类选项：固定顺序（上装 -> 下装 -> 连衣裙 -> 外套 -> 鞋 -> 配饰），已含中文翻译
   const categoryOptions = useMemo(() => CATEGORY_OPTIONS, [])
+
+  // 替换服装进入时，预筛到对应类别；普通打开时回到"全部"
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedCategory(initialCategory && initialCategory !== 'all' ? initialCategory : 'all')
+    }
+  }, [isOpen, initialCategory])
+
+  // 关闭弹窗：清空临时筛选状态，避免下次打开残留上次的搜索词
+  const handleClose = useCallback(() => {
+    setSearch('')
+    setSelectedCategory('all')
+    setSelectedColor('all')
+    onClose?.()
+  }, [onClose])
+
+  const stopScanPolling = useCallback(() => {
+    if (scanTimer.current) {
+      clearInterval(scanTimer.current)
+      scanTimer.current = null
+    }
+  }, [])
+
+  // Esc：扫码浮层打开时先关它，否则关闭整个服装库
+  useModalBehavior(isOpen, () => {
+    if (showScan) {
+      stopScanPolling()
+      setShowScan(false)
+      return
+    }
+    handleClose()
+  })
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -207,11 +228,6 @@ function ClothingLibraryModal({
     return null
   }
 
-  const handleClose = () => {
-    setSearch('')
-    onClose?.()
-  }
-
   const selectedCount = selected.length
 
   // 内容区：根据筛选结果和当前 Tab 决定渲染内容
@@ -225,6 +241,8 @@ function ClothingLibraryModal({
         favorites={wardrobeClothing}
         onToggleSelect={onToggleSelect}
         onToggleFavorite={handleToggleFavorite}
+        replaceMode={replaceMode}
+        onReplaceConfirm={onReplaceConfirm}
         t={t}
       />
     )
@@ -302,6 +320,18 @@ function ClothingLibraryModal({
     )
   }
 
+  // 副标题文案：替换模式 / 有已选 / 空态 三分支，用 if-else 展开避免嵌套三元
+  let modalSubtitle
+  if (replaceMode) {
+    modalSubtitle = t('clothingModalReplaceSubtitle') || '选择一件同类单品替换当前搭配'
+  } else if (selectedCount > 0) {
+    modalSubtitle =
+      t('clothingModalSubtitleActive', { n: selectedCount }) ||
+      `${selectedCount} 件已选 · 点击卡片调整搭配`
+  } else {
+    modalSubtitle = t('clothingModalSubtitle') || '挑选心仪单品，开始你的虚拟试衣'
+  }
+
   return (
     <div
       className='clothing-modal-overlay'
@@ -323,12 +353,7 @@ function ClothingLibraryModal({
         <header className='clothing-modal-header'>
           <div>
             <h2 className='clothing-modal-title'>{t('clothingLibrary') || '服装库'}</h2>
-            <p className='clothing-modal-sub'>
-              {selectedCount > 0
-                ? t('clothingModalSubtitleActive', { n: selectedCount }) ||
-                  `${selectedCount} 件已选 · 点击卡片调整搭配`
-                : t('clothingModalSubtitle') || '挑选心仪单品，开始你的虚拟试衣'}
-            </p>
+            <p className='clothing-modal-sub'>{modalSubtitle}</p>
           </div>
           <button
             type='button'
@@ -444,8 +469,13 @@ function ClothingLibraryModal({
           </span>
           <div className='clothing-modal-actions'>
             {selectedCount > 0 && (
-              <button type='button' className='btn-simple' onClick={onRemoveSelected}>
-                {t('clearSelection') || '清空选择'}
+              <button
+                type='button'
+                className='btn-simple'
+                onClick={() => onRemoveSelected?.(null)}
+                title={t('clearSelected') || '清空已选'}
+              >
+                {t('clearSelection') || '清空已选'}
               </button>
             )}
             <button type='button' className='btn-simple btn-simple-primary' onClick={handleClose}>
@@ -461,6 +491,9 @@ function ClothingLibraryModal({
 ClothingLibraryModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
+  initialCategory: PropTypes.string,
+  replaceMode: PropTypes.bool,
+  onReplaceConfirm: PropTypes.func,
   clothing: PropTypes.arrayOf(PropTypes.object),
   customClothing: PropTypes.arrayOf(PropTypes.object),
   wardrobeClothing: PropTypes.arrayOf(PropTypes.object),

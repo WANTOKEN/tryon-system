@@ -1,4 +1,4 @@
-import { Card, Form, Input, Button, message, Switch, Divider, Spin, Tabs, InputNumber, Select, Space } from 'antd';
+import { Card, Form, Input, Button, message, Divider, Spin, Tabs, InputNumber, Select, Space } from 'antd';
 import { useState, useEffect } from 'react';
 import { configApi } from '../api';
 import type { SystemConfigItem } from '../types';
@@ -56,11 +56,6 @@ export default function SettingsPage() {
             key: 'ai',
             label: 'AI引擎配置',
             children: <AIConfigPanel configs={groupedConfig.ai} onSave={handleSave} loading={saving} onRefresh={loadConfig} />,
-          },
-          {
-            key: 'oss',
-            label: 'OSS存储配置',
-            children: <OSSConfigPanel configs={groupedConfig.oss} onSave={handleSave} loading={saving} onRefresh={loadConfig} />,
           },
           {
             key: 'storage',
@@ -179,82 +174,6 @@ function AIConfigPanel({ configs, onSave, loading, onRefresh }: {
   );
 }
 
-function OSSConfigPanel({ configs, onSave, loading, onRefresh }: { 
-  configs: SystemConfigItem[]; 
-  onSave: (group: string, configs: SystemConfigItem[]) => void;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  const [localConfigs, setLocalConfigs] = useState(configs);
-
-  useEffect(() => { setLocalConfigs(configs); }, [configs]);
-
-  const handleChange = (key: string, value: string) => {
-    setLocalConfigs((prev) => prev.map((c) => (c.key === key ? { ...c, value } : c)));
-  };
-
-  const getConfig = (key: string) => localConfigs.find((c) => c.key === key);
-
-  return (
-    <Card>
-      <Form.Item label="启用OSS存储" valuePropName="checked">
-        <Switch
-          checked={getConfig('oss_enabled')?.value === 'true'}
-          onChange={(v) => handleChange('oss_enabled', v ? 'true' : 'false')}
-        />
-      </Form.Item>
-      <Form.Item label="OSS类型">
-        <Select
-          value={getConfig('oss_type')?.value || 'aliyun'}
-          onChange={(v) => handleChange('oss_type', v)}
-          options={[
-            { value: 'aliyun', label: '阿里云 OSS' },
-            { value: 'volcengine', label: '火山引擎 TOS' },
-          ]}
-          style={{ width: 200 }}
-        />
-      </Form.Item>
-      <Form.Item label="Bucket名称">
-        <Input
-          value={getConfig('oss_bucket')?.value || ''}
-          onChange={(e) => handleChange('oss_bucket', e.target.value)}
-          placeholder="请输入Bucket名称"
-          style={{ width: 400 }}
-        />
-      </Form.Item>
-      <Form.Item label="Endpoint">
-        <Input
-          value={getConfig('oss_endpoint')?.value || ''}
-          onChange={(e) => handleChange('oss_endpoint', e.target.value)}
-          placeholder="请输入Endpoint"
-          style={{ width: 400 }}
-        />
-      </Form.Item>
-      <Form.Item label="Access Key">
-        <Input.Password
-          value={getConfig('oss_access_key')?.value || ''}
-          onChange={(e) => handleChange('oss_access_key', e.target.value)}
-          placeholder="请输入Access Key"
-          style={{ width: 400 }}
-        />
-      </Form.Item>
-      <Form.Item label="Secret Key">
-        <Input.Password
-          value={getConfig('oss_secret_key')?.value || ''}
-          onChange={(e) => handleChange('oss_secret_key', e.target.value)}
-          placeholder="请输入Secret Key"
-          style={{ width: 400 }}
-        />
-      </Form.Item>
-      <Divider />
-      <Space>
-        <Button type="primary" loading={loading} onClick={() => onSave('oss', localConfigs)}>保存配置</Button>
-        <Button onClick={onRefresh}>重置</Button>
-      </Space>
-    </Card>
-  );
-}
-
 function StorageConfigPanel({ configs, onSave, loading, onRefresh }: { 
   configs: SystemConfigItem[]; 
   onSave: (group: string, configs: SystemConfigItem[]) => void;
@@ -275,7 +194,7 @@ function StorageConfigPanel({ configs, onSave, loading, onRefresh }: {
     <Card>
       <Form.Item label="存储类型">
         <Input
-          value="OSS"
+          value="本地磁盘"
           disabled
           style={{ width: 200 }}
         />

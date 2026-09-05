@@ -24,7 +24,7 @@ export default function ModelSelectModal({
           <Button variant='secondary' onClick={onClose}>
             {t('cancel') || '取消'}
           </Button>
-          <Button variant='primary' onClick={onConfirm} disabled={!tempSelectedModel}>
+          <Button variant='primary' onClick={onConfirm} disabled={!tempSelectedModel?.image_key}>
             {t('confirm') || '确认'}
           </Button>
         </>
@@ -61,19 +61,36 @@ export default function ModelSelectModal({
         return (
           <div className='grid grid-cols-3 gap-4 sm:grid-cols-4'>
             {modelPhotos.map(model => {
-              const isSelected = tempSelectedModel?.id === model.id
+              // 后端按 FileRecord.uuid 精确匹配模特图，没有 image_key 的素材无法用于试穿
+              const isUnavailable = !model.image_key
+              const isSelected = tempSelectedModel?.id === model.id && !isUnavailable
+              // 三态样式用 if-else 展开，避免嵌套三元
+              let stateClass
+              if (isUnavailable) {
+                stateClass =
+                  'cursor-not-allowed border-[var(--border-primary)] opacity-50 grayscale'
+              } else if (isSelected) {
+                stateClass = 'cursor-pointer border-champagne shadow-lg'
+              } else {
+                stateClass =
+                  'hover:border-champagne/50 cursor-pointer border-[var(--border-primary)] hover:shadow-md'
+              }
               return (
                 <div
                   key={model.id}
-                  className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition-all duration-200 ${
-                    isSelected
-                      ? 'border-champagne shadow-lg'
-                      : 'hover:border-champagne/50 border-[var(--border-primary)] hover:shadow-md'
-                  }`}
-                  onClick={() => onSelectModel(model)}
+                  className={`group relative overflow-hidden rounded-xl border-2 transition-all duration-200 ${stateClass}`}
+                  onClick={() => {
+                    if (!isUnavailable) {
+                      onSelectModel(model)
+                    }
+                  }}
                   role='button'
-                  tabIndex={0}
+                  tabIndex={isUnavailable ? -1 : 0}
+                  aria-disabled={isUnavailable}
                   onKeyDown={e => {
+                    if (isUnavailable) {
+                      return
+                    }
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       onSelectModel(model)
@@ -95,6 +112,11 @@ export default function ModelSelectModal({
                       }}
                     />
                   </div>
+                  {isUnavailable && (
+                    <div className='bg-[var(--bg-primary)]/95 absolute inset-x-0 bottom-0 px-1 py-1 text-center text-[10px] font-semibold text-[var(--text-muted)]'>
+                      {t('modelAssetUnavailable') || '素材不可用'}
+                    </div>
+                  )}
                   {isSelected && (
                     <div className='absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-md'>
                       <svg

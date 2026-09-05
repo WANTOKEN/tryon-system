@@ -17,8 +17,8 @@ export default function LoadingOverlay({ progress, remainingTime, t }) {
               className='h-full rounded-full shadow-sm transition-all duration-300 ease-out'
               style={{
                 width: `${Math.min(100, progress)}%`,
-                background: 'linear-gradient(90deg, #D4AF37 0%, #E5C158 100%)',
-                boxShadow: '0 0 10px rgba(212, 175, 55, 0.4)',
+                background: 'linear-gradient(90deg, var(--accent) 0%, var(--accent-dark) 100%)',
+                boxShadow: '0 0 10px var(--accent-glow)',
               }}
             />
           </div>

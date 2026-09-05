@@ -264,17 +264,53 @@ async function parseResponse(response) {
   return { detail: `服务器返回非预期格式 (HTTP ${response.status})` }
 }
 
+// ===== 全局错误提示（解决「请求失败但界面无任何提示」）=====
+// 设计：请求失败时不立即提示，而是延迟一个宏任务再提示。
+// 若调用方在这之前自行处理了该错误（调用 markHandled），则不再重复提示。
+// 这样既保证被遗忘的失败一定有反馈，又不会与调用方自己的提示重复。
+let globalErrorHandler = null
+
+export function setGlobalErrorHandler(handler) {
+  globalErrorHandler = typeof handler === 'function' ? handler : null
+}
+
+/** 调用方已自行处理该错误，阻止全局重复提示 */
+export function markHandled(response) {
+  if (response && typeof response === 'object') {
+    response.consumed = true
+  }
+  return response
+}
+
+function scheduleErrorReport(result) {
+  if (!globalErrorHandler || !result || result.silent) {
+    return
+  }
+  setTimeout(() => {
+    if (result.consumed) {
+      return
+    }
+    try {
+      globalErrorHandler(result.error || '请求失败', result.status)
+    } catch {
+      // 提示失败不能影响主流程
+    }
+  }, 0)
+}
+
 // 处理响应
 function handleResponse(response, data) {
   if (response.ok) {
     return { success: true, data }
   }
-  return {
+  const result = {
     success: false,
     error: extractError(data),
     status: response.status,
     errorCode: data?.error_code,
   }
+  scheduleErrorReport(result)
+  return result
 }
 
 // 执行单次请求
@@ -353,7 +389,9 @@ async function attemptRequest(url, config, requiresAuth, retryConfig, retryCount
       await sleep(delay)
       return attemptRequest(url, config, requiresAuth, retryConfig, retryCount + 1)
     }
-    return { success: false, error: error.message || '网络请求失败' }
+    const result = { success: false, error: error.message || '网络请求失败' }
+    scheduleErrorReport(result)
+    return result
   }
 }
 
@@ -405,6 +443,9 @@ export const api = {
 
   postNoRetry: (url, body, options = {}) =>
     request(url, { method: 'POST', body, retry: { maxRetries: 0 }, ...options }),
+
+  // 标记错误已被调用方处理，避免全局兜底提示重复弹出
+  markHandled,
 }
 
 // 获取完整的媒体文件 URL
@@ -413,6 +454,10 @@ export function getMediaUrl(path) {
     return ''
   }
   if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  // /static/uploads/ 是独立的静态资源路径，不需要加 /api/v1 前缀
+  if (path.startsWith('/static/uploads/')) {
     return path
   }
   const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
@@ -426,6 +471,10 @@ export function getWebpUrl(path) {
   }
   if (path.startsWith('http://') || path.startsWith('https://')) {
     // 替换扩展名
+    return path.replace(/\.(jpg|jpeg|png|gif)$/i, '.webp')
+  }
+  // /static/uploads/ 是独立的静态资源路径，不需要加 /api/v1 前缀
+  if (path.startsWith('/static/uploads/')) {
     return path.replace(/\.(jpg|jpeg|png|gif)$/i, '.webp')
   }
   const baseUrl = import.meta.env.VITE_API_BASE_URL || ''

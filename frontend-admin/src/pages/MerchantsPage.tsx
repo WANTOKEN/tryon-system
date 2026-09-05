@@ -344,8 +344,8 @@ export default function MerchantsPage() {
               <List.Item.Meta
                 title={
                   <Space>
-                    <Tag color={item.change_type === 'reset' ? 'purple' : 'orange'}>
-                      {item.change_type === 'reset' ? '重置' : '调整'}
+                    <Tag color={item.action === 'reset' ? 'purple' : 'orange'}>
+                      {item.action === 'reset' ? '重置' : '调整'}
                     </Tag>
                     <Text>
                       {item.old_total} → {item.new_total} (已用: {item.old_used} → {item.new_used})
@@ -354,9 +354,9 @@ export default function MerchantsPage() {
                 }
                 description={
                   <Space direction="vertical" size={0}>
-                    <Text type="secondary">原因: {item.reason || '-'}</Text>
+                    <Text type="secondary">原因: {item.note || '-'}</Text>
                     <Text type="secondary">
-                      操作人: {item.operator_name || '系统'} | 
+                      操作人: {item.operator_id || '系统'} | 
                       时间: {new Date(item.created_at).toLocaleString()}
                     </Text>
                   </Space>

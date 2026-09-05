@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from 'react'
 
 import PropTypes from 'prop-types'
 
@@ -8,7 +8,6 @@ import { Sidebar, MainStage } from './layout'
 import { ModelSelectModal, ConsentModal, HistoryModal } from './modals'
 import ClothingLibraryModal from './ClothingLibraryModal'
 import AvatarSourceModal from './modals/AvatarSourceModal'
-import ImageDisplayModal from './modals/ImageDisplayModal'
 import { Icon } from './ui'
 
 export default function MainLayout({
@@ -25,6 +24,9 @@ export default function MainLayout({
   history = [],
   status = 'idle',
   resultUrl = null,
+  recordId = null,
+  errorMessage = null,
+  clearResult,
   onTryOn,
   canTryOn,
   onOpenPreviewModal,
@@ -45,10 +47,16 @@ export default function MainLayout({
   requireConsent = true,
   showHistoryModal,
   onCloseHistoryModal,
+  historyLoading = false,
+  historyError = null,
+  onRetryHistory = null,
   sessionCustomer,
   onCustomUploadFile,
   onEndSession,
   onDeleteAvatar,
+  // 由 App 的预览弹窗搭配区触发：请求打开服装库并预筛到对应类别做替换
+  replaceRequest = null,
+  onReplaceRequestConsumed,
 }) {
   const { t } = useI18n()
 
@@ -58,9 +66,27 @@ export default function MainLayout({
   const [showConsentModal, setShowConsentModal] = useState(false)
   // 小屏"我的形象"：用悬浮按钮打开居中模态（复用形象来源弹窗）
   const [showAvatarModal, setShowAvatarModal] = useState(false)
-  // 图片展示模块框（槽位复用）
-  const [showImageDisplay, setShowImageDisplay] = useState(false)
-  const [imageDisplayData, setImageDisplayData] = useState({ src: '', title: '' })
+  // 替换服装时，打开服装库并预筛到对应类别
+  const [libraryInitialCategory, setLibraryInitialCategory] = useState('all')
+  const [libraryReplaceMode, setLibraryReplaceMode] = useState(false)
+
+  // 打开服装库的统一入口：始终显式设置类别与替换模式，避免残留上次的筛选/模式
+  const openClothingLibrary = useCallback((category = 'all', replace = false) => {
+    setLibraryInitialCategory(category || 'all')
+    setLibraryReplaceMode(replace)
+    setShowClothingLibrary(true)
+  }, [])
+
+  // App 预览弹窗搭配区的"替换"按钮通过 replaceRequest 触发：打开服装库预筛类别
+  useEffect(() => {
+    if (replaceRequest) {
+      openClothingLibrary(replaceRequest.category || 'all', true)
+      // 消费后通知 App 清空，避免同一引用重复点击不触发
+      if (typeof onReplaceRequestConsumed === 'function') {
+        onReplaceRequestConsumed()
+      }
+    }
+  }, [replaceRequest, onReplaceRequestConsumed, openClothingLibrary])
 
   // 本地状态
   const [historyFilter, setHistoryFilter] = useState('all')
@@ -71,6 +97,21 @@ export default function MainLayout({
   const hasImage = !!avatarPreview
   const hasClothing = selected.length > 0
   const isGenerating = status === 'pending' || status === 'processing'
+
+  // 当前结果是否已被收藏（收藏按钮态）
+  const isResultSaved = useMemo(() => {
+    if (!recordId) {
+      return false
+    }
+    const record = (history || []).find(r => r.id === recordId)
+    return !!(record?.is_saved || record?.saved)
+  }, [history, recordId])
+
+  // 「重新生成」：先清掉当前结果再重新发起，避免旧结果残留造成死胡同
+  const handleRegenerate = useCallback(() => {
+    clearResult?.()
+    onTryOn?.()
+  }, [clearResult, onTryOn])
 
   // 试穿按钮文字
   const tryOnBtnText = useMemo(() => {
@@ -105,13 +146,55 @@ export default function MainLayout({
 
   // 模特选择确认
   const handleModelConfirm = useCallback(() => {
-    if (tempSelectedModel) {
-      onSetAvatarPreview?.(tempSelectedModel.image_url)
-      const modelKey = tempSelectedModel.image_key || `model:${tempSelectedModel.id}`
-      onModelSelect?.(tempSelectedModel.image_url, modelKey, 'system')
-      setShowModelModal(false)
+    // 后端按 FileRecord.uuid 精确匹配模特图；没有 image_key 的素材不可用，
+    // 此前拼 `model:${id}` 兜底必然查不到，改为直接禁止选择。
+    if (!tempSelectedModel?.image_key) {
+      return
     }
+    onSetAvatarPreview?.(tempSelectedModel.image_url)
+    onModelSelect?.(tempSelectedModel.image_url, tempSelectedModel.image_key, 'system')
+    setShowModelModal(false)
   }, [tempSelectedModel, onSetAvatarPreview, onModelSelect])
+
+  // 替换服装：打开服装库（替换模式）并预筛到该服装的类别
+  const handleReplaceClothing = useCallback(
+    item => {
+      openClothingLibrary(item?.category || 'all', true)
+    },
+    [openClothingLibrary]
+  )
+
+  // onTryOn 最新引用：selected 变化后 App 会重建 handleTryOn，
+  // 但本回调闭包捕获的是旧引用，必须用 ref 取最新值，否则重算提交的是替换前的旧服装列表。
+  // 用 useLayoutEffect 而非 useEffect：它在 commit 阶段同步执行，必定早于下面的
+  // setTimeout 宏任务；useEffect 是 passive effect，执行时机晚于绘制，与宏任务顺序不确定。
+  const onTryOnRef = useRef(onTryOn)
+  useLayoutEffect(() => {
+    onTryOnRef.current = onTryOn
+  }, [onTryOn])
+
+  // 在服装库中选好替换单品：同类替换进已选列表，并立即重新生成试穿图
+  const handleReplaceConfirm = useCallback(
+    item => {
+      setShowClothingLibrary(false)
+      setLibraryReplaceMode(false)
+      // 替换成"当前已选的同一件"时直接结束：onToggleSelect 对已选项是「取消选择」语义，
+      // 继续调用会把这件移出已选并触发一次无意义（甚至无服装）的重算。
+      const keyOf = i => i?.id ?? i?.image_key ?? i?.key
+      if ((selected || []).some(s => keyOf(s) === keyOf(item))) {
+        return
+      }
+      // onToggleSelect 内部按 category 自动替换同类旧项
+      onToggleSelect?.(item)
+      // 等 selected 更新提交后再重算，且通过 ref 调用最新的 onTryOn
+      setTimeout(() => {
+        if (typeof onTryOnRef.current === 'function') {
+          onTryOnRef.current()
+        }
+      }, 0)
+    },
+    [onToggleSelect, selected]
+  )
 
   return (
     <div className='app-layout'>
@@ -119,6 +202,7 @@ export default function MainLayout({
       <Sidebar
         avatarPreview={avatarPreview}
         onAvatarChange={onAvatarChange}
+        onSetAvatarPreview={onSetAvatarPreview}
         onOpenPreviewModal={onOpenPreviewModal}
         onShowModelModal={() => {
           setTempSelectedModel(null)
@@ -130,12 +214,13 @@ export default function MainLayout({
         requireConsent={requireConsent}
         hasImage={hasImage}
         hasClothing={hasClothing}
-        onOpenClothingLibrary={() => setShowClothingLibrary(true)}
+        onOpenClothingLibrary={() => openClothingLibrary('all', false)}
         selected={selected}
         customClothing={customClothing}
         wardrobeClothing={wardrobeClothing}
         onRemoveSelected={onRemoveSelected}
         onClearSelection={onClearSelection}
+        onReplaceClothing={handleReplaceClothing}
         sessionId={sessionCustomer}
         t={t}
         showToast={showToast}
@@ -146,12 +231,17 @@ export default function MainLayout({
         hasImage={hasImage}
         hasClothing={hasClothing}
         resultUrl={resultUrl}
+        recordId={recordId}
+        errorMessage={errorMessage}
+        isResultSaved={isResultSaved}
         avatarPreview={avatarPreview}
         selectedClothing={selectedClothing}
         onOpenPreviewModal={onOpenPreviewModal}
         onClearSelection={onClearSelection}
+        onToggleHistorySaved={onToggleHistorySaved}
+        onRegenerate={handleRegenerate}
         onOpenModelModal={() => setShowModelModal(true)}
-        onOpenClothingLibrary={() => setShowClothingLibrary(true)}
+        onOpenClothingLibrary={category => openClothingLibrary(category, false)}
         onAvatarChange={onAvatarChange}
         onSetAvatarPreview={onSetAvatarPreview}
         sessionId={sessionCustomer}
@@ -166,17 +256,21 @@ export default function MainLayout({
         progress={progress}
         remainingTime={remainingTime}
         onEndSession={onEndSession}
-        onOpenImageDisplay={data => {
-          setImageDisplayData(data)
-          setShowImageDisplay(true)
-        }}
+        onReplaceClothing={handleReplaceClothing}
+        onRemoveSelected={onRemoveSelected}
         t={t}
       />
 
       {/* 服装库模态框 */}
       <ClothingLibraryModal
         isOpen={showClothingLibrary}
-        onClose={() => setShowClothingLibrary(false)}
+        onClose={() => {
+          setShowClothingLibrary(false)
+          setLibraryReplaceMode(false)
+        }}
+        initialCategory={libraryInitialCategory}
+        replaceMode={libraryReplaceMode}
+        onReplaceConfirm={handleReplaceConfirm}
         clothing={clothing}
         customClothing={customClothing}
         wardrobeClothing={wardrobeClothing}
@@ -222,6 +316,9 @@ export default function MainLayout({
         onToggleSaved={onToggleHistorySaved}
         onDelete={onDeleteHistory}
         onPreview={onOpenPreviewModal}
+        onRetry={onRetryHistory}
+        loading={historyLoading}
+        historyError={historyError}
         formatTime={formatTime}
         t={t}
       />
@@ -249,15 +346,6 @@ export default function MainLayout({
         t={t}
       />
 
-      {/* 图片展示模块框：槽位复用 */}
-      <ImageDisplayModal
-        isOpen={showImageDisplay}
-        onClose={() => setShowImageDisplay(false)}
-        src={imageDisplayData.src}
-        title={imageDisplayData.title}
-        t={t}
-      />
-
       {/* 小屏悬浮按钮：我的形象 / 服装库 */}
       <div className='mobile-fab-group'>
         <button
@@ -272,7 +360,7 @@ export default function MainLayout({
         <button
           type='button'
           className='mobile-fab'
-          onClick={() => setShowClothingLibrary(true)}
+          onClick={() => openClothingLibrary('all', false)}
           aria-label={t('openClothingLibrary') || '服装库'}
         >
           <Icon name='wardrobe' className='h-5 w-5' />
@@ -295,6 +383,9 @@ MainLayout.propTypes = {
   history: PropTypes.arrayOf(PropTypes.object),
   status: PropTypes.string,
   resultUrl: PropTypes.string,
+  recordId: PropTypes.string,
+  errorMessage: PropTypes.string,
+  clearResult: PropTypes.func,
   onTryOn: PropTypes.func.isRequired,
   canTryOn: PropTypes.bool.isRequired,
   onOpenPreviewModal: PropTypes.func.isRequired,
@@ -315,6 +406,9 @@ MainLayout.propTypes = {
   requireConsent: PropTypes.bool,
   showHistoryModal: PropTypes.bool.isRequired,
   onCloseHistoryModal: PropTypes.func.isRequired,
+  historyLoading: PropTypes.bool,
+  historyError: PropTypes.string,
+  onRetryHistory: PropTypes.func,
   onEndSession: PropTypes.func,
   onDeleteAvatar: PropTypes.func,
 }

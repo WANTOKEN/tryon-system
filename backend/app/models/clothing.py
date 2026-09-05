@@ -12,7 +12,8 @@ class Clothing(UUIDMixin, TimestampMixin, Base):
         String(32), ForeignKey("merchants.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(128), default="")
-    category: Mapped[str] = mapped_column(String(64), default="top", index=True)
+    # 合法取值见 constants.CATEGORY_ID_SET（tops/bottoms/dresses/outerwear/shoes/accessories）
+    category: Mapped[str] = mapped_column(String(64), default="tops", index=True)
     color: Mapped[str] = mapped_column(String(32), default="")
     size: Mapped[str] = mapped_column(String(16), default="")
     brand: Mapped[str] = mapped_column(String(64), default="")

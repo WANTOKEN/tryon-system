@@ -77,6 +77,8 @@ export default function ScanUploadPage() {
 
   const handleFile = async e => {
     const file = e.target.files?.[0]
+    // 取到文件后立即清空 value：否则上传失败后再次选择同一文件不会触发 onChange
+    e.target.value = ''
     if (!file) {
       return
     }
@@ -86,10 +88,20 @@ export default function ScanUploadPage() {
       return
     }
     if (file.size > 10 * 1024 * 1024) {
+      setStatus('error')
       setErrorMsg(t('fileTooLarge') || '图片大小不能超过 10MB')
       return
     }
-    const previewFile = await compressImage(file)
+
+    let previewFile
+    try {
+      previewFile = await compressImage(file)
+    } catch {
+      setStatus('error')
+      setErrorMsg(t('uploadFailed') || '图片处理失败，请重试')
+      return
+    }
+
     setPreview(URL.createObjectURL(previewFile))
     setStatus('uploading')
     setErrorMsg(null)

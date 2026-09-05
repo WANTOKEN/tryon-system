@@ -5,7 +5,6 @@ import PropTypes from 'prop-types'
 import PreviewCanvas from '../sections/PreviewCanvas'
 import { Icon } from '../ui'
 import AvatarSourceModal from '../modals/AvatarSourceModal'
-import ImageDisplayModal from '../modals/ImageDisplayModal'
 
 // 服装 category -> 槽位 key 的映射
 const SLOT_CATEGORY_MAP = {
@@ -23,7 +22,9 @@ function SlotRow({
   onOpenModelModal,
   onOpenClothingLibrary,
   onAvatarSource,
-  onOpenImageDisplay,
+  onOpenPreviewModal,
+  onReplaceClothing,
+  onRemoveSelected,
   t,
 }) {
   // 把已选服装按槽位分组（每个 category 在 selected 中至多 1 件）
@@ -48,7 +49,10 @@ function SlotRow({
       filled: !!bySlot.tops,
       image: bySlot.tops?.image_url || bySlot.tops?.image,
       name: bySlot.tops?.name,
-      onClick: onOpenClothingLibrary,
+      item: bySlot.tops,
+      // 点击槽位直接跳到服装库对应类别
+      category: 'tops',
+      onClick: () => onOpenClothingLibrary('tops'),
     },
     {
       key: 'bottoms',
@@ -56,7 +60,9 @@ function SlotRow({
       filled: !!bySlot.bottoms,
       image: bySlot.bottoms?.image_url || bySlot.bottoms?.image,
       name: bySlot.bottoms?.name,
-      onClick: onOpenClothingLibrary,
+      item: bySlot.bottoms,
+      category: 'bottoms',
+      onClick: () => onOpenClothingLibrary('bottoms'),
     },
     {
       key: 'other',
@@ -64,7 +70,11 @@ function SlotRow({
       filled: !!bySlot.other,
       image: bySlot.other?.image_url || bySlot.other?.image,
       name: bySlot.other?.name,
-      onClick: onOpenClothingLibrary,
+      item: bySlot.other,
+      // 「其他」是 dresses/outerwear/shoes/accessories 合并槽位，
+      // 没有单一 category 值可筛，跳到全部
+      category: 'all',
+      onClick: () => onOpenClothingLibrary('all'),
     },
   ]
 
@@ -80,11 +90,29 @@ function SlotRow({
               // 形象槽位：始终弹出「我的形象」模态框
               slot.onClick()
             } else if (slot.filled) {
-              // 已填（服装）：打开图片展示模块框
-              onOpenImageDisplay?.({
-                src: slot.image,
-                title: slot.name || slot.label,
-              })
+              // 已填（服装）：与「我的形象」共用同一预览弹窗（flex 居中，无 transform 动画位移），
+              // 底部带常驻操作按钮：更换 / 移出
+              const actions = []
+              if (slot.item) {
+                actions.push({
+                  key: 'replace',
+                  title: t('replaceClothing') || '更换',
+                  path: 'M4 4v6h6M20 20v-6h-6M20 10a8 8 0 00-15.5-2M4 14a8 8 0 0015.5 2',
+                  onClick: () => onReplaceClothing?.(slot.item),
+                })
+              }
+              // 只有拿到真实 id 才能移出（onRemoveSelected 按 id 定位），
+              // 用严格比较替代 != null，同时排除 undefined 与 null
+              const slotId = slot.item?.id
+              if (slotId !== undefined && slotId !== null) {
+                actions.push({
+                  key: 'remove',
+                  title: t('clear') || '移出',
+                  path: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+                  onClick: () => onRemoveSelected?.(slotId),
+                })
+              }
+              onOpenPreviewModal?.(slot.image, slot.name || slot.label, [], actions)
             } else {
               slot.onClick()
             }
@@ -109,6 +137,7 @@ function SlotRow({
 export default function MainStage({
   // Preview
   resultUrl = null,
+  recordId = null,
   selectedClothing,
   avatarPreview = null,
   hasImage,
@@ -121,7 +150,12 @@ export default function MainStage({
   onSetAvatarPreview,
   sessionId,
   showToast,
-  onOpenImageDisplay: _onOpenImageDisplay,
+  // Result actions
+  isResultSaved = false,
+  onToggleHistorySaved,
+  onRegenerate,
+  status = 'idle',
+  errorMessage = null,
   // Generate
   userConsent,
   onConsentChange,
@@ -135,12 +169,13 @@ export default function MainStage({
   // Loading
   progress,
   remainingTime,
+  // Slot actions：槽位弹窗内的「更换 / 移出」
+  onReplaceClothing,
+  onRemoveSelected,
   // Common
   t,
 }) {
   const [showAvatarSource, setShowAvatarSource] = useState(false)
-  const [showImageDisplay, setShowImageDisplay] = useState(false)
-  const [imageDisplayData, setImageDisplayData] = useState({ src: '', title: '' })
 
   return (
     <main className='main-stage' role='main'>
@@ -148,11 +183,19 @@ export default function MainStage({
       <div className='relative'>
         <PreviewCanvas
           resultUrl={resultUrl}
+          recordId={recordId}
           selectedClothing={selectedClothing}
           hasImage={hasImage}
           hasClothing={hasClothing}
           onOpenPreviewModal={onOpenPreviewModal}
           onClearSelection={onClearSelection}
+          isResultSaved={isResultSaved}
+          onToggleHistorySaved={onToggleHistorySaved}
+          onRegenerate={onRegenerate}
+          canTryOn={canTryOn}
+          isGenerating={isGenerating}
+          status={status}
+          errorMessage={errorMessage}
           t={t}
         />
 
@@ -172,7 +215,7 @@ export default function MainStage({
                   </div>
                   {remainingTime > 0 && (
                     <p className='loading-countdown-simple'>
-                      {t('remainingTime', { n: remainingTime }) || `${remainingTime}s`}
+                      {t('n_remainingTime', { n: remainingTime }) || `剩余 ${remainingTime} 秒`}
                     </p>
                   )}
                   {remainingTime === 0 && progress > 0 && progress < 100 && (
@@ -187,21 +230,19 @@ export default function MainStage({
         )}
       </div>
 
-      {/* 添加图片槽位 - 形象 / 上装 / 下装 / 其他，与形象和服装库选择同步 */}
-      {!resultUrl && (
-        <SlotRow
-          avatarPreview={avatarPreview}
-          selected={selectedClothing}
-          onOpenModelModal={onOpenModelModal}
-          onOpenClothingLibrary={onOpenClothingLibrary}
-          onAvatarSource={() => setShowAvatarSource(true)}
-          onOpenImageDisplay={data => {
-            setImageDisplayData(data)
-            setShowImageDisplay(true)
-          }}
-          t={t}
-        />
-      )}
+      {/* 添加图片槽位 - 形象 / 上装 / 下装 / 其他，与形象和服装库选择同步
+          出图后依然常驻，否则结果页无法再换形象/换装，形成死胡同 */}
+      <SlotRow
+        avatarPreview={avatarPreview}
+        selected={selectedClothing}
+        onOpenModelModal={onOpenModelModal}
+        onOpenClothingLibrary={onOpenClothingLibrary}
+        onAvatarSource={() => setShowAvatarSource(true)}
+        onOpenPreviewModal={onOpenPreviewModal}
+        onReplaceClothing={onReplaceClothing}
+        onRemoveSelected={onRemoveSelected}
+        t={t}
+      />
 
       {/* 形象来源选择弹窗：复用形象来源弹窗（与左侧「我的形象」一致） */}
       <AvatarSourceModal
@@ -219,78 +260,68 @@ export default function MainStage({
         t={t}
       />
 
-      {/* 图片展示模块框：槽位复用 */}
-      <ImageDisplayModal
-        isOpen={showImageDisplay}
-        onClose={() => setShowImageDisplay(false)}
-        src={imageDisplayData.src}
-        title={imageDisplayData.title}
-        t={t}
-      />
+      {/* 生成按钮区域 - 常驻显示（出图后文案由 tryOnBtnText 切换为「重新生成」） */}
+      <div className='generate-section-simple'>
+        {/* 免责声明复选框 - 常驻显示，必须勾选才能开始试穿 */}
+        <div className='consent-row'>
+          <input
+            type='checkbox'
+            id='main-consent'
+            checked={userConsent}
+            onChange={e => onConsentChange(e.target.checked)}
+            className='checkbox-simple'
+          />
+          <label htmlFor='main-consent' className='consent-label'>
+            <span>{t('tryOnConsentText') || '我已阅读并同意以上试穿服务免责声明'}</span>
+            <button type='button' onClick={onShowDisclaimer} className='consent-link'>
+              {t('viewDisclaimer') || '《服务免责声明》'}
+            </button>
+          </label>
+        </div>
 
-      {/* 生成按钮区域 - 常驻显示 */}
-      {!resultUrl && (
-        <div className='generate-section-simple'>
-          {/* 免责声明复选框 - 常驻显示，必须勾选才能开始试穿 */}
-          <div className='consent-row'>
-            <input
-              type='checkbox'
-              id='main-consent'
-              checked={userConsent}
-              onChange={e => onConsentChange(e.target.checked)}
-              className='checkbox-simple'
-            />
-            <label htmlFor='main-consent' className='consent-label'>
-              <span>{t('tryOnConsentText') || '我已阅读并同意以上试穿服务免责声明'}</span>
-              <button type='button' onClick={onShowDisclaimer} className='consent-link'>
-                {t('viewDisclaimer') || '《服务免责声明》'}
-              </button>
-            </label>
-          </div>
-
-          {/* 生成按钮 + 次级操作 同一行 */}
-          <div className='generate-cta-row'>
-            {/* 生成按钮 - 常驻显示，未勾选协议或条件不足时置灰 */}
+        {/* 生成按钮 + 次级操作 同一行 */}
+        <div className='generate-cta-row'>
+          {/* 生成按钮 - 常驻显示，未勾选协议或条件不足时置灰 */}
+          <button
+            type='button'
+            className={`generate-btn-simple ${isGenerating ? 'loading' : ''}`}
+            onClick={onTryOn}
+            disabled={!canTryOn || isGenerating || !userConsent}
+          >
+            {isGenerating ? (
+              <>
+                <Icon name='loader' className='h-4 w-4 animate-spin' />
+                {t('generating')}
+              </>
+            ) : (
+              <>
+                <Icon name='sparkle' className='h-4 w-4' />
+                {tryOnBtnText}
+              </>
+            )}
+          </button>
+          {/* 清除按钮（仅图标）：重置槽位与预览框 */}
+          <div className='tryon-actions-row'>
             <button
               type='button'
-              className={`generate-btn-simple ${isGenerating ? 'loading' : ''}`}
-              onClick={onTryOn}
-              disabled={!canTryOn || isGenerating || !userConsent}
+              className='tryon-action-btn'
+              onClick={onClearSelection}
+              disabled={isGenerating}
+              aria-label={t('clear') || '清空'}
+              title={t('clear') || '清空'}
             >
-              {isGenerating ? (
-                <>
-                  <Icon name='loader' className='h-4 w-4 animate-spin' />
-                  {t('generating')}
-                </>
-              ) : (
-                <>
-                  <Icon name='sparkle' className='h-4 w-4' />
-                  {tryOnBtnText}
-                </>
-              )}
+              <Icon name='trash' className='h-4 w-4' />
             </button>
-            {/* 清除按钮（仅图标）：重置槽位与预览框 */}
-            <div className='tryon-actions-row'>
-              <button
-                type='button'
-                className='tryon-action-btn'
-                onClick={onClearSelection}
-                disabled={isGenerating}
-                aria-label={t('clear') || '清空'}
-                title={t('clear') || '清空'}
-              >
-                <Icon name='trash' className='h-4 w-4' />
-              </button>
-            </div>
           </div>
         </div>
-      )}
+      </div>
     </main>
   )
 }
 
 MainStage.propTypes = {
   resultUrl: PropTypes.string,
+  recordId: PropTypes.string,
   selectedClothing: PropTypes.arrayOf(PropTypes.object).isRequired,
   avatarPreview: PropTypes.string,
   hasImage: PropTypes.bool.isRequired,
@@ -303,7 +334,11 @@ MainStage.propTypes = {
   onSetAvatarPreview: PropTypes.func,
   sessionId: PropTypes.string,
   showToast: PropTypes.func,
-  onOpenImageDisplay: PropTypes.func,
+  isResultSaved: PropTypes.bool,
+  onToggleHistorySaved: PropTypes.func,
+  onRegenerate: PropTypes.func,
+  status: PropTypes.string,
+  errorMessage: PropTypes.string,
   userConsent: PropTypes.bool.isRequired,
   onConsentChange: PropTypes.func.isRequired,
   onShowDisclaimer: PropTypes.func.isRequired,

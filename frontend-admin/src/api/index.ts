@@ -93,7 +93,7 @@ export const merchantApi = {
     };
   },
 
-  get: async (id: number) => {
+  get: async (id: string) => {
     const response = await api.get(`/admin/merchants/${id}/`);
     return response.data;
   },
@@ -103,27 +103,27 @@ export const merchantApi = {
     return response.data;
   },
 
-  update: async (id: number, data: Record<string, unknown>) => {
+  update: async (id: string, data: Record<string, unknown>) => {
     const response = await api.patch(`/admin/merchants/${id}/`, data);
     return response.data;
   },
 
-  delete: async (id: number) => {
+  delete: async (id: string) => {
     await api.delete(`/admin/merchants/${id}/`);
     return { success: true };
   },
 
-  adjustQuota: async (id: number, quotaTotal: number, reason?: string) => {
+  adjustQuota: async (id: string, quotaTotal: number, reason?: string) => {
     const response = await api.patch(`/admin/merchants/${id}/quota/`, { quota_total: quotaTotal, reason });
     return response.data;
   },
 
-  resetQuota: async (id: number, reason?: string) => {
+  resetQuota: async (id: string, reason?: string) => {
     const response = await api.post(`/admin/merchants/${id}/quota/reset/`, { reason });
     return response.data;
   },
 
-  getQuotaHistory: async (id: number, days: number = 30) => {
+  getQuotaHistory: async (id: string, days: number = 30) => {
     try {
       const response = await api.get(`/admin/merchants/${id}/quota/history/`, { params: { days } });
       return response.data.items || response.data || [];
@@ -177,10 +177,18 @@ export const clothingApi = {
     };
   },
 
-  getCategories: async () => {
-    // 与后端 /wardrobe/categories/ 保持一致，避免前后端字典分裂
+  getCategories: async (): Promise<
+    Array<{ id: string; name: string; subcategories: Array<{ id: string; name: string }> }>
+  > => {
+    // 与后端 /wardrobe/categories/ 保持一致，避免前后端字典分裂。
+    // 后端统一返回 {"items": [...]}，这里必须归一化为数组，
+    // 否则调用方直接 .map() 会抛 "categories.map is not a function"。
     const response = await api.get('/wardrobe/categories/');
-    return response.data || [];
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.items)) return data.items;
+    if (Array.isArray(data?.categories)) return data.categories;
+    return [];
   },
 
   deleteClothing: async (id: string) => {
@@ -190,13 +198,6 @@ export const clothingApi = {
 
   updateClothing: async (id: string, data: Record<string, unknown>) => {
     const response = await api.patch(`/admin/clothing/${id}/`, data);
-    return response.data;
-  },
-
-  updateClothingWithImage: async (id: string, formData: FormData) => {
-    const response = await api.patch(`/admin/clothing/${id}/`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
     return response.data;
   },
 
@@ -215,7 +216,7 @@ export const clothingApi = {
 
 // ============ 试穿记录 API ============
 export const tryonApi = {
-  list: async (params: { page?: number; page_size?: number; merchant_id?: number; status?: string }) => {
+  list: async (params: { page?: number; page_size?: number; merchant_id?: string; status?: string }) => {
     const response = await api.get('/admin/tryon-records/', { params });
     return {
       items: response.data.items || [],
@@ -223,7 +224,7 @@ export const tryonApi = {
     };
   },
 
-  listRecords: async (params: { page?: number; page_size?: number; merchant_id?: number; status?: string }) => {
+  listRecords: async (params: { page?: number; page_size?: number; merchant_id?: string; status?: string }) => {
     const response = await api.get('/admin/tryon-records/', { params });
     return {
       items: response.data.items || [],
@@ -231,7 +232,7 @@ export const tryonApi = {
     };
   },
 
-  deleteRecord: async (id: number) => {
+  deleteRecord: async (id: string) => {
     await api.delete(`/admin/tryon-records/${id}/`);
     return { success: true };
   },
@@ -309,14 +310,14 @@ export const modelPhotoApi = {
     return response.data;
   },
 
-  update: async (id: number, data: FormData | Record<string, unknown>, isFormData?: boolean) => {
+  update: async (id: string, data: FormData | Record<string, unknown>, isFormData?: boolean) => {
     const response = await api.patch(`/admin/model-photos/${id}/`, data, {
       headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
     });
     return response.data;
   },
 
-  delete: async (id: number) => {
+  delete: async (id: string) => {
     await api.delete(`/admin/model-photos/${id}/`);
     return { success: true };
   },
@@ -341,11 +342,11 @@ export const adminUserApi = {
     const response = await api.post('/admin/admin-users/', data);
     return response.data;
   },
-  update: async (id: number, data: Record<string, unknown>) => {
+  update: async (id: string, data: Record<string, unknown>) => {
     const response = await api.patch(`/admin/admin-users/${id}/`, data);
     return response.data;
   },
-  delete: async (id: number) => {
+  delete: async (id: string) => {
     await api.delete(`/admin/admin-users/${id}/`);
     return { success: true };
   },

@@ -51,6 +51,9 @@ function initDB() {
 
 // IndexedDB 操作
 async function setIDB(key, value) {
+  if (key === undefined || key === null) {
+    return false
+  }
   await initDB()
   if (!db) {
     return false
@@ -75,6 +78,9 @@ async function setIDB(key, value) {
 }
 
 async function getIDB(key) {
+  if (key === undefined || key === null) {
+    return null
+  }
   await initDB()
   if (!db) {
     return null
@@ -101,6 +107,9 @@ async function getIDB(key) {
 }
 
 async function removeIDB(key) {
+  if (key === undefined || key === null) {
+    return false
+  }
   await initDB()
   if (!db) {
     return false

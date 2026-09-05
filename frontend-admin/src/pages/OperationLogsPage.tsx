@@ -29,7 +29,7 @@ export default function OperationLogsPage() {
     },
     {
       title: '操作人',
-      dataIndex: 'admin_username',
+      dataIndex: 'operator_username',
       hideInSearch: true,
       width: 120,
     },
@@ -89,7 +89,7 @@ export default function OperationLogsPage() {
     },
     {
       title: 'IP地址',
-      dataIndex: 'ip_address',
+      dataIndex: 'ip',
       hideInSearch: true,
       width: 140,
     },

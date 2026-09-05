@@ -1,9 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#c4956a"/>
-  <g fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M32 18a5 5 0 1 0-5-5"/>
-    <path d="M32 18l16 12a4 4 0 0 1-2.4 7.2H18.4a4 4 0 0 1-2.4-7.2L32 18z"/>
-    <path d="M18 46h28" opacity="0.6"/>
-  </g>
-  <path d="M46 12l1.2 3 3 1.2-3 1.2-1.2 3-1.2-3-3-1.2 3-1.2 1.2-3z" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="gold" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#e8d29a"/>
+      <stop offset="0.45" stop-color="#c8a45c"/>
+      <stop offset="1" stop-color="#a07c1e"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.38"/>
+      <stop offset="0.4" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="figure" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f2e8d2"/>
+    </linearGradient>
+    <linearGradient id="reflect" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="12" fill="url(#gold)"/>
+  <rect width="64" height="64" rx="12" fill="url(#gloss)"/>
+
+  <circle cx="32" cy="20" r="7" fill="url(#figure)"/>
+  <path d="M14 56 Q14 34 32 30 Q50 34 50 56 Z" fill="url(#figure)"/>
+
+  <path d="M18 14 L46 54" stroke="url(#reflect)" stroke-width="3" stroke-linecap="round"/>
 </svg>

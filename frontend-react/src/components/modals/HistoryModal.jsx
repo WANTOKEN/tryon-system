@@ -13,6 +13,9 @@ export default function HistoryModal({
   onToggleSaved,
   onDelete,
   onPreview,
+  onRetry,
+  loading = false,
+  historyError = null,
   formatTime,
   t,
 }) {
@@ -46,7 +49,7 @@ export default function HistoryModal({
             }`}
             onClick={() => onFilterChange('all')}
           >
-            全部
+            {t('historyTabAll')}
           </button>
           <button
             type='button'
@@ -67,7 +70,7 @@ export default function HistoryModal({
             type='button'
             className='rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-red-500'
             onClick={onClearHistory}
-            title='清空记录'
+            title={t('clearHistoryTooltip')}
           >
             <Icon name='trash' className='h-4 w-4' />
           </button>
@@ -75,7 +78,28 @@ export default function HistoryModal({
       </div>
 
       {/* 历史记录列表 */}
-      {filteredHistory.length === 0 ? (
+      {historyError && (
+        <div className='flex flex-col items-center justify-center py-20 text-center'>
+          <div className='mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-secondary)]'>
+            <Icon name='alert' className='h-10 w-10 text-[var(--error)]' />
+          </div>
+          <p className='mb-4 text-[var(--text-secondary)]'>{historyError}</p>
+          <button
+            type='button'
+            onClick={onRetry}
+            className='rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-medium text-[var(--accent-contrast)] transition-colors hover:bg-[var(--accent-strong)]'
+          >
+            {t('retry') || '重试'}
+          </button>
+        </div>
+      )}
+      {!historyError && loading && (
+        <div className='flex flex-col items-center justify-center py-20 text-center'>
+          <div className='mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[var(--border-primary)] border-t-[var(--accent)]' />
+          <p className='text-[var(--text-muted)]'>{t('loading') || '加载中…'}</p>
+        </div>
+      )}
+      {!historyError && !loading && filteredHistory.length === 0 && (
         <div className='flex flex-col items-center justify-center py-20 text-center'>
           <div className='mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-secondary)]'>
             <Icon name='clock' className='h-10 w-10 text-[var(--text-tertiary)]' />
@@ -84,7 +108,8 @@ export default function HistoryModal({
             {historyFilter === 'saved' ? t('noSaved') : t('noHistory')}
           </p>
         </div>
-      ) : (
+      )}
+      {!historyError && !loading && filteredHistory.length > 0 && (
         <div className='grid grid-cols-2 gap-4 md:grid-cols-3'>
           {filteredHistory.map(record => {
             const names = record.clothing?.map(c => c.clothing_name || c.name).join(' + ') || ''
@@ -105,14 +130,14 @@ export default function HistoryModal({
                 {/* 图片区域 */}
                 <div
                   className='relative aspect-[3/4] cursor-pointer overflow-hidden'
-                  onClick={() => imgSrc && onPreview(imgSrc, names)}
+                  onClick={() => imgSrc && onPreview(imgSrc, names, record.clothing)}
                   role='button'
                   tabIndex={0}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
                       if (imgSrc) {
-                        onPreview(imgSrc, names)
+                        onPreview(imgSrc, names, record.clothing)
                       }
                     }
                   }}
@@ -136,7 +161,7 @@ export default function HistoryModal({
                       onClick={e => {
                         e.stopPropagation()
                         if (imgSrc) {
-                          onPreview(imgSrc, names)
+                          onPreview(imgSrc, names, record.clothing)
                         }
                       }}
                       className='flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-secondary)] shadow-lg transition-transform hover:scale-110'
@@ -184,7 +209,7 @@ export default function HistoryModal({
                 {/* 底部信息 */}
                 <div className='border-t border-[var(--border-primary)] p-3'>
                   <p className='truncate text-xs font-medium text-[var(--text-secondary)]'>
-                    {names || '未选择服装'}
+                    {names || t('noClothingSelected')}
                   </p>
                   <p className='mt-1 text-[11px] text-[var(--text-muted)]'>
                     {formatTime(record.created_at)}
@@ -209,6 +234,9 @@ HistoryModal.propTypes = {
   onToggleSaved: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onPreview: PropTypes.func.isRequired,
+  onRetry: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
+  historyError: PropTypes.string,
   formatTime: PropTypes.func.isRequired,
   t: PropTypes.func.isRequired,
 }

@@ -34,9 +34,6 @@ export function useClothing() {
       if (filters.category) {
         params.category = filters.category
       }
-      if (filters.subcategory) {
-        params.subcategory = filters.subcategory
-      }
       if (filters.source) {
         params.source = filters.source
       }
@@ -50,16 +47,17 @@ export function useClothing() {
         response.data?.results || response.data?.items || response.data?.data?.items || []
       if (response.success) {
         // 转换数据格式供前端使用
+        // 后端返回 {id, name, category, color, price, size, brand, season, style,
+        //           material, description, image_url, thumb_url, image_key, source}
         const items = results.map(item => ({
-          id: item.uuid,
-          uuid: item.uuid,
+          id: item.id,
+          uuid: item.id,
           name: item.name,
           category: item.category,
-          subcategory: item.subcategory,
           color: item.color || '#F5F4F0',
           price: item.price,
-          sizes: item.sizes,
-          image: item.image_thumb_url || item.image_url,
+          size: item.size || '',
+          image: item.thumb_url || item.image_url,
           imageFull: item.image_url,
           image_key: item.image_key, // 存储 key，用于复用（节省流量）
           source: item.source,
@@ -81,7 +79,8 @@ export function useClothing() {
     try {
       const response = await api.get(API_ENDPOINTS.WARDROBE.CATEGORIES)
       if (response.success && response.data) {
-        const cats = response.data?.data || response.data
+        // 后端统一返回 { items: [...] }，兼容 { data: { items: [...] } } 嵌套格式
+        const cats = response.data?.items ?? response.data?.data?.items ?? []
         setCategories(cats)
         return cats
       }
@@ -92,56 +91,53 @@ export function useClothing() {
   }, [])
 
   // 上传服装
-  const uploadClothing = useCallback(
-    async (file, name, category, subcategory, color, price, sizes) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const formData = new FormData()
-        formData.append('file', file)
-        const finalName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
-        formData.append('name', finalName)
-        formData.append('category', category)
-        formData.append('subcategory', subcategory || '')
-        if (color) {
-          formData.append('color', color)
-        }
-        if (price !== undefined && price !== null && price !== '') {
-          formData.append('price', price)
-        }
-        if (sizes) {
-          formData.append('size', sizes)
-        }
-
-        const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
-        if (response.success) {
-          const item = response.data?.data || response.data
-          const newItem = {
-            id: item.uuid,
-            uuid: item.uuid,
-            name: item.name,
-            category: item.category,
-            subcategory: item.subcategory,
-            color: item.color || '#F5F4F0',
-            price: item.price,
-            sizes: item.sizes,
-            image: item.image_thumb_url || item.image_url,
-            imageFull: item.image_url,
-            source: item.source,
-          }
-          setClothing(prev => [...prev, newItem])
-          return { success: true, item: newItem }
-        }
-        return { success: false, error: response.error || null }
-      } catch (err) {
-        setError(err.message)
-        return { success: false, error: err.message }
-      } finally {
-        setLoading(false)
+  const uploadClothing = useCallback(async (file, name, category, color, price, sizes) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const finalName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
+      formData.append('name', finalName)
+      formData.append('category', category)
+      if (color) {
+        formData.append('color', color)
       }
-    },
-    []
-  )
+      if (price !== undefined && price !== null && price !== '') {
+        formData.append('price', price)
+      }
+      if (sizes) {
+        formData.append('size', sizes)
+      }
+
+      const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
+      if (response.success) {
+        const item = response.data?.data || response.data
+        const itemId = item.id
+        const newItem = {
+          id: itemId,
+          uuid: itemId,
+          name: item.name,
+          category: item.category,
+          color: item.color || '#F5F4F0',
+          price: item.price,
+          size: item.size || '',
+          image: item.thumb_url || item.image_url,
+          imageFull: item.image_url,
+          image_key: item.image_key,
+          source: item.source,
+        }
+        setClothing(prev => [...prev, newItem])
+        return { success: true, item: newItem }
+      }
+      return { success: false, error: response.error || null }
+    } catch (err) {
+      setError(err.message)
+      return { success: false, error: err.message }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   // 删除服装
   const deleteClothing = useCallback(async uuid => {

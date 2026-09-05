@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, message, ConfigProvider, Tooltip } from 'antd';
+import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, message, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -237,12 +237,6 @@ export default function AdminLayout() {
   }));
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: mode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { colorPrimary: primaryColor, borderRadius: 8 },
-      }}
-    >
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
         trigger={null}
@@ -420,6 +414,5 @@ export default function AdminLayout() {
         </Content>
       </Layout>
     </Layout>
-    </ConfigProvider>
   );
 }

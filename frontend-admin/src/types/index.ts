@@ -1,98 +1,95 @@
 // 管理后台类型定义
+//
+// 契约约定（与后端 SQLAlchemy 模型严格对齐）：
+// 1. 所有模型主键是 id（UUID hex 字符串，来自 UUIDMixin），没有任何模型有 uuid 主键。
+//    唯一例外：FileRecord 有独立的业务字段 uuid（对外暴露用）。
+// 2. 因此列表 rowKey / API 路径参数一律用 id: string。
+// 3. 不在后端出参中的字段一律不在此声明，避免前端误以为字段存在。
 
 // 商家
 export interface Merchant {
-  id: number;
-  uuid: string;
+  id: string;
   username: string;
   phone: string;
   store_name: string;
-  store_address: string;
   avatar_url: string;
+  role: string;
+  is_superuser: boolean;
   quota_total: number;
   quota_used: number;
   quota_remaining: number;
   quota_reset_at: string | null;
-  status: number; // 0: 禁用, 1: 正常, 2: 过期
-  status_text: string;
-  last_login_at: string | null;
-  last_login_ip: string;
+  status: number; // 0: 禁用, 1: 正常
   is_active: boolean;
+  last_login_at: string | null;
   created_at: string;
-  updated_at: string;
   email?: string;
   name?: string;
 }
 
 // 试穿记录
+// 说明：后端 status 存 int，但 /admin/tryon-records/ 出参已投影为语义字符串
+// （pending/processing/completed/failed），status_text 为中文文案。
 export interface TryOnRecord {
-  id: number;
-  uuid: string;
-  merchant_id: number;
+  id: string;
+  merchant_id?: string;
   merchant_name?: string;
   session_id: string;
   avatar_url: string;
-  avatar_file_id?: string;
-  avatar_source: 'system' | 'user' | 'history';
+  avatar_source: string;
   result_url: string;
-  result_file_id?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   status_text: string;
-  ai_engine: string;
-  task_id: string;
-  error_message: string | null;
-  processing_time: number | null;
+  engine: string;
   is_saved: boolean;
-  ip_address: string;
-  device_info: string;
+  duration_ms: number;
   created_at: string;
-  updated_at: string;
 }
 
 // 服装
+// 缩略图字段是 thumb_url（不是 image_thumb_url）；image_key 存的是 FileRecord.uuid。
 export interface Clothing {
-  id: string; // UUID
-  uuid: string;
-  merchant_id: number;
-  category: string;
-  category_text: string;
-  subcategory: string;
+  id: string;
+  merchant_id: string;
   name: string;
+  category: string;
   color: string;
+  size: string;
+  brand: string;
+  season: string;
+  style: string;
+  material: string;
   price: number;
-  sizes: string[];
-  image_url: string;
-  image_thumb_url: string;
-  file_id?: string;
-  sort_order: number;
+  description: string;
   is_active: boolean;
+  image_url: string;
+  image_key: string;
+  thumb_url: string;
   source: string;
-  source_text: string;
   created_at: string;
-  updated_at: string;
+  category_text?: string;
+  source_text?: string;
 }
 
 // 文件记录
 export interface FileRecord {
-  id: string; // UUID
+  id: string;
+  // 业务唯一标识（对外暴露用，区别于主键 id）
+  uuid: string;
   md5_hash: string;
   storage_key: string;
   access_url: string;
+  original_name: string;
   tenant_id: string;
   folder: string;
   file_category: string;
-  file_category_text?: string;
   file_size: number;
   content_type: string;
-  file_type?: string;
   file_ext: string;
-  width: number;
-  height: number;
-  is_public: boolean;
-  is_deleted: boolean;
-  deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  file_category_text?: string;
+  is_deleted?: boolean;
 }
 
 // 统计数据
@@ -162,13 +159,13 @@ export type UserRole = 'super_admin' | 'merchant_admin';
 
 // 登录用户
 export interface AdminUser {
-  id: number;
+  id: string;
   username: string;
   phone?: string;
   store_name?: string;
   is_superuser: boolean;
   role: UserRole;
-  merchant_id?: number;
+  merchant_id?: string;
   permissions?: string[];
 }
 
@@ -203,7 +200,7 @@ export const MENU_PERMISSIONS: Record<string, string[]> = {
 
 // 管理员用户
 export interface AdminUserItem {
-  id: number;
+  id: string;
   username: string;
   phone: string;
   store_name: string;
@@ -215,54 +212,51 @@ export interface AdminUserItem {
 
 // 操作日志
 export interface OperationLog {
-  id: number;
-  admin_id: number;
-  admin_username: string;
+  id: string;
+  operator_id: string;
+  operator_username: string;
   action: string;
   action_text: string;
   target_type: string;
   target_id: string;
   target_name: string;
   detail: Record<string, unknown>;
-  ip_address: string;
-  user_agent: string;
+  ip: string;
   created_at: string;
 }
 
 // 配额历史
 export interface QuotaHistoryItem {
-  id: number;
-  merchant_id: number;
-  change_type: string;
+  id: string;
+  merchant_id: string;
+  action: string;
   old_total: number;
   new_total: number;
   old_used: number;
   new_used: number;
-  reason: string;
-  operator_id: number | null;
-  operator_name: string;
+  note: string;
+  operator_id: string | null;
   created_at: string;
 }
 
 // 系统配置
 export interface SystemConfigItem {
-  id: number;
+  id: string;
   key: string;
   value: string;
   value_type: 'string' | 'integer' | 'float' | 'boolean' | 'json';
-  value_type_text: string;
-  parsed_value: string | number | boolean | Record<string, unknown>;
+  value_type_text?: string;
+  parsed_value?: string | number | boolean | Record<string, unknown>;
   description: string;
-  is_public: boolean;
-  created_at: string;
-  updated_at: string;
+  is_editable?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // 分组配置
 export interface GroupedConfig {
   basic: SystemConfigItem[];
   ai: SystemConfigItem[];
-  oss: SystemConfigItem[];
   storage: SystemConfigItem[];
   quota: SystemConfigItem[];
   contact: SystemConfigItem[];
@@ -271,21 +265,19 @@ export interface GroupedConfig {
 
 // 模特照片
 export interface ModelPhoto {
-  id: number;
+  id: string;
+  merchant_id: string;
+  name: string;
   image_url: string;
-  image_thumb_url: string;
-  file_id?: string;
-  sort_order: number;
-  is_active: boolean;
+  image_key: string;
+  description: string;
   created_at: string;
-  updated_at: string;
 }
 
 // 试穿服装关联
 export interface TryOnClothing {
-  id: number;
+  id: string;
   category: string;
-  subcategory: string;
   clothing_name: string;
   clothing_color: string;
   clothing_image: string;

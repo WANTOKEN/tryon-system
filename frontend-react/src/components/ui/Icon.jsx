@@ -272,6 +272,14 @@ const ICONS = {
       d='M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83'
     />
   ),
+  download: (
+    <path
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      strokeWidth='1.5'
+      d='M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2'
+    />
+  ),
 }
 
 export default function Icon({ name, className = '', ...props }) {

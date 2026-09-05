@@ -18,5 +18,6 @@ class QuotaHistory(UUIDMixin, TimestampMixin, Base):
     old_used: Mapped[int] = mapped_column(Integer, default=0)
     new_used: Mapped[int] = mapped_column(Integer, default=0)
 
+    # 与 OperationLog 同理：只存 operator_id，用户名在出参时 join Merchant 派生
     operator_id: Mapped[str] = mapped_column(String(32), default="")
     note: Mapped[str] = mapped_column(Text, default="")

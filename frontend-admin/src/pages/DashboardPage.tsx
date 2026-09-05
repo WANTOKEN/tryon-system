@@ -1,14 +1,41 @@
-import { Row, Col, Card, Progress, Typography, Divider, Empty, Spin, Alert, Statistic } from 'antd';
+import { Row, Col, Card, Progress, Typography, Divider, Empty, Spin, Alert, Statistic, theme as antdTheme } from 'antd';
 import { UserOutlined, ShoppingOutlined, FileImageOutlined, CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, RiseOutlined, ShopOutlined, CreditCardOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useDashboardStats } from '../hooks/queries';
+import { useTheme } from '../hooks/useTheme';
 
 const { Title, Text } = Typography;
+
+// 统计卡片配色（图表分类色）：提供明/暗两套常量表，避免硬编码破坏主题
+type Palette = { color: string; bgColor: string };
+const LIGHT_PALETTE: Record<string, Palette> = {
+  merchant: { color: '#52c41a', bgColor: '#f6ffed' },
+  active: { color: '#4096ff', bgColor: '#e6f4ff' },
+  tryon: { color: '#722ed1', bgColor: '#f9f0ff' },
+  clothing: { color: '#fa8c16', bgColor: '#fff7e6' },
+  rise: { color: '#eb2f96', bgColor: '#fff0f6' },
+  warn: { color: '#faad14', bgColor: '#fffbe6' },
+  quota: { color: '#722ed1', bgColor: '#f9f0ff' },
+};
+const DARK_PALETTE: Record<string, Palette> = {
+  merchant: { color: '#73d13d', bgColor: 'rgba(115,209,61,0.16)' },
+  active: { color: '#4096ff', bgColor: 'rgba(64,150,255,0.16)' },
+  tryon: { color: '#9254de', bgColor: 'rgba(146,84,222,0.16)' },
+  clothing: { color: '#ffa940', bgColor: 'rgba(255,169,64,0.16)' },
+  rise: { color: '#f759ab', bgColor: 'rgba(247,89,171,0.16)' },
+  warn: { color: '#ffc53d', bgColor: 'rgba(255,197,61,0.16)' },
+  quota: { color: '#9254de', bgColor: 'rgba(146,84,222,0.16)' },
+};
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const isSuperAdmin = user?.is_superuser ?? false;
   const { data: stats, isPending: loading } = useDashboardStats();
+  const { mode } = useTheme();
+  const { token } = antdTheme.useToken();
+  const palette = mode === 'dark' ? DARK_PALETTE : LIGHT_PALETTE;
+  // active 卡片强调色跟随主题主色（覆盖常量表中的固定值）
+  palette.active = { color: token.colorPrimary, bgColor: token.colorPrimaryBg };
 
   // 统计卡片数据 - 根据是否为超级管理员显示不同内容
   const statCards = isSuperAdmin ? [
@@ -16,32 +43,32 @@ export default function DashboardPage() {
       title: '商家总数',
       value: stats?.total_merchants || 0,
       icon: <UserOutlined />,
-      color: '#52c41a',
-      bgColor: '#f6ffed',
+      color: palette.merchant.color,
+      bgColor: palette.merchant.bgColor,
       suffix: '家',
     },
     {
       title: '活跃商家',
       value: stats?.active_merchants || 0,
       icon: <CheckCircleOutlined />,
-      color: '#1677ff',
-      bgColor: '#e6f4ff',
+      color: palette.active.color,
+      bgColor: palette.active.bgColor,
       suffix: '家',
     },
     {
       title: '试穿记录',
       value: stats?.total_tryon_records || 0,
       icon: <FileImageOutlined />,
-      color: '#722ed1',
-      bgColor: '#f9f0ff',
+      color: palette.tryon.color,
+      bgColor: palette.tryon.bgColor,
       suffix: '条',
     },
     {
       title: '服装数量',
       value: stats?.total_clothing || 0,
       icon: <ShoppingOutlined />,
-      color: '#fa8c16',
-      bgColor: '#fff7e6',
+      color: palette.clothing.color,
+      bgColor: palette.clothing.bgColor,
       suffix: '件',
     },
   ] : [
@@ -50,32 +77,32 @@ export default function DashboardPage() {
       title: '我的试穿',
       value: stats?.total_tryon_records || 0,
       icon: <FileImageOutlined />,
-      color: '#722ed1',
-      bgColor: '#f9f0ff',
+      color: palette.tryon.color,
+      bgColor: palette.tryon.bgColor,
       suffix: '条',
     },
     {
       title: '我的服装',
       value: stats?.total_clothing || 0,
       icon: <ShoppingOutlined />,
-      color: '#fa8c16',
-      bgColor: '#fff7e6',
+      color: palette.clothing.color,
+      bgColor: palette.clothing.bgColor,
       suffix: '件',
     },
     {
       title: '配额剩余',
       value: (stats?.quota_total || 0) - (stats?.quota_used || 0),
       icon: <CreditCardOutlined />,
-      color: '#52c41a',
-      bgColor: '#f6ffed',
+      color: palette.merchant.color,
+      bgColor: palette.merchant.bgColor,
       suffix: '次',
     },
     {
       title: '配额总量',
       value: stats?.quota_total || 0,
       icon: <DatabaseOutlined />,
-      color: '#1677ff',
-      bgColor: '#e6f4ff',
+      color: palette.active.color,
+      bgColor: palette.active.bgColor,
       suffix: '次',
     },
   ];
@@ -86,31 +113,31 @@ export default function DashboardPage() {
       title: '今日试穿',
       value: stats?.today_tryon_count || 0,
       icon: <RiseOutlined />,
-      color: '#eb2f96',
-      bgColor: '#fff0f6',
+      color: palette.rise.color,
+      bgColor: palette.rise.bgColor,
     },
     {
       title: '成功率',
       value: ((stats?.today_success_rate || 0) * 100).toFixed(1),
       icon: <CheckCircleOutlined />,
-      color: '#52c41a',
-      bgColor: '#f6ffed',
+      color: palette.merchant.color,
+      bgColor: palette.merchant.bgColor,
       suffix: '%',
     },
     {
       title: '平均耗时',
       value: (stats?.today_avg_processing_time || 0).toFixed(1),
       icon: <ClockCircleOutlined />,
-      color: '#1677ff',
-      bgColor: '#e6f4ff',
+      color: palette.active.color,
+      bgColor: palette.active.bgColor,
       suffix: '秒',
     },
     {
       title: '存储占用',
       value: ((stats?.total_storage_bytes || 0) / 1024 / 1024).toFixed(1),
       icon: <DatabaseOutlined />,
-      color: '#faad14',
-      bgColor: '#fffbe6',
+      color: palette.warn.color,
+      bgColor: palette.warn.bgColor,
       suffix: 'MB',
     },
   ] : [
@@ -119,31 +146,31 @@ export default function DashboardPage() {
       title: '今日试穿',
       value: stats?.today_tryon_count || 0,
       icon: <RiseOutlined />,
-      color: '#eb2f96',
-      bgColor: '#fff0f6',
+      color: palette.rise.color,
+      bgColor: palette.rise.bgColor,
     },
     {
       title: '成功率',
       value: ((stats?.today_success_rate || 0) * 100).toFixed(1),
       icon: <CheckCircleOutlined />,
-      color: '#52c41a',
-      bgColor: '#f6ffed',
+      color: palette.merchant.color,
+      bgColor: palette.merchant.bgColor,
       suffix: '%',
     },
     {
       title: '平均耗时',
       value: (stats?.today_avg_processing_time || 0).toFixed(1),
       icon: <ClockCircleOutlined />,
-      color: '#1677ff',
-      bgColor: '#e6f4ff',
+      color: palette.active.color,
+      bgColor: palette.active.bgColor,
       suffix: '秒',
     },
     {
       title: '配额使用率',
       value: stats?.quota_total ? ((stats.quota_used / stats.quota_total) * 100).toFixed(1) : 0,
       icon: <CreditCardOutlined />,
-      color: '#722ed1',
-      bgColor: '#f9f0ff',
+      color: palette.quota.color,
+      bgColor: palette.quota.bgColor,
       suffix: '%',
     },
   ];
@@ -189,28 +216,28 @@ export default function DashboardPage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <CreditCardOutlined style={{ fontSize: 20, color: '#1677ff' }} />
+                      <CreditCardOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
                       <Text strong style={{ fontSize: 16 }}>额度使用情况</Text>
                     </div>
                     <Statistic
                       value={stats?.quota_used || 0}
                       suffix={`/ ${stats?.quota_total || 0} 次`}
-                      valueStyle={{ fontSize: 28, color: '#1677ff' }}
+                      valueStyle={{ fontSize: 28, color: token.colorPrimary }}
                     />
                   </div>
                   <Progress
                     type="circle"
                     percent={stats?.quota_total ? Math.round((stats.quota_used / stats.quota_total) * 100) : 0}
                     strokeColor={{
-                      '0%': '#1677ff',
-                      '100%': (stats?.quota_used || 0) / (stats?.quota_total || 1) > 0.8 ? '#ff4d4f' : '#52c41a',
+                      '0%': token.colorPrimary,
+                      '100%': (stats?.quota_used || 0) / (stats?.quota_total || 1) > 0.8 ? token.colorError : token.colorSuccess,
                     }}
                     size={80}
                   />
                 </div>
                 <div style={{ marginTop: 16 }}>
                   <Text type="secondary">
-                    剩余额度: <Text strong style={{ color: '#52c41a' }}>{(stats?.quota_total || 0) - (stats?.quota_used || 0)}</Text> 次
+                    剩余额度: <Text strong style={{ color: token.colorSuccess }}>{(stats?.quota_total || 0) - (stats?.quota_used || 0)}</Text> 次
                   </Text>
                 </div>
               </Card>
@@ -226,7 +253,7 @@ export default function DashboardPage() {
             <Card
               style={{
                 borderRadius: 12,
-                border: '1px solid #f0f0f0',
+                border: '1px solid var(--ant-color-border)',
                 overflow: 'hidden',
               }}
               styles={{ body: { padding: 20 } }}
@@ -249,9 +276,9 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <Text type="secondary" style={{ fontSize: 13 }}>{item.title}</Text>
-                  <div style={{ fontSize: 24, fontWeight: 600, color: '#333', marginTop: 4 }}>
+                  <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--ant-color-text)', marginTop: 4 }}>
                     {item.value.toLocaleString()}
-                    <span style={{ fontSize: 14, color: '#999', marginLeft: 4 }}>{item.suffix}</span>
+                    <span style={{ fontSize: 14, color: 'var(--ant-color-text-tertiary)', marginLeft: 4 }}>{item.suffix}</span>
                   </div>
                 </div>
               </div>
@@ -272,7 +299,7 @@ export default function DashboardPage() {
             <Card
               style={{
                 borderRadius: 12,
-                border: '1px solid #f0f0f0',
+                border: '1px solid var(--ant-color-border)',
               }}
               styles={{ body: { padding: 20 } }}
             >
@@ -296,7 +323,7 @@ export default function DashboardPage() {
                   <Text type="secondary" style={{ fontSize: 13 }}>{item.title}</Text>
                   <div style={{ fontSize: 22, fontWeight: 600, color: item.color, marginTop: 4 }}>
                     {item.value}
-                    <span style={{ fontSize: 13, color: '#999', marginLeft: 2 }}>{item.suffix || ''}</span>
+                    <span style={{ fontSize: 13, color: 'var(--ant-color-text-tertiary)', marginLeft: 2 }}>{item.suffix || ''}</span>
                   </div>
                 </div>
               </div>
@@ -335,7 +362,7 @@ export default function DashboardPage() {
                         width: 24,
                         height: `${Math.min(100, (item.count / Math.max(...stats.tryon_trend.map(t => t.count))) * 100)}%`,
                         minHeight: 8,
-                        background: 'linear-gradient(180deg, #1677ff 0%, #69b1ff 100%)',
+                        background: `linear-gradient(180deg, ${token.colorPrimary} 0%, ${token.colorPrimaryBgHover} 100%)`,
                         borderRadius: 4,
                       }} />
                     </div>
@@ -371,7 +398,7 @@ export default function DashboardPage() {
                   <Progress 
                     percent={Math.round((engine.count / (stats?.total_tryon_records || 1)) * 100)} 
                     size="small"
-                    strokeColor="#1677ff"
+                    strokeColor={token.colorPrimary}
                   />
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     平均耗时: {engine.avg_time.toFixed(1)}秒

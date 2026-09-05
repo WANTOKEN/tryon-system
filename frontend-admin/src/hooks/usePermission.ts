@@ -63,7 +63,7 @@ export function usePermission() {
     },
     
     // 是否可以执行某个操作（考虑商家数据隔离）
-    canAccessMerchantData: (targetMerchantId: number): boolean => {
+    canAccessMerchantData: (targetMerchantId: string): boolean => {
       // 超管可以访问所有商家数据
       if (isSuperAdmin()) return true;
       // 商家管理员只能访问自己的数据

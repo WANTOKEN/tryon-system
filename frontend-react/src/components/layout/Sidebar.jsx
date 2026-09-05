@@ -19,12 +19,13 @@ export default function Sidebar({
   wardrobeClothing = [],
   onRemoveSelected,
   onClearSelection,
+  onReplaceClothing,
   // Common
   t,
   showToast = null,
 }) {
   return (
-    <aside className='sidebar-left' aria-label='服装选择面板'>
+    <aside className='sidebar-left' aria-label={t('ariaClothingPanel') || '服装选择面板'}>
       {/* 形象管理 */}
       <AvatarSection
         avatarPreview={avatarPreview}
@@ -57,6 +58,7 @@ export default function Sidebar({
         onRemoveSelected={onRemoveSelected}
         onClearSelection={onClearSelection}
         onOpenPreviewModal={onOpenPreviewModal}
+        onReplaceClothing={onReplaceClothing}
         t={t}
       />
     </aside>
@@ -76,6 +78,7 @@ Sidebar.propTypes = {
   wardrobeClothing: PropTypes.arrayOf(PropTypes.object),
   onRemoveSelected: PropTypes.func.isRequired,
   onClearSelection: PropTypes.func.isRequired,
+  onReplaceClothing: PropTypes.func,
   t: PropTypes.func.isRequired,
   showToast: PropTypes.func,
 }

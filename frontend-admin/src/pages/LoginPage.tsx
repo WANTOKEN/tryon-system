@@ -72,11 +72,11 @@ export default function LoginPage() {
       // 登录成功后获取用户信息
       const userInfo = await authApi.getCurrentUser();
       
-      // 适配用户信息格式，添加 role 字段
+      // 使用 /auth/me/ 返回的真实角色，否则超管会被降级成商家而无法访问后台菜单
       const adminUser = {
         ...userInfo,
-        role: 'merchant_admin' as const,
-        is_superuser: false,
+        role: (userInfo.role ?? 'merchant_admin') as typeof userInfo.role,
+        is_superuser: userInfo.is_superuser ?? false,
         merchant_id: userInfo.id,
       };
       

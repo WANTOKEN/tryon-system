@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Space, Tag, Upload, message, Popconfirm, Modal, Form, InputNumber, Switch, Checkbox, Image, Tooltip } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined, EyeOutlined } from '@ant-design/icons';
+import { Button, Space, Upload, message, Popconfirm, Modal, Form, Input, Switch, Checkbox, Image, Tooltip, theme } from 'antd';
+import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, EyeOutlined } from '@ant-design/icons';
 
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
@@ -10,11 +10,12 @@ import { PERMISSIONS } from '../types';
 import { usePermission } from '../hooks/usePermission';
 
 const ModelPhotosPage: React.FC = () => {
+  const { token } = theme.useToken();
   const [modalVisible, setModalVisible] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [form] = Form.useForm();
   const [editingRecord, setEditingRecord] = useState<ModelPhoto | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<{ file: File; url: string } | null>(null);
@@ -22,18 +23,17 @@ const ModelPhotosPage: React.FC = () => {
   const [data, setData] = useState<ModelPhoto[]>([]);
   const [page] = useState(1);
   const [pageSize] = useState(10);
-  const [isActive] = useState<boolean | undefined>(undefined);
   const actionRef = useRef<ActionType>();
 
   const { hasPermission } = usePermission();
   const canManage = hasPermission(PERMISSIONS.SUPER_ADMIN) || hasPermission(PERMISSIONS.CLOTHING_MANAGE);
 
+  // 后端已按 created_at 倒序返回，前端不再做排序
   const fetchData = useCallback(async (params?: { current?: number; pageSize?: number }) => {
     try {
       const result = await modelPhotoApi.list({
         page: params?.current || page,
         page_size: params?.pageSize || pageSize,
-        is_active: isActive,
       });
       setData(result.items);
       return {
@@ -46,7 +46,7 @@ const ModelPhotosPage: React.FC = () => {
       console.error('Failed to fetch model photos:', error);
       return { data: [], total: 0, success: false };
     }
-  }, [page, pageSize, isActive]);
+  }, [page, pageSize]);
 
   const handleAdd = () => {
     form.resetFields();
@@ -62,7 +62,7 @@ const ModelPhotosPage: React.FC = () => {
     setModalVisible(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await modelPhotoApi.delete(id);
       message.success('删除成功');
@@ -92,33 +92,18 @@ const ModelPhotosPage: React.FC = () => {
     }
   };
 
-  const handleBulkActivate = async (activate: boolean) => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('请选择要操作的模特');
-      return;
-    }
-
-    try {
-      for (const id of selectedRowKeys) {
-        await modelPhotoApi.update(id, { is_active: activate });
-      }
-      message.success(`成功${activate ? '启用' : '禁用'} ${selectedRowKeys.length} 个模特`);
-      setSelectedRowKeys([]);
-      actionRef.current?.reload();
-    } catch (error) {
-      message.error('批量操作失败');
-      console.error('Failed to update model photos:', error);
-    }
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setConfirmLoading(true);
 
       const formData = new FormData();
-      formData.append('sort_order', values.sort_order?.toString() || '0');
-      formData.append('is_active', values.is_active ? 'true' : 'false');
+      if (values.name !== undefined && values.name !== null) {
+        formData.append('name', values.name);
+      }
+      if (values.description !== undefined && values.description !== null) {
+        formData.append('description', values.description);
+      }
 
       if (uploadedImage?.file) {
         formData.append('image', uploadedImage.file);
@@ -151,32 +136,6 @@ const ModelPhotosPage: React.FC = () => {
   const handleImagePreview = (imageUrl: string) => {
     setPreviewImage(imageUrl);
     setPreviewVisible(true);
-  };
-
-  const handleSortOrder = async (id: number, direction: 'up' | 'down') => {
-    try {
-      const record = data.find(item => item.id === id);
-      if (!record) return;
-
-      const currentIndex = data.findIndex(item => item.id === id);
-      if (direction === 'up' && currentIndex === 0) return;
-      if (direction === 'down' && currentIndex === data.length - 1) return;
-
-      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-      const targetRecord = data[targetIndex];
-
-      if (targetRecord) {
-        // Swap sort orders
-        const tempSortOrder = record.sort_order;
-        await modelPhotoApi.update(id, { sort_order: targetRecord.sort_order });
-        await modelPhotoApi.update(targetRecord.id, { sort_order: tempSortOrder });
-        message.success('排序更新成功');
-        actionRef.current?.reload();
-      }
-    } catch (error) {
-      message.error('排序更新失败');
-      console.error('Failed to update sort order:', error);
-    }
   };
 
   const columns: ProColumns<ModelPhoto>[] = [
@@ -249,11 +208,11 @@ const ModelPhotosPage: React.FC = () => {
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center', 
-                border: '1px solid #d9d9d9', 
+                border: `1px solid ${token.colorBorderSecondary}`,
                 borderRadius: 8, 
-                backgroundColor: '#f5f5f5',
+                backgroundColor: token.colorFillQuaternary,
               }}>
-                <span style={{ color: '#999', fontSize: 12 }}>图片已隐藏</span>
+                <span style={{ color: token.colorTextTertiary, fontSize: 12 }}>图片已隐藏</span>
               </div>
             )}
           </div>
@@ -261,48 +220,11 @@ const ModelPhotosPage: React.FC = () => {
       },
     },
     {
-      title: '排序',
-      dataIndex: 'sort_order',
-      key: 'sort_order',
-      width: 150,
-      hideInSearch: true,
-      render: (_: unknown, record: ModelPhoto) => (
-        <Space>
-          <Tooltip title="上移">
-            <Button
-              size="small"
-              icon={<ArrowUpOutlined />}
-              onClick={() => handleSortOrder(record.id, 'up')}
-              disabled={data.findIndex(item => item.id === record.id) === 0}
-            />
-          </Tooltip>
-          <span style={{ fontWeight: 500 }}>{record.sort_order}</span>
-          <Tooltip title="下移">
-            <Button
-              size="small"
-              icon={<ArrowDownOutlined />}
-              onClick={() => handleSortOrder(record.id, 'down')}
-              disabled={data.findIndex(item => item.id === record.id) === data.length - 1}
-            />
-          </Tooltip>
-        </Space>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'is_active',
-      key: 'is_active',
-      width: 100,
-      valueType: 'select',
-      valueEnum: {
-        true: { text: '启用', status: 'Success' },
-        false: { text: '禁用', status: 'Default' },
-      },
-      render: (_, record) => (
-        <Tag color={record.is_active ? 'green' : 'red'}>
-          {record.is_active ? '启用' : '禁用'}
-        </Tag>
-      ),
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 160,
+      ellipsis: true,
     },
     {
       title: '创建时间',
@@ -385,7 +307,7 @@ const ModelPhotosPage: React.FC = () => {
         }}
         rowSelection={{
           selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
         }}
         tableAlertRender={({ selectedRowKeys }) => (
           <span>
@@ -394,20 +316,6 @@ const ModelPhotosPage: React.FC = () => {
         )}
         tableAlertOptionRender={() => (
           <Space size="middle">
-            <Button 
-              size="small" 
-              onClick={() => handleBulkActivate(true)}
-              disabled={!canManage}
-            >
-              批量启用
-            </Button>
-            <Button 
-              size="small" 
-              onClick={() => handleBulkActivate(false)}
-              disabled={!canManage}
-            >
-              批量禁用
-            </Button>
             <Popconfirm
               title="确定要删除选中的模特吗？"
               onConfirm={handleBulkDelete}
@@ -469,24 +377,18 @@ const ModelPhotosPage: React.FC = () => {
           form={form}
           layout="vertical"
           preserve={false}
-          initialValues={{
-            is_active: true,
-            sort_order: 0,
-          }}
         >
           <Form.Item
-            name="sort_order"
-            label="排序"
-            rules={[{ required: true, message: '请输入排序' }]}
+            name="name"
+            label="模特名称"
           >
-            <InputNumber placeholder="请输入排序" min={0} style={{ width: '100%' }} />
+            <Input placeholder="请输入模特名称" maxLength={128} allowClear />
           </Form.Item>
           <Form.Item
-            name="is_active"
-            label="状态"
-            valuePropName="checked"
+            name="description"
+            label="描述"
           >
-            <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+            <Input.TextArea placeholder="请输入描述" rows={3} maxLength={512} showCount />
           </Form.Item>
           <Form.Item
             label="模特照片"
@@ -538,7 +440,7 @@ const ModelPhotosPage: React.FC = () => {
                 </Button>
               </Upload>
               {editingRecord && (
-                <span style={{ marginLeft: 8, color: '#999', fontSize: 12 }}>
+                <span style={{ marginLeft: 8, color: token.colorTextTertiary, fontSize: 12 }}>
                   （点击图片可预览）
                 </span>
               )}

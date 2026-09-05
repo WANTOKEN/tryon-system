@@ -11,6 +11,7 @@ class FileRecordResponse(BaseModel):
     md5_hash: str
     storage_key: str
     access_url: str
+    original_name: str
     file_size: int
     content_type: str
     file_category: str

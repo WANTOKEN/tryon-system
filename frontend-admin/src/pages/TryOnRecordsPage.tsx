@@ -94,9 +94,14 @@ export default function TryOnRecordsPage() {
           pending: '等待中',
           processing: '处理中',
           completed: '已完成',
-          failed: '失败',
+          failed: '生成失败',
         };
-        return <Tag color={colorMap[record.status] || 'default'}>{textMap[record.status] || record.status}</Tag>;
+        // 后端 status 为语义字符串，status_text 为中文文案，两者都兜底避免显示原始枚举值
+        return (
+          <Tag color={colorMap[record.status] || 'default'}>
+            {textMap[record.status] || record.status_text || record.status}
+          </Tag>
+        );
       },
     },
     {

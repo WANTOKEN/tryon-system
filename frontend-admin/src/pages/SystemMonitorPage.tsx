@@ -1,5 +1,5 @@
 import { useAuthStore } from '../stores/authStore';
-import { Card, Row, Col, Statistic, Progress, Empty, Typography, Divider, Spin } from 'antd';
+import { Card, Row, Col, Statistic, Progress, Empty, Typography, Divider, Spin, theme as antdTheme } from 'antd';
 import {
   DatabaseOutlined,
   CloudServerOutlined,
@@ -15,6 +15,7 @@ const { Title, Text } = Typography;
 export default function SystemMonitorPage() {
   const { isSuperAdmin } = useAuthStore();
   const { data: stats, isPending: loading } = useDashboardStats();
+  const { token } = antdTheme.useToken();
 
   // 非超管无法访问此页面
   if (!isSuperAdmin()) {
@@ -43,56 +44,56 @@ export default function SystemMonitorPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+            style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
             styles={{ body: { padding: 20 } }}
           >
             <Statistic
               title="总存储占用"
               value={((stats?.total_storage_bytes || 0) / 1024 / 1024).toFixed(1)}
               suffix="MB"
-              prefix={<DatabaseOutlined style={{ color: '#1677ff' }} />}
+              prefix={<DatabaseOutlined style={{ color: token.colorPrimary }} />}
               valueStyle={{ fontSize: 24 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+            style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
             styles={{ body: { padding: 20 } }}
           >
             <Statistic
               title="文件总数"
               value={stats?.total_files || 0}
               suffix="个"
-              prefix={<CloudServerOutlined style={{ color: '#52c41a' }} />}
+              prefix={<CloudServerOutlined style={{ color: token.colorSuccess }} />}
               valueStyle={{ fontSize: 24 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+            style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
             styles={{ body: { padding: 20 } }}
           >
             <Statistic
               title="总试穿次数"
               value={stats?.total_tryon_records || 0}
               suffix="次"
-              prefix={<ApiOutlined style={{ color: '#722ed1' }} />}
+              prefix={<ApiOutlined style={{ color: token.colorInfo }} />}
               valueStyle={{ fontSize: 24 }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+            style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
             styles={{ body: { padding: 20 } }}
           >
             <Statistic
               title="活跃商家"
               value={stats?.active_merchants || 0}
               suffix="个"
-              prefix={<ThunderboltOutlined style={{ color: '#fa8c16' }} />}
+              prefix={<ThunderboltOutlined style={{ color: token.colorWarning }} />}
               valueStyle={{ fontSize: 24 }}
             />
           </Card>
@@ -107,7 +108,7 @@ export default function SystemMonitorPage() {
           stats.engine_stats.map((engine, index) => (
             <Col xs={24} md={12} lg={8} key={index}>
               <Card
-                style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+                style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
                 styles={{ body: { padding: 20 } }}
               >
                 <div style={{ marginBottom: 16 }}>
@@ -136,7 +137,7 @@ export default function SystemMonitorPage() {
                   <Text type="secondary" style={{ fontSize: 12 }}>使用占比</Text>
                   <Progress 
                     percent={Math.round((engine.count / (stats?.total_tryon_records || 1)) * 100)} 
-                    strokeColor="#1677ff"
+                    strokeColor={token.colorPrimary}
                   />
                 </div>
               </Card>
@@ -157,33 +158,33 @@ export default function SystemMonitorPage() {
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12}>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+            style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
             styles={{ body: { padding: 20 } }}
           >
             <Statistic
               title="今日成功率"
               value={((stats?.today_success_rate || 0) * 100).toFixed(1)}
               suffix="%"
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              prefix={<CheckCircleOutlined style={{ color: token.colorSuccess }} />}
               valueStyle={{ fontSize: 28 }}
             />
             <Progress 
               percent={((stats?.today_success_rate || 0) * 100)} 
-              strokeColor="#52c41a"
+              strokeColor={token.colorSuccess}
               style={{ marginTop: 16 }}
             />
           </Card>
         </Col>
         <Col xs={24} md={12}>
           <Card
-            style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+            style={{ borderRadius: 12, border: '1px solid var(--ant-color-border)' }}
             styles={{ body: { padding: 20 } }}
           >
             <Statistic
               title="今日平均耗时"
               value={(stats?.today_avg_processing_time || 0).toFixed(1)}
               suffix="秒"
-              prefix={<ClockCircleOutlined style={{ color: '#1677ff' }} />}
+              prefix={<ClockCircleOutlined style={{ color: token.colorPrimary }} />}
               valueStyle={{ fontSize: 28 }}
             />
             <div style={{ marginTop: 16 }}>

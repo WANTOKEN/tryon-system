@@ -1,9 +1,14 @@
 """
 FastAPI application entry point（唯一入口：容器与测试均使用本文件）
 """
+import logging
+import traceback
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings, get_lan_ip
@@ -71,6 +76,63 @@ app.mount(
     StaticFiles(directory=settings.storage_local_dir),
     name="uploads",
 )
+
+# ===== 统一错误处理 =====
+# 目的：任何后端异常都返回 JSON 且带可直接展示的业务文案，
+# 避免前端拿到 "Internal Server Error" 这类无意义提示；同时把完整堆栈写进日志便于排查。
+logger = logging.getLogger("aitryon")
+
+
+def _is_debug() -> bool:
+    env = str(getattr(settings, "app_env", "") or "").lower()
+    return bool(getattr(settings, "debug", False)) or env in {"dev", "development", "local"}
+
+
+def _error_body(message: str, code: str, extra: dict | None = None) -> dict:
+    # detail 供 FastAPI 生态与前端 extractError 使用；message 为前端优先读取字段
+    body = {"detail": message, "message": message, "error_code": code}
+    if extra:
+        body.update(extra)
+    return body
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """参数校验失败：转成「字段名: 原因」的可读提示，前端可直接展示。"""
+    errors = exc.errors()
+    parts = []
+    for err in errors[:5]:
+        loc = err.get("loc", ())
+        field = ".".join(str(x) for x in loc if x not in ("body", "query", "path"))
+        msg = err.get("msg", "参数错误")
+        parts.append(f"{field}: {msg}" if field else msg)
+    message = "；".join(parts) or "请求参数不合法"
+    logger.warning("参数校验失败 %s %s -> %s", request.method, request.url.path, errors)
+    return JSONResponse(
+        status_code=422,
+        content=_error_body(message, "validation_error", {"errors": errors[:5]}),
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """HTTPException：统一响应结构，保证 detail/message 都是可展示文案。"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_body(str(exc.detail), "http_error"),
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """兜底异常：记录完整堆栈，开发环境回传真实错误，生产环境返回通用文案。"""
+    logger.error(
+        "未处理异常 %s %s\n%s", request.method, request.url.path, traceback.format_exc()
+    )
+    message = f"服务器内部错误：{exc}" if _is_debug() else "服务器开小差了，请稍后重试"
+    return JSONResponse(status_code=500, content=_error_body(message, "internal_error"))
+
 
 # Include API routers
 app.include_router(api_v1_router, prefix="/api/v1")

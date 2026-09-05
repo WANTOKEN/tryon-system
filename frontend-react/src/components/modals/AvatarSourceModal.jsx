@@ -4,6 +4,7 @@ import PropTypes from 'prop-types'
 
 import { Icon } from '../ui'
 import AvatarSection from '../sections/AvatarSection'
+import useModalBehavior from '../../hooks/useModalBehavior'
 
 /**
  * 「我的形象」居中模态框。内部直接复用左侧「我的形象」区块（AvatarSection），
@@ -25,22 +26,15 @@ export default function AvatarSourceModal({
 }) {
   const closeBtnRef = useRef(null)
 
+  // Esc 关闭 + 打开期间锁定背景滚动（挂在 document 上，不依赖弹层是否可聚焦）
+  useModalBehavior(isOpen, onClose)
+
   if (!isOpen) {
     return null
   }
 
   return (
-    <div
-      className='avatar-modal-backdrop'
-      onClick={onClose}
-      onKeyDown={e => {
-        if (e.key === 'Escape') {
-          onClose()
-        }
-      }}
-      role='button'
-      tabIndex={-1}
-    >
+    <div className='avatar-modal-backdrop' onClick={onClose} role='presentation' tabIndex={-1}>
       <div
         className='avatar-source-modal'
         onClick={e => e.stopPropagation()}

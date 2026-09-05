@@ -157,5 +157,5 @@ async def delete_clothing(
 
 @router.get("/categories/")
 async def get_categories():
-    """获取分类配置（与前端默认分类保持一致）"""
-    return CLOTHING_CATEGORIES
+    """获取分类配置（结构对齐 /common/categories/，统一返回 {"items": [...]}）"""
+    return {"items": CLOTHING_CATEGORIES}

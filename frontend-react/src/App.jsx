@@ -1,11 +1,11 @@
-/* eslint-disable no-console */
 import { useState, useCallback, useEffect, useRef } from 'react'
 
 import { I18nProvider, useI18n } from './hooks/useI18n'
 import { useTryOn } from './hooks/useTryOn'
 import { useClothing } from './hooks/useClothing'
 import { useNetworkStatus } from './hooks/useNetworkStatus'
-import { api, TokenManager, setSessionId } from './utils/request'
+import useColorTags from './hooks/useColorTags'
+import { api, TokenManager, setGlobalErrorHandler } from './utils/request'
 import { API_ENDPOINTS } from './config/api'
 import Header from './components/Header'
 import MainLayout from './components/MainLayout'
@@ -16,10 +16,15 @@ import CachedImage from './components/CachedImage'
 import ScanUploadPage from './components/ScanUploadPage'
 import SettingsModal from './components/SettingsModal'
 import { useTheme } from './hooks/useTheme'
+import { useToast } from './hooks/useToast'
+import { useModalManager } from './hooks/useModalManager'
+import { useAppSession } from './hooks/useAppSession'
+import { useAvatar } from './hooks/useAvatar'
+import { useClothingSelection } from './hooks/useClothingSelection'
+import { useClothingUpload } from './hooks/useClothingUpload'
+import { useTryOnFlow } from './hooks/useTryOnFlow'
 import { STORAGE_KEYS, CURRENT_CACHE_VERSION } from './constants/storageKeys'
 import { safeStorage } from './utils/safeStorage'
-import { compressImage, truncateFileName } from './utils/imageUtils'
-import { FALLBACK_COLOR_TAGS } from './data/clothingData'
 import AdminContactItem from './components/AdminContactItem'
 import ErrorBoundary from './components/ErrorBoundary'
 
@@ -29,177 +34,191 @@ function AppContent() {
   // === 应用全局状态 ===
   const [appLoading, setAppLoading] = useState(true) // 应用初始化加载中
   const { theme, mode, setTheme, toggleMode } = useTheme() // 主题配色系统
-  const [toast, setToast] = useState(null) // 全局 Toast 提示
+  const { toast, showToast, hideToast } = useToast() // 全局 Toast 提示
+  // 颜色标签唯一数据源：后端 /api/v1/common/colors/
+  const colorTags = useColorTags()
 
   // === 试穿核心状态 ===
-  const [avatarFile, setAvatarFile] = useState(null) // 用户上传的头像文件
-  const [avatarPreview, setAvatarPreview] = useState(null) // 头像预览 URL（base64 或 blob URL）
-  const [avatarSource, setAvatarSource] = useState('user') // 头像来源：user/system/history
+  const {
+    avatarFile,
+    setAvatarFile,
+    avatarPreview,
+    avatarSource,
+    handleAvatarChange,
+    deleteAvatar,
+    setAvatarPreviewWithPersist,
+    selectModelAvatar,
+    loadAvatarFromCache,
+    resetAvatar,
+  } = useAvatar({ showToast, t })
   const [_showUploadModal] = useState(false)
-  const [quota, setQuota] = useState({ total: 100, used: 0, remaining: 100 }) // 配额信息
   const [hasResult, setHasResult] = useState(false) // 是否有试穿结果
 
   // === 服装选择状态 ===
-  const [selected, setSelected] = useState([]) // 已选中的服装列表
-  const [customClothing, setCustomClothing] = useState([]) // 用户自定义上传的服装
-  const [wardrobeClothing, setWardrobeClothing] = useState([]) // 从衣橱选择的服装
+  const {
+    selected,
+    customClothing,
+    setCustomClothing,
+    wardrobeClothing,
+    setWardrobeClothing,
+    handleToggle,
+    handleRemoveSelected,
+    handleAddWardrobeItem,
+    handleRemoveWardrobeItem,
+    setWardrobeClothingWithPersist,
+    updateWardrobeClothing,
+    removeWardrobeClothing,
+    removeWardrobeByTempId,
+    updateCustomClothing,
+    removeCustomClothing,
+    removeCustomClothingByTempId,
+    deleteCustomClothing,
+    deleteWardrobeClothing,
+    clearAllClothing,
+    loadFromCache,
+  } = useClothingSelection({ showToast, t })
 
-  // === 弹窗显示状态 ===
-  const [showLoginModal, setShowLoginModal] = useState(false) // 登录弹窗
-  const [showSettingsModal, setShowSettingsModal] = useState(false) // 设置弹窗
-  const [showStoreModal, setShowStoreModal] = useState(false) // 店铺信息弹窗
-  const [showWardrobeModal, setShowWardrobeModal] = useState(false) // 衣橱弹窗
-  const [showCustomUploadModal, setShowCustomUploadModal] = useState(false) // 自定义上传弹窗
-  const [showConfirmModal, setShowConfirmModal] = useState(false) // 确认对话框
-  const [confirmConfig, setConfirmConfig] = useState({ title: '', message: '', action: null })
-  const [showPreviewModal, setShowPreviewModal] = useState(false) // 图片预览弹窗
-  const [previewModalData, setPreviewModalData] = useState({ src: '', name: '' })
-  const [showCameraModal, setShowCameraModal] = useState(false) // 相机弹窗
-  const [cameraCallback, setCameraCallback] = useState(null) // 相机拍照回调
+  // === 弹窗管理（集中化，避免散落大量 showXxxModal state） ===
+  const {
+    showLoginModal,
+    setShowLoginModal,
+    showSettingsModal,
+    setShowSettingsModal,
+    showStoreModal,
+    setShowStoreModal,
+    showWardrobeModal,
+    setShowWardrobeModal,
+    showCustomUploadModal,
+    setShowCustomUploadModal,
+    showConfirmModal,
+    setShowConfirmModal,
+    confirmConfig,
+    showPreviewModal,
+    previewModalData,
+    replaceRequest,
+    setReplaceRequest,
+    showCameraModal,
+    cameraCallback,
+    showAdminContactModal,
+    setShowAdminContactModal,
+    showHistoryModal,
+    setShowHistoryModal,
+    wardrobeUploadCategory,
+    setWardrobeUploadCategory,
+    wardrobeUploadName,
+    setWardrobeUploadName,
+    wardrobeUploadColor,
+    setWardrobeUploadColor,
+    customUploadCategory,
+    setCustomUploadCategory,
+    customUploadName,
+    setCustomUploadName,
+    customUploadColor,
+    setCustomUploadColor,
+    showConfirmDialog,
+    handleConfirmAction,
+    openPreviewModal,
+    closePreviewModal,
+    openCameraModal,
+    closeCameraModal,
+    openCustomUploadModal,
+  } = useModalManager()
 
-  // === 衣橱上传分类/名称/颜色 ===
-  const [wardrobeUploadCategory, setWardrobeUploadCategory] = useState('tops')
-  const [wardrobeUploadSubcategory, setWardrobeUploadSubcategory] = useState('')
-  const [wardrobeUploadSubcategoryCustom, setWardrobeUploadSubcategoryCustom] = useState('')
-  const [wardrobeUploadName, setWardrobeUploadName] = useState('')
-  const [wardrobeUploadColor, setWardrobeUploadColor] = useState('黑色')
+  // === 会话与用户状态（集中管理：认证/配额/管理员/会话） ===
+  // 使用 ref 打破循环依赖：useAppSession 需要 onShowAdminContact，
+  // 而 handleShowAdminContact 又依赖 useAppSession 返回的 adminContactInfo/fetchAdminContact
+  const adminContactCallbackRef = useRef(null)
+  const tryOnAdminRef = useRef(null)
+  const {
+    isLoggedIn,
+    setIsLoggedIn,
+    userInfo,
+    setUserInfo,
+    loginLoading,
+    quota,
+    setQuota,
+    adminContactInfo,
+    adminContactLoading,
+    fetchAdminContact,
+    sessionCustomer,
+    setSessionCustomer,
+    refreshUserInfo,
+    handleLogout: handleSessionLogout,
+    handleLoginSubmit,
+    handleSmsLogin,
+    handleSendSms,
+    handleRegister,
+    maskPhone,
+    maskWechat,
+    maskEmail,
+  } = useAppSession({
+    t,
+    showToast,
+    onShowAdminContact: () => adminContactCallbackRef.current?.(),
+  })
 
-  // === 自定义上传分类/名称/颜色 ===
-  const [customUploadCategory, setCustomUploadCategory] = useState('tops')
-  const [customUploadSubcategory, setCustomUploadSubcategory] = useState('')
-  const [customUploadSubcategoryCustom, setCustomUploadSubcategoryCustom] = useState('')
-  const [customUploadName, setCustomUploadName] = useState('')
-  const [customUploadColor, setCustomUploadColor] = useState('黑色')
+  // 注意：以下两个上传 hook 依赖 isLoggedIn / setShowLoginModal，
+  // 必须放在 useAppSession、useModalManager 之后声明——否则读取的是 const 的 TDZ，
+  // 首次渲染即抛 ReferenceError（白屏）。
+  // === 自定义服装上传 ===
+  const { uploadClothing: uploadCustomClothing } = useClothingUpload({
+    showToast,
+    t,
+    isLoggedIn,
+    onRequireLogin: () => setShowLoginModal(true),
+    onAddPlaceholder: item => setCustomClothing(prev => [...prev, item]),
+    onUpdateItem: updateCustomClothing,
+    onRemoveByTempId: removeCustomClothingByTempId,
+    type: 'custom',
+  })
 
-  // === 用户认证状态 ===
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userInfo, setUserInfo] = useState(null)
-  const [loginLoading, setLoginLoading] = useState(false)
-
-  // === 管理员联系信息 ===
-  const [showAdminContactModal, setShowAdminContactModal] = useState(false)
-  const [adminContactInfo, setAdminContactInfo] = useState(null)
-  const [adminContactLoading, setAdminContactLoading] = useState(false)
-
-  // === 历史记录弹窗 ===
-  const [showHistoryModal, setShowHistoryModal] = useState(false)
+  // === 衣橱服装上传 ===
+  const { uploadClothing: uploadWardrobeClothing } = useClothingUpload({
+    showToast,
+    t,
+    isLoggedIn,
+    onRequireLogin: () => setShowLoginModal(true),
+    onAddPlaceholder: item => setWardrobeClothing(prev => [...prev, item]),
+    onUpdateItem: updateWardrobeClothing,
+    onRemoveByTempId: removeWardrobeByTempId,
+    type: 'wardrobe',
+  })
 
   // 防止 StrictMode 下重复初始化
   const initRef = useRef(false)
 
-  /** 获取管理员联系信息 */
-  const fetchAdminContact = useCallback(async () => {
-    setAdminContactLoading(true)
-    try {
-      const response = await api.get(API_ENDPOINTS.AUTH.ADMIN_CONTACT, { requiresAuth: false })
-      if (response.success) {
-        const { data } = response
-        if (data && data.success && data.data) {
-          setAdminContactInfo(data.data)
-        } else if (data) {
-          setAdminContactInfo(data)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch admin contact:', error)
-    } finally {
-      setAdminContactLoading(false)
-    }
-  }, [])
-
-  /** 显示管理员联系弹窗（懒加载联系信息） */
+  /** 显示管理员联系弹窗（懒加载联系信息） — 胶水：数据来自 useAppSession，弹窗来自 useModalManager */
   const handleShowAdminContact = useCallback(async () => {
     if (!adminContactInfo) {
       await fetchAdminContact()
     }
     setShowAdminContactModal(true)
-  }, [adminContactInfo, fetchAdminContact])
+  }, [adminContactInfo, fetchAdminContact, setShowAdminContactModal])
 
-  /** 脱敏处理：手机号中间4位用 * 替换 */
-  const maskPhone = useCallback(phone => {
-    if (!phone || phone.length < 7) {
-      return phone
-    }
-    return `${phone.slice(0, 3)}****${phone.slice(-4)}`
-  }, [])
+  // 将 handleShowAdminContact 绑定到 ref，供 useAppSession 内的登录方法调用
+  adminContactCallbackRef.current = handleShowAdminContact
+  // 同时绑定到 tryOnAdminRef，供 useTryOnFlow 内的配额检查调用
+  tryOnAdminRef.current = handleShowAdminContact
 
-  /** 脱敏处理：微信号中间用 *** 替换 */
-  const maskWechat = useCallback(wechat => {
-    if (!wechat || wechat.length < 4) {
-      return wechat
-    }
-    return `${wechat.slice(0, 2)}***${wechat.slice(-2)}`
-  }, [])
-
-  /** 脱敏处理：邮箱用户名中间用 *** 替换 */
-  const maskEmail = useCallback(email => {
-    if (!email || !email.includes('@')) {
-      return email
-    }
-    const [name, domain] = email.split('@')
-    return `${name.slice(0, 2)}***@${domain}`
-  }, [])
-
+  // 登录成功后自动关闭登录弹窗
   useEffect(() => {
-    if (userInfo && userInfo.quota_total !== undefined) {
-      setQuota({
-        total: userInfo.quota_total,
-        used: userInfo.quota_used || 0,
-        remaining: userInfo.quota_remaining || userInfo.quota_total - (userInfo.quota_used || 0),
-      })
+    if (isLoggedIn && showLoginModal) {
+      setShowLoginModal(false)
     }
-  }, [userInfo])
+  }, [isLoggedIn, showLoginModal, setShowLoginModal])
 
-  const [sessionCustomer, setSessionCustomer] = useState(() => {
-    const cached = localStorage.getItem(STORAGE_KEYS.SESSION_CUSTOMER)
-    if (cached) {
-      setSessionId(cached)
-      return cached
-    }
-    const now = new Date()
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
-    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
-    const newCustomer = `Customer_${dateStr}_${timeStr}`
-    localStorage.setItem(STORAGE_KEYS.SESSION_CUSTOMER, newCustomer)
-    setSessionId(newCustomer)
-    return newCustomer
-  })
-
+  // 全局请求错误兜底提示：任何未被调用方自行处理的失败都会弹出 Toast，
+  // 避免「后端报错但界面毫无反馈」。已自行提示的地方用 api.markHandled 标记去重。
   useEffect(() => {
-    if (sessionCustomer) {
-      setSessionId(sessionCustomer)
-    }
-  }, [sessionCustomer])
-
-  useEffect(() => {
-    const handleLogout = () => {
-      setIsLoggedIn(false)
-      setUserInfo(null)
-      localStorage.removeItem(STORAGE_KEYS.USER_INFO)
-    }
-    window.addEventListener('auth:logout', handleLogout)
-    return () => window.removeEventListener('auth:logout', handleLogout)
-  }, [])
-
-  /** 显示 Toast 提示，3秒后自动消失 */
-  const showToast = useCallback((message, type = 'info') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
-  }, [])
-
-  /** 刷新用户信息（含配额数据），更新本地缓存 */
-  const refreshUserInfo = useCallback(async () => {
-    try {
-      const response = await api.get(API_ENDPOINTS.AUTH.ME)
-      if (response.success) {
-        const userData = response.data?.data || response.data
-        setUserInfo(userData)
-        localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userData))
+    setGlobalErrorHandler((message, status) => {
+      if (status === 401) {
+        // 401 由认证流程统一处理（清 token + 登出），此处不再重复打扰
+        return
       }
-    } catch (error) {
-      // 忽略刷新用户信息失败
-    }
-  }, [])
+      showToast(message || t('n_tryOnFail') || '请求失败，请稍后重试', 'error')
+    })
+    return () => setGlobalErrorHandler(null)
+  }, [showToast, t])
 
   /** 试穿完成回调：标记有结果，刷新用户配额信息 */
   const handleTryOnComplete = useCallback(
@@ -227,17 +246,45 @@ function AppContent() {
     remainingTime,
     modelPhotos,
     modelPhotosLoading,
+    loading: historyLoading,
+    historyError,
+    recordId,
+    errorMessage,
     submitTask,
     fetchHistory,
     fetchModelPhotos,
     clearResult,
+    clearError,
+    clearHistory,
     startGenerating,
     cancelGenerating,
-    updateHistoryRecord,
+    saveHistoryRecord,
+    deleteHistoryRecord,
+    clearHistoryRecords,
   } = useTryOn({
     sessionId: sessionCustomer,
     onComplete: handleTryOnComplete,
     onError: handleTryOnError,
+    t,
+  })
+
+  // === 试穿提交流程 ===
+  const { handleTryOn } = useTryOnFlow({
+    isLoggedIn,
+    showToast,
+    t,
+    onRequireLogin: () => setShowLoginModal(true),
+    onShowAdminContact: () => tryOnAdminRef.current?.(),
+    avatarPreview,
+    avatarFile,
+    avatarSource,
+    setAvatarFile,
+    selected,
+    quota,
+    setQuota,
+    startGenerating,
+    cancelGenerating,
+    submitTask,
   })
 
   const {
@@ -314,55 +361,10 @@ function AppContent() {
         // 更新全局状态
         setIsLoggedIn(isAuthenticated)
 
-        const cachedAvatar = await safeStorage.getItem(STORAGE_KEYS.AVATAR_PREVIEW)
-        if (cachedAvatar) {
-          setAvatarPreview(cachedAvatar)
-        }
+        await loadAvatarFromCache()
 
-        // 仅在已登录时加载服装缓存
-        if (isAuthenticated) {
-          const cachedCustomClothing = await safeStorage.getItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-          if (cachedCustomClothing) {
-            try {
-              const parsed =
-                typeof cachedCustomClothing === 'string'
-                  ? JSON.parse(cachedCustomClothing)
-                  : cachedCustomClothing
-              setCustomClothing(parsed)
-            } catch (e) {
-              // 忽略解析错误
-            }
-          }
-
-          const cachedWardrobeClothing = await safeStorage.getItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-          if (cachedWardrobeClothing) {
-            try {
-              const parsed =
-                typeof cachedWardrobeClothing === 'string'
-                  ? JSON.parse(cachedWardrobeClothing)
-                  : cachedWardrobeClothing
-              setWardrobeClothing(parsed)
-            } catch (e) {
-              // 忽略解析错误
-            }
-          }
-        }
-
-        const cachedSelected = await safeStorage.getItem(STORAGE_KEYS.SELECTED_CLOTHING)
-        if (cachedSelected) {
-          try {
-            const parsed =
-              typeof cachedSelected === 'string' ? JSON.parse(cachedSelected) : cachedSelected
-            // 检查是否有图片 URL
-            if (parsed.length > 0 && !parsed[0].image_url) {
-              safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
-            } else {
-              setSelected(parsed)
-            }
-          } catch (e) {
-            console.error('[Cache] 解析已选服装缓存失败:', e)
-          }
-        }
+        // 加载服装缓存（已登录时加载自定义和衣橱）
+        await loadFromCache({ includeCustomAndWardrobe: isAuthenticated })
 
         // 获取模特照片（仅在已登录时）
         if (isAuthenticated) {
@@ -384,316 +386,44 @@ function AppContent() {
     }
 
     initApp()
-  }, [t, fetchModelPhotos])
+    // loadAvatarFromCache / loadFromCache / setIsLoggedIn / setUserInfo 引用恒定
+    // （useState setter 或依赖为 [] 的 useCallback），加入不会导致重复初始化
+  }, [t, fetchModelPhotos, loadAvatarFromCache, loadFromCache, setIsLoggedIn, setUserInfo])
 
   useEffect(() => {
     if (isLoggedIn) {
       fetchHistory()
       fetchClothing().then(items => {
         if (items.length > 0) {
-          setWardrobeClothing(items)
-          safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, items)
+          setWardrobeClothingWithPersist(items)
         }
       })
       fetchCategories()
     }
-  }, [isLoggedIn, fetchHistory, fetchClothing, fetchCategories])
-
-  /**
-   * 处理头像文件选择
-   * 校验大小(≤30MB)和格式 → 设置预览 → 缓存到 localStorage
-   */
-  const handleAvatarChange = useCallback(
-    async e => {
-      const file = e.target.files?.[0]
-      if (file) {
-        const MAX_SIZE = 30 * 1024 * 1024
-        if (file.size > MAX_SIZE) {
-          showToast(t('n_imgTooLarge30MB'), 'warning')
-          e.target.value = ''
-          return
-        }
-
-        const allowedTypes = [
-          'image/jpeg',
-          'image/jpg',
-          'image/png',
-          'image/gif',
-          'image/webp',
-          'image/bmp',
-          'image/heic',
-          'image/heif',
-        ]
-        if (!allowedTypes.includes(file.type)) {
-          showToast(t('n_imgFormatError'), 'error')
-          e.target.value = ''
-          return
-        }
-
-        setAvatarSource('user')
-
-        const objectUrl = URL.createObjectURL(file)
-        setAvatarPreview(objectUrl)
-
-        let processedFile = file
-        if (file.size > 500 * 1024) {
-          try {
-            processedFile = await compressImage(file, 1, 1280, 1280)
-          } catch (error) {
-            console.warn('图片压缩失败，使用原始文件:', error)
-          }
-        }
-
-        setAvatarFile(processedFile)
-
-        const reader = new FileReader()
-        reader.onload = ev => {
-          const base64 = ev.target.result
-          setAvatarPreview(base64)
-          safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, base64)
-          URL.revokeObjectURL(objectUrl)
-        }
-        reader.onerror = () => {
-          URL.revokeObjectURL(objectUrl)
-          showToast(t('n_imgReadFail'), 'error')
-        }
-        reader.readAsDataURL(processedFile)
-      } else if (e.target.files === null) {
-        setAvatarFile(null)
-        setAvatarPreview(null)
-        setAvatarSource('user')
-        safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-      }
-    },
-    [showToast, t]
-  )
-
-  // 删除当前形象
-  const deleteAvatar = useCallback(() => {
-    setAvatarFile(null)
-    setAvatarPreview(null)
-    setAvatarSource('user')
-    safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-  }, [])
-
-  /**
-   * 提交试穿任务
-   * 流程：登录检查 → 头像检查 → 服装检查 → 配额检查(本地+服务端) → 头像处理 → 提交
-   * 移动端提交后自动滚动到结果区域
-   */
-  const handleTryOn = useCallback(async () => {
-    if (!isLoggedIn) {
-      showToast(t('n_needLogin'), 'warning')
-      setShowLoginModal(true)
-      return
-    }
-
-    if (!avatarPreview) {
-      showToast(t('n_needAvatar'), 'warning')
-      return
-    }
-    if (selected.length === 0) {
-      showToast(t('n_needClothing'), 'warning')
-      return
-    }
-    if (quota.remaining <= 0) {
-      showToast(t('n_quotaEmpty'), 'error')
-      handleShowAdminContact()
-      return
-    }
-
-    startGenerating()
-
-    // 再次检查服务器配额（防止多设备同时使用）
-    try {
-      const meResponse = await api.get(API_ENDPOINTS.AUTH.ME)
-      if (meResponse.success) {
-        const serverQuota = meResponse.data?.data || meResponse.data
-        // 更新本地配额
-        if (serverQuota?.quota_remaining !== undefined) {
-          setQuota({
-            total: serverQuota.quota_total || quota.total,
-            used: serverQuota.quota_used || quota.used,
-            remaining: serverQuota.quota_remaining,
-          })
-        }
-        if (serverQuota.quota_remaining <= 0) {
-          cancelGenerating()
-          showToast(t('n_quotaEmpty'), 'error')
-          handleShowAdminContact()
-          return
-        }
-      }
-    } catch (e) {
-      // 忽略解析错误，继续执行
-    }
-
-    let fileToSubmit = null
-    let keyToReuse = null
-    let submitAvatarSource = avatarSource || 'user'
-
-    if (avatarSource === 'system') {
-      keyToReuse = await safeStorage.getItem(STORAGE_KEYS.REUSE_AVATAR_KEY)
-    } else if (avatarFile) {
-      fileToSubmit = avatarFile
-      submitAvatarSource = 'user'
-    } else if (avatarPreview) {
-      try {
-        const response = await fetch(avatarPreview)
-        if (!response.ok) {
-          throw new Error(`Failed to fetch avatar: ${response.status}`)
-        }
-        const blob = await response.blob()
-        if (blob.size === 0) {
-          throw new Error('Avatar blob is empty')
-        }
-        fileToSubmit = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' })
-        if (!avatarPreview.startsWith('/images/')) {
-          setAvatarFile(fileToSubmit)
-        }
-        submitAvatarSource = 'user'
-      } catch (e) {
-        cancelGenerating()
-        showToast(t('n_imgReadFail'), 'error')
-        return
-      }
-    }
-
-    await submitTask(fileToSubmit, selected, keyToReuse, submitAvatarSource)
-
-    if (window.innerWidth < 1024) {
-      setTimeout(() => {
-        const resultArea = document.getElementById('tryon-result-area')
-        if (resultArea) {
-          resultArea.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        }
-      }, 100)
-    }
-  }, [
-    isLoggedIn,
-    avatarPreview,
-    avatarFile,
-    avatarSource,
-    selected,
-    quota,
-    submitTask,
-    showToast,
-    startGenerating,
-    cancelGenerating,
-    handleShowAdminContact,
-    t,
-  ])
-
-  const _showNotification = useCallback(
-    (message, type = 'success') => {
-      showToast(message, type)
-    },
-    [showToast]
-  )
-
-  const showConfirmDialog = useCallback((title, message, action) => {
-    setConfirmConfig({ title, message, action })
-    setShowConfirmModal(true)
-  }, [])
-
-  const handleConfirmAction = useCallback(() => {
-    if (confirmConfig.action) {
-      confirmConfig.action()
-    }
-    setShowConfirmModal(false)
-    setConfirmConfig({ title: '', message: '', action: null })
-  }, [confirmConfig])
-
-  const openPreviewModal = useCallback((src, name) => {
-    setPreviewModalData({ src, name })
-    setShowPreviewModal(true)
-  }, [])
-
-  const closePreviewModal = useCallback(() => {
-    setShowPreviewModal(false)
-    setPreviewModalData({ src: '', name: '' })
-  }, [])
-
-  const openCameraModal = useCallback(callback => {
-    setCameraCallback(callback)
-    setShowCameraModal(true)
-  }, [])
-
-  const closeCameraModal = useCallback(() => {
-    setShowCameraModal(false)
-    setCameraCallback(null)
-  }, [])
+  }, [isLoggedIn, fetchHistory, fetchClothing, fetchCategories, setWardrobeClothingWithPersist])
 
   /** 登出：清除所有认证状态和本地缓存 */
   const handleLogout = useCallback(() => {
     showConfirmDialog(t('logoutTitle'), t('logoutMsg'), () => {
-      TokenManager.clearTokens()
-      localStorage.removeItem(STORAGE_KEYS.USER_INFO)
-      setIsLoggedIn(false)
-      setUserInfo(null)
+      handleSessionLogout()
 
-      setQuota({ total: 100, used: 0, remaining: 100 })
-
-      setSelected([])
-      setAvatarFile(null)
-      setAvatarPreview(null)
+      clearAllClothing()
+      resetAvatar()
       setHasResult(false)
       clearResult()
-      setCustomClothing([])
-      setWardrobeClothing([])
+      clearHistory()
 
-      safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-      safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-      safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-      safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
       safeStorage.removeItem(STORAGE_KEYS.SESSION_CUSTOMER)
-
-      showToast(t('n_logoutSuccess'), 'info')
     })
-  }, [showConfirmDialog, showToast, clearResult, t])
-
-  // 从「我的衣橱」移除单件服装（服装库弹窗心形点击触发）
-  const handleRemoveWardrobeItem = useCallback(item => {
-    const id = item?.id ?? item?.image_key ?? item?.key
-    if (!id) {
-      return
-    }
-    setWardrobeClothing(prev => {
-      const next = prev.filter(i => (i.id ?? i.image_key ?? i.key) !== id)
-      safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, next)
-      return next
-    })
-  }, [])
-
-  // 加入「我的衣橱」（服装库弹窗心形收藏触发）—— 与 wardrobeClothing 统一
-  const handleAddWardrobeItem = useCallback(item => {
-    const id = item?.id ?? item?.image_key ?? item?.key
-    if (!id) {
-      return
-    }
-    setWardrobeClothing(prev => {
-      if (prev.some(i => (i.id ?? i.image_key ?? i.key) === id)) {
-        return prev
-      }
-      const normalized = {
-        id: item.id,
-        uuid: item.uuid,
-        name: item.name,
-        category: item.category,
-        subcategory: item.subcategory,
-        color: item.color,
-        price: item.price,
-        image: item.image_thumb_url || item.image_url || item.image,
-        imageFull: item.image_url || item.image,
-        image_key: item.image_key,
-        source: item.source || 'wardrobe',
-        isWardrobe: true,
-      }
-      const next = [...prev, normalized]
-      safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, next)
-      return next
-    })
-  }, [])
+  }, [
+    showConfirmDialog,
+    handleSessionLogout,
+    clearAllClothing,
+    resetAvatar,
+    clearResult,
+    clearHistory,
+    t,
+  ])
 
   const handleEndSession = useCallback(async () => {
     if (!isLoggedIn) {
@@ -713,17 +443,12 @@ function AppContent() {
         // 忽略清空历史失败
       }
 
-      setSelected([])
-      setAvatarFile(null)
-      setAvatarPreview(null)
+      clearAllClothing()
+      resetAvatar()
       setHasResult(false)
       clearResult()
-      setCustomClothing([])
-      setWardrobeClothing([])
-      safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-      safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-      safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-      safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
+      // 历史记录已在服务端清空，同步清掉本地列表，避免继续展示已删除的记录
+      clearHistory()
 
       const now = new Date()
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
@@ -733,7 +458,19 @@ function AppContent() {
       setSessionCustomer(newCustomer)
       showToast(t('n_sessionEnded'), 'info')
     })
-  }, [isLoggedIn, showConfirmDialog, showToast, clearResult, sessionCustomer, t])
+  }, [
+    isLoggedIn,
+    showConfirmDialog,
+    showToast,
+    clearAllClothing,
+    resetAvatar,
+    clearResult,
+    clearHistory,
+    sessionCustomer,
+    setSessionCustomer,
+    setShowLoginModal,
+    t,
+  ])
 
   const handleClearHistory = useCallback(async () => {
     if (!isLoggedIn) {
@@ -741,43 +478,33 @@ function AppContent() {
       setShowLoginModal(true)
       return
     }
-
     if (!tryOnHistory || tryOnHistory.length === 0) {
       showToast(t('n_noHistory'), 'info')
       return
     }
     showConfirmDialog(t('clearHistoryTitle'), t('clearHistoryMsgCurrent'), async () => {
-      try {
-        const response = await api.delete(
-          `${API_ENDPOINTS.TRYON.CLEAR}?session_id=${encodeURIComponent(sessionCustomer)}`
-        )
-        if (response.success) {
-          await new Promise(resolve => {
-            setTimeout(resolve, 100)
-          })
-          await fetchHistory()
-          showToast(t('n_cleared'), 'info')
-        }
-      } catch (error) {
-        showToast(t('n_clearFail'), 'error')
-      }
+      const success = await clearHistoryRecords(sessionCustomer)
+      showToast(success ? t('n_cleared') : t('n_clearFail'), success ? 'info' : 'error')
     })
-  }, [isLoggedIn, tryOnHistory, showConfirmDialog, showToast, fetchHistory, sessionCustomer, t])
+  }, [
+    isLoggedIn,
+    tryOnHistory,
+    showConfirmDialog,
+    showToast,
+    clearHistoryRecords,
+    sessionCustomer,
+    setShowLoginModal,
+    t,
+  ])
 
   const handleClearSelection = useCallback(() => {
-    setSelected([])
-    setAvatarFile(null)
-    setAvatarPreview(null)
+    clearAllClothing()
+    resetAvatar()
     setHasResult(false)
     clearResult()
-    setCustomClothing([])
-    setWardrobeClothing([])
-    // 同步清除本地缓存，避免刷新页面后衣服/形象缓存残留
-    safeStorage.removeItem(STORAGE_KEYS.SELECTED_CLOTHING)
-    safeStorage.removeItem(STORAGE_KEYS.CUSTOM_CLOTHING)
-    safeStorage.removeItem(STORAGE_KEYS.WARDROBE_CLOTHING)
-    safeStorage.removeItem(STORAGE_KEYS.AVATAR_PREVIEW)
-  }, [clearResult])
+    // clearResult 会保留失败文案（供结果页重试），回到初始态需显式清掉
+    clearError()
+  }, [clearAllClothing, resetAvatar, clearResult, clearError])
 
   const handleToggleHistorySaved = useCallback(
     async (uuid, newSavedState) => {
@@ -786,24 +513,14 @@ function AppContent() {
         setShowLoginModal(true)
         return
       }
-
-      try {
-        const response = await api.post(API_ENDPOINTS.TRYON.SAVE(uuid), { is_saved: newSavedState })
-
-        if (response.success) {
-          // 实时更新本地状态
-          updateHistoryRecord(uuid, { is_saved: newSavedState })
-          showToast(newSavedState ? t('n_saved') : t('n_unsaved'), 'success')
-        } else {
-          console.error(`[收藏] 操作失败: ${response.error}`)
-          showToast(response.error || t('n_saveFail'), 'error')
-        }
-      } catch (error) {
-        console.error(`[收藏] 异常:`, error)
+      const success = await saveHistoryRecord(uuid, newSavedState)
+      if (success) {
+        showToast(newSavedState ? t('n_saved') : t('n_unsaved'), 'success')
+      } else {
         showToast(t('n_saveFail'), 'error')
       }
     },
-    [isLoggedIn, showToast, t, updateHistoryRecord]
+    [isLoggedIn, showToast, t, saveHistoryRecord, setShowLoginModal]
   )
 
   const handleDeleteHistory = useCallback(
@@ -813,20 +530,10 @@ function AppContent() {
         setShowLoginModal(true)
         return
       }
-
-      try {
-        const response = await api.delete(API_ENDPOINTS.TRYON.DELETE(uuid))
-        if (response.success) {
-          fetchHistory()
-          showToast(t('n_deleted'), 'info')
-        } else {
-          showToast(t('n_deleteFail'), 'error')
-        }
-      } catch (error) {
-        showToast(t('n_deleteFail'), 'error')
-      }
+      const success = await deleteHistoryRecord(uuid)
+      showToast(success ? t('n_deleted') : t('n_deleteFail'), success ? 'info' : 'error')
     },
-    [isLoggedIn, fetchHistory, showToast, t]
+    [isLoggedIn, showToast, t, deleteHistoryRecord, setShowLoginModal]
   )
 
   useEffect(() => {
@@ -872,193 +579,13 @@ function AppContent() {
     showPreviewModal,
     showCameraModal,
     closePreviewModal,
+    setShowConfirmModal,
+    setShowLoginModal,
+    setShowSettingsModal,
+    setShowStoreModal,
+    setShowWardrobeModal,
     closeCameraModal,
   ])
-
-  const handleLoginSubmit = useCallback(
-    async (username, password) => {
-      if (!username || !password) {
-        showToast(t('n_loginInputEmpty'), 'warning')
-        return
-      }
-
-      setLoginLoading(true)
-      try {
-        const response = await api.post(
-          API_ENDPOINTS.AUTH.LOGIN,
-          {
-            username,
-            password,
-          },
-          { requiresAuth: false }
-        )
-
-        if (response.success) {
-          const loginData = response.data?.data || response.data
-          TokenManager.setTokens(loginData.access_token, loginData.refresh_token)
-
-          // 登录成功后获取用户信息
-          try {
-            const meResponse = await api.get(API_ENDPOINTS.AUTH.ME)
-            if (meResponse.success) {
-              const meInfo = meResponse.data?.data || meResponse.data
-              localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(meInfo))
-              setUserInfo(meInfo)
-            }
-          } catch (meError) {
-            console.error('获取用户信息失败:', meError)
-          }
-
-          setIsLoggedIn(true)
-          setShowLoginModal(false)
-          showToast(t('n_loginSuccess'), 'success')
-        } else {
-          const errorMsg = response.error || t('n_loginError')
-          showToast(errorMsg, 'error')
-          if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
-            handleShowAdminContact()
-          }
-        }
-      } catch (error) {
-        const errorMsg = error?.response?.data?.error || error?.message || t('n_loginFail')
-        showToast(errorMsg, 'error')
-        if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
-          handleShowAdminContact()
-        }
-      } finally {
-        setLoginLoading(false)
-      }
-    },
-    [showToast, t, handleShowAdminContact]
-  )
-
-  const handleSmsLogin = useCallback(
-    async (phone, code) => {
-      if (!phone || !code) {
-        showToast(t('n_loginPhoneEmpty'), 'warning')
-        return
-      }
-
-      setLoginLoading(true)
-      try {
-        const response = await api.post(
-          API_ENDPOINTS.AUTH.SMS_LOGIN,
-          {
-            phone,
-            code,
-          },
-          { requiresAuth: false }
-        )
-
-        if (response.success) {
-          const loginData = response.data?.data || response.data
-          TokenManager.setTokens(loginData.access_token, loginData.refresh_token)
-
-          // 登录成功后获取用户信息
-          try {
-            const meResponse = await api.get(API_ENDPOINTS.AUTH.ME)
-            if (meResponse.success) {
-              const meInfo = meResponse.data?.data || meResponse.data
-              localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(meInfo))
-              setUserInfo(meInfo)
-            }
-          } catch (meError) {
-            console.error('获取用户信息失败:', meError)
-          }
-
-          setIsLoggedIn(true)
-          setShowLoginModal(false)
-          showToast(t('n_loginSuccess'), 'success')
-        } else {
-          const errorMsg = response.error || t('n_smsError')
-          showToast(errorMsg, 'error')
-          if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
-            handleShowAdminContact()
-          }
-        }
-      } catch (error) {
-        const errorMsg = error?.response?.data?.error || error?.message || t('n_loginFail')
-        showToast(errorMsg, 'error')
-        if (errorMsg.includes('待审核') || errorMsg.includes('联系管理员')) {
-          handleShowAdminContact()
-        }
-      } finally {
-        setLoginLoading(false)
-      }
-    },
-    [showToast, t, handleShowAdminContact]
-  )
-
-  const handleSendSms = useCallback(
-    async phone => {
-      if (!phone) {
-        showToast(t('n_phoneEmpty'), 'warning')
-        return false
-      }
-
-      try {
-        const response = await api.post(
-          API_ENDPOINTS.AUTH.SEND_SMS,
-          {
-            phone,
-            purpose: 'login',
-          },
-          { requiresAuth: false }
-        )
-
-        if (response.success) {
-          showToast(t('n_smsSent'), 'success')
-          return true
-        }
-        showToast(response.error || t('n_smsSendFail'), 'error')
-        return false
-      } catch (error) {
-        showToast(t('n_smsSendFailRetry'), 'error')
-        return false
-      }
-    },
-    [showToast, t]
-  )
-
-  const handleRegister = useCallback(
-    async (username, phone, password, storeName = '') => {
-      if (!username || !phone || !password) {
-        showToast(t('n_registerInputEmpty', '请填写完整信息'), 'warning')
-        return
-      }
-
-      setLoginLoading(true)
-      try {
-        const response = await api.post(
-          API_ENDPOINTS.AUTH.REGISTER,
-          {
-            username,
-            phone,
-            password,
-            store_name: storeName,
-          },
-          { requiresAuth: false }
-        )
-
-        if (response.success) {
-          const registerData = response.data?.data || response.data
-          TokenManager.setTokens(registerData.access_token, registerData.refresh_token)
-          localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(registerData.merchant))
-          setIsLoggedIn(true)
-          setUserInfo(registerData.merchant)
-          setShowLoginModal(false)
-          showToast(t('n_registerSuccess', '注册成功'), 'success')
-        } else {
-          showToast(response.error || t('n_registerError', '注册失败'), 'error')
-        }
-      } catch (error) {
-        showToast(t('n_registerFail', '注册失败，请稍后重试'), 'error')
-      } finally {
-        setLoginLoading(false)
-      }
-    },
-    [showToast, t]
-  )
 
   const _handleSaveResult = useCallback(() => {
     if (!hasResult || tryOnHistory.length === 0) {
@@ -1079,325 +606,33 @@ function AppContent() {
     showToast(t('n_shareSoon'), 'info')
   }, [hasResult, showToast, t])
 
-  const handleToggle = useCallback(item => {
-    if (!item || item.id === undefined) {
-      console.warn('handleToggle: 无效的服装项', item)
-      return
-    }
-    setSelected(prev => {
-      const exists = prev.find(s => s.id === item.id)
-      let newList
-      if (exists) {
-        newList = prev.filter(s => s.id !== item.id)
-      } else {
-        const filtered = prev.filter(s => s.category !== item.category)
-        newList = [...filtered, item]
-      }
-      try {
-        const storageList = newList.map(i => ({
-          id: i.id,
-          uuid: i.uuid,
-          name: i.name,
-          category: i.category,
-          subcategory: i.subcategory,
-          color: i.color,
-          // 兼容 image 和 image_url 两种字段名
-          image_url: i.image_url || i.image,
-          image_thumb_url: i.image_thumb_url || i.image,
-          isCustom: i.isCustom,
-          isWardrobe: i.isWardrobe,
-        }))
-        safeStorage.setItem(STORAGE_KEYS.SELECTED_CLOTHING, storageList)
-      } catch (e) {
-        console.warn('存储失败:', e)
-      }
-      return newList
-    })
-  }, [])
-
-  const handleRemoveSelected = useCallback(id => {
-    setSelected(prev => {
-      const newList = prev.filter(s => s.id !== id)
-      try {
-        const storageList = newList.map(i => ({
-          id: i.id,
-          uuid: i.uuid,
-          name: i.name,
-          category: i.category,
-          subcategory: i.subcategory,
-          color: i.color,
-          // 兼容 image 和 image_url 两种字段名
-          image_url: i.image_url || i.image,
-          image_thumb_url: i.image_thumb_url || i.image,
-          isCustom: i.isCustom,
-          isWardrobe: i.isWardrobe,
-        }))
-        safeStorage.setItem(STORAGE_KEYS.SELECTED_CLOTHING, storageList)
-      } catch (e) {
-        console.warn('存储失败:', e)
-      }
-      return newList
-    })
-  }, [])
-
   const handleCustomUpload = useCallback(
-    async (file, category = 'tops', subcategory = '', name = '', color = '黑色') => {
-      if (!isLoggedIn) {
-        showToast(t('n_needLogin'), 'warning')
-        setShowLoginModal(true)
-        return
-      }
-
-      if (!file) {
-        return
-      }
-
-      const MAX_SIZE = 5 * 1024 * 1024
-      if (file.size > MAX_SIZE) {
-        showToast(t('n_imgSizeLimit'), 'warning')
-        return
-      }
-
-      const allowedTypes = [
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/heic',
-        'image/heif',
-      ]
-      if (!allowedTypes.includes(file.type)) {
-        showToast(t('n_imgFormatError'), 'error')
-        return
-      }
-
-      const fileName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
-      let processedFile = file
-      if (file.name.length > 30) {
-        processedFile = new File([file], truncateFileName(file.name), {
-          type: file.type,
-          lastModified: Date.now(),
-        })
-      }
-
-      if (processedFile.size > 500 * 1024) {
-        try {
-          showToast(t('n_imgOptimizing'), 'info')
-          processedFile = await compressImage(processedFile, 1, 1280, 1280)
-        } catch (error) {
-          console.warn('图片压缩失败，使用原始文件:', error)
-        }
-      }
-
-      const tempId = `custom_uploading_${Date.now()}`
-      const localPreview = URL.createObjectURL(processedFile)
-
-      const placeholderItem = {
-        id: tempId,
-        uuid: tempId,
-        name: fileName,
-        category,
-        subcategory,
-        color,
-        image: localPreview,
-        imageFull: null,
-        isUploading: true,
-        isCustom: true,
-      }
-
-      setCustomClothing(prev => [...prev, placeholderItem])
-
-      try {
-        const formData = new FormData()
-        formData.append('file', processedFile)
-        formData.append('name', fileName)
-        formData.append('category', category)
-        formData.append('subcategory', subcategory || 'other')
-        formData.append('color', color)
-        formData.append('source', 'custom')
-
-        const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
-
-        if (response.success) {
-          const item = response.data?.data || response.data
-          const newItem = {
-            id: item.uuid,
-            uuid: item.uuid,
-            name: item.name,
-            category: item.category,
-            subcategory: item.subcategory,
-            color: item.color || color,
-            price: item.price,
-            sizes: item.sizes,
-            image: item.image_thumb_url || item.image_url,
-            imageFull: item.image_url,
-            image_key: item.image_key,
-            source: item.source || 'custom',
-            isCustom: true,
-            isUploading: false,
-          }
-
-          URL.revokeObjectURL(localPreview)
-
-          setCustomClothing(prev => {
-            const newList = prev.map(i => (i.id === tempId ? newItem : i))
-            safeStorage.setItem(STORAGE_KEYS.CUSTOM_CLOTHING, newList)
-            return newList
-          })
-          showToast(t('n_customAdded', { count: 1 }), 'success')
-        } else {
-          URL.revokeObjectURL(localPreview)
-          setCustomClothing(prev => prev.filter(item => item.id !== tempId))
-          showToast(response.error || t('n_uploadFail'), 'error')
-        }
-      } catch (error) {
-        console.error('[CustomUpload] 上传失败:', error)
-        URL.revokeObjectURL(localPreview)
-        setCustomClothing(prev => prev.filter(item => item.id !== tempId))
-        showToast(t('n_imgUploadFail'), 'error')
-      }
+    async (file, category = 'tops', name = '', color = '黑色') => {
+      await uploadCustomClothing(file, category, name, color)
     },
-    [isLoggedIn, showToast, t]
+    [uploadCustomClothing]
   )
 
-  const _handleUpdateWardrobeCategory = useCallback((category, subcategory) => {
-    setWardrobeUploadCategory(category)
-    setWardrobeUploadSubcategory(subcategory || '')
-    setWardrobeUploadSubcategoryCustom('')
-  }, [])
+  const _handleUpdateWardrobeCategory = useCallback(
+    category => {
+      setWardrobeUploadCategory(category)
+    },
+    [setWardrobeUploadCategory]
+  )
 
   // 服装库「自定义上传」入口回调：把选中的图按当前分类/颜色作为自定义服装上传
   const handleCustomUploadFile = useCallback(
     async (file, category = 'tops', color = '黑色') => {
-      await handleCustomUpload(file, category, '', '', color)
+      await handleCustomUpload(file, category, '', color)
     },
     [handleCustomUpload]
   )
 
   const handleWardrobeUpload = useCallback(
-    async (file, category = 'tops', subcategory = '', name = '', color = wardrobeUploadColor) => {
-      if (!isLoggedIn) {
-        showToast(t('n_needLogin'), 'warning')
-        setShowLoginModal(true)
-        return
-      }
-
-      if (!file) {
-        return
-      }
-
-      const MAX_SIZE = 5 * 1024 * 1024
-      if (file.size > MAX_SIZE) {
-        showToast(t('n_imgSizeLimit'), 'warning')
-        return
-      }
-
-      const allowedTypes = [
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/heic',
-        'image/heif',
-      ]
-      if (!allowedTypes.includes(file.type)) {
-        showToast(t('n_imgFormatError'), 'error')
-        return
-      }
-
-      const fileName = truncateFileName(name || file.name.replace(/\.[^.]+$/, ''))
-      let processedFile = file
-      if (file.name.length > 30) {
-        processedFile = new File([file], truncateFileName(file.name), {
-          type: file.type,
-          lastModified: Date.now(),
-        })
-      }
-
-      if (processedFile.size > 500 * 1024) {
-        try {
-          showToast(t('n_imgOptimizing'), 'info')
-          processedFile = await compressImage(processedFile, 1, 1280, 1280)
-        } catch (error) {
-          console.warn('图片压缩失败，使用原始文件:', error)
-        }
-      }
-
-      const tempId = `wardrobe_uploading_${Date.now()}`
-      const localPreview = URL.createObjectURL(processedFile)
-
-      const finalSubcategory = wardrobeUploadSubcategoryCustom || subcategory
-
-      const placeholderItem = {
-        id: tempId,
-        uuid: tempId,
-        name: fileName,
-        category,
-        subcategory: finalSubcategory,
-        color,
-        image: localPreview,
-        imageFull: null,
-        isUploading: true,
-        isWardrobe: true,
-      }
-
-      setWardrobeClothing(prev => [...prev, placeholderItem])
-
-      try {
-        const formData = new FormData()
-        formData.append('file', processedFile)
-        formData.append('name', fileName)
-        formData.append('category', category)
-        formData.append('subcategory', finalSubcategory || 'other')
-        formData.append('color', color)
-        formData.append('source', 'wardrobe')
-
-        const response = await api.upload(`${API_ENDPOINTS.WARDROBE.CLOTHING}upload/`, formData)
-
-        if (response.success) {
-          const item = response.data?.data || response.data
-          const newItem = {
-            id: item.uuid,
-            uuid: item.uuid,
-            name: item.name,
-            category: item.category,
-            subcategory: item.subcategory,
-            color: item.color || color,
-            price: item.price,
-            sizes: item.sizes,
-            image: item.image_thumb_url || item.image_url,
-            imageFull: item.image_url,
-            image_key: item.image_key,
-            source: item.source || 'wardrobe',
-            isWardrobe: true,
-            isUploading: false,
-          }
-
-          URL.revokeObjectURL(localPreview)
-
-          setWardrobeClothing(prev => {
-            const newList = prev.map(i => (i.id === tempId ? newItem : i))
-            safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, newList)
-            return newList
-          })
-          showToast(t('n_wardrobeAdded'), 'success')
-        } else {
-          URL.revokeObjectURL(localPreview)
-          setWardrobeClothing(prev => prev.filter(item => item.id !== tempId))
-          showToast(response.error || t('n_uploadFail'), 'error')
-        }
-      } catch (error) {
-        console.error('[WardrobeUpload] 上传失败:', error)
-        URL.revokeObjectURL(localPreview)
-        setWardrobeClothing(prev => prev.filter(item => item.id !== tempId))
-        showToast(t('n_imgUploadFail'), 'error')
-      }
+    async (file, category = 'tops', name = '', color = wardrobeUploadColor) => {
+      await uploadWardrobeClothing(file, category, name, color)
     },
-    [isLoggedIn, showToast, wardrobeUploadSubcategoryCustom, wardrobeUploadColor, t]
+    [uploadWardrobeClothing, wardrobeUploadColor]
   )
 
   const handleRemoveCustomClothing = useCallback(
@@ -1407,26 +642,10 @@ function AppContent() {
         setShowLoginModal(true)
         return
       }
-
-      const item = customClothing.find(c => c.id === id)
-
-      if (item?.uuid && !item.uuid.startsWith('custom_')) {
-        try {
-          await api.delete(API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(item.uuid))
-        } catch (e) {
-          console.warn('云端删除失败:', e)
-        }
-      }
-
-      setSelected(prev => prev.filter(i => i.id !== id))
-      setCustomClothing(prev => {
-        const newList = prev.filter(i => i.id !== id)
-        safeStorage.setItem(STORAGE_KEYS.CUSTOM_CLOTHING, newList)
-        return newList
-      })
+      await deleteCustomClothing(id)
       showToast(t('n_customRemoved'), 'info')
     },
-    [isLoggedIn, showToast, customClothing, t]
+    [isLoggedIn, showToast, deleteCustomClothing, t, setShowLoginModal]
   )
 
   const _handleRemoveWardrobeItem = useCallback(
@@ -1436,26 +655,10 @@ function AppContent() {
         setShowLoginModal(true)
         return
       }
-
-      const item = wardrobeClothing.find(c => c.id === id)
-
-      if (item?.uuid && !item.uuid.startsWith('wardrobe_')) {
-        try {
-          await api.delete(API_ENDPOINTS.WARDROBE.CLOTHING_DETAIL(item.uuid))
-        } catch (e) {
-          console.warn('云端删除失败:', e)
-        }
-      }
-
-      setSelected(prev => prev.filter(i => i.id !== id))
-      setWardrobeClothing(prev => {
-        const newList = prev.filter(i => i.id !== id)
-        safeStorage.setItem(STORAGE_KEYS.WARDROBE_CLOTHING, newList)
-        return newList
-      })
+      await deleteWardrobeClothing(id)
       showToast(t('n_wardrobeRemoved'), 'info')
     },
-    [isLoggedIn, showToast, wardrobeClothing, t]
+    [isLoggedIn, showToast, deleteWardrobeClothing, t, setShowLoginModal]
   )
 
   const isOnline = useNetworkStatus({ showToast, t, currentToast: toast })
@@ -1484,25 +687,10 @@ function AppContent() {
             avatarPreview={avatarPreview}
             avatarSource={avatarSource}
             onAvatarChange={handleAvatarChange}
-            onSetAvatarPreview={preview => {
-              setAvatarPreview(preview)
-              safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, preview)
-              if (preview && preview.startsWith('/images/')) {
-                setAvatarFile(null)
-                safeStorage.removeItem(STORAGE_KEYS.AVATAR_FILE)
-              }
-            }}
-            onModelSelect={(imageUrl, imageKey, source = 'system') => {
-              setAvatarPreview(imageUrl)
-              safeStorage.setItem(STORAGE_KEYS.AVATAR_PREVIEW, imageUrl)
-              setAvatarSource(source)
-              if (imageKey) {
-                safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_KEY, imageKey)
-                safeStorage.setItem(STORAGE_KEYS.REUSE_AVATAR_SOURCE, source)
-              }
-              setAvatarFile(null)
-              safeStorage.removeItem(STORAGE_KEYS.AVATAR_FILE)
-            }}
+            onSetAvatarPreview={(preview, imageKey) =>
+              setAvatarPreviewWithPersist(preview, imageKey, 'user')
+            }
+            onModelSelect={selectModelAvatar}
             selected={selected}
             onToggleSelect={handleToggle}
             selectedClothing={selected}
@@ -1514,14 +702,13 @@ function AppContent() {
             status={status}
             progress={progress}
             resultUrl={resultUrl}
+            recordId={recordId}
+            errorMessage={errorMessage}
+            clearResult={clearResult}
             onTryOn={handleTryOn}
             canTryOn={!!avatarPreview && selected.length > 0 && quota.remaining > 0}
             onOpenWardrobeUpload={() => setShowWardrobeModal(true)}
-            onOpenCustomUploadModal={(category, subcategory) => {
-              setCustomUploadCategory(category || 'tops')
-              setCustomUploadSubcategory(subcategory || '')
-              setShowCustomUploadModal(true)
-            }}
+            onOpenCustomUploadModal={openCustomUploadModal}
             onOpenCameraModal={openCameraModal}
             onOpenLoginModal={() => setShowLoginModal(true)}
             onClearHistory={handleClearHistory}
@@ -1532,6 +719,8 @@ function AppContent() {
             onToggleHistorySaved={handleToggleHistorySaved}
             onDeleteHistory={handleDeleteHistory}
             onClearSelection={handleClearSelection}
+            replaceRequest={replaceRequest}
+            onReplaceRequestConsumed={() => setReplaceRequest(null)}
             hasResult={hasResult}
             setHasResult={setHasResult}
             customClothing={customClothing}
@@ -1548,10 +737,22 @@ function AppContent() {
             remainingTime={remainingTime}
             showHistoryModal={showHistoryModal}
             onCloseHistoryModal={() => setShowHistoryModal(false)}
+            historyLoading={historyLoading}
+            historyError={historyError}
+            onRetryHistory={fetchHistory}
             sessionCustomer={sessionCustomer}
             onCustomUploadFile={handleCustomUploadFile}
           />
-          {toast && <Toast message={toast.message} type={toast.type} />}
+          {toast && (
+            <Toast
+              // key 保证连续弹出同类提示时组件重挂载，进度条与倒计时重新开始
+              key={`${toast.type}-${toast.message}-${toast.key ?? ''}`}
+              message={toast.message}
+              type={toast.type}
+              duration={3000}
+              onClose={hideToast}
+            />
+          )}
 
           <LoginModal
             isOpen={showLoginModal}
@@ -1743,7 +944,7 @@ function AppContent() {
                   <button
                     type='button'
                     onClick={() => setShowAdminContactModal(false)}
-                    className='hover:bg-charcoal/90 mt-5 w-full rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors'
+                    className='mt-5 w-full rounded-xl bg-[var(--text-primary)] py-3 text-sm font-semibold text-[var(--bg-secondary)] transition-opacity hover:opacity-90'
                   >
                     {t('close', '关闭')}
                   </button>
@@ -1783,10 +984,10 @@ function AppContent() {
                 aria-label={t('storeClose')}
               />
               <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-[var(--bg-card)] shadow-2xl'>
-                <div className='bg-gradient-to-r from-[var(--accent)] to-[var(--accent-dark)] px-6 py-5 text-center'>
-                  <div className='border-champagne/40 bg-champagne/20 mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-2'>
+                <div className='bg-[#1a1a1a] px-6 py-5 text-center'>
+                  <div className='mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full border-2 border-[#8a7a5c]/40 bg-[#8a7a5c]/10'>
                     <svg
-                      className='h-7 w-7 text-champagne'
+                      className='h-7 w-7 text-[#8a7a5c]'
                       fill='none'
                       stroke='currentColor'
                       viewBox='0 0 24 24'
@@ -1802,7 +1003,7 @@ function AppContent() {
                   <h2 className='text-lg font-semibold text-white'>
                     {isLoggedIn ? userInfo?.store_name || t('storeMyStore') : t('storeNotLoggedIn')}
                   </h2>
-                  <p className='mt-1 text-xs text-[var(--text-muted)]'>
+                  <p className='mt-1 text-xs text-white/50'>
                     {isLoggedIn
                       ? userInfo?.username || t('settingsMerchantAccount')
                       : t('storePleaseLogin')}
@@ -1811,41 +1012,45 @@ function AppContent() {
                 <div className='space-y-4 px-6 py-4'>
                   {isLoggedIn ? (
                     <>
-                      <div className='bg-grayLight/30 rounded-xl p-4'>
+                      <div className='rounded-xl bg-[var(--bg-tertiary)] p-4'>
                         <div className='mb-2 flex items-center justify-between'>
-                          <span className='text-sm font-medium text-charcoal'>
+                          <span className='text-sm font-medium text-[var(--text-primary)]'>
                             {t('storeQuota')}
                           </span>
-                          <span className='text-sm text-grayMuted'>
+                          <span className='text-sm text-[var(--text-muted)]'>
                             {quota.used} / {quota.total} {t('historyUnit')}
                           </span>
                         </div>
-                        <div className='h-2.5 overflow-hidden rounded-full bg-grayLight'>
+                        <div className='h-2.5 overflow-hidden rounded-full bg-[var(--bg-tertiary)]'>
                           <div
-                            className='to-champagne/80 h-full rounded-full bg-gradient-to-r from-champagne transition-all duration-300'
+                            className='h-full rounded-full bg-[#8a7a5c] transition-all duration-300'
                             style={{
                               width: `${quota.total > 0 ? Math.min((quota.used / quota.total) * 100, 100) : 0}%`,
                             }}
                           />
                         </div>
                         <div className='mt-2 flex items-center justify-between'>
-                          <span className='text-xs text-grayMuted'>
+                          <span className='text-xs text-[var(--text-muted)]'>
                             {t('storeQuotaUsed', { n: quota.used })}
                           </span>
-                          <span className='text-xs font-medium text-success'>
+                          <span className='text-xs font-medium text-[#8a7a5c]'>
                             {t('storeQuotaRemaining', { n: quota.remaining })}
                           </span>
                         </div>
                       </div>
                       <div className='flex items-center justify-between py-2'>
-                        <span className='text-sm text-grayMuted'>{t('storeAccountStatus')}</span>
-                        <span className='text-sm font-medium text-success'>
+                        <span className='text-sm text-[var(--text-muted)]'>
+                          {t('storeAccountStatus')}
+                        </span>
+                        <span className='text-sm font-medium text-[#8a7a5c]'>
                           {t('settingsLoggedIn')}
                         </span>
                       </div>
                       <div className='flex items-center justify-between py-2'>
-                        <span className='text-sm text-grayMuted'>{t('storeWardrobeItems')}</span>
-                        <span className='text-sm font-medium text-charcoal'>
+                        <span className='text-sm text-[var(--text-muted)]'>
+                          {t('storeWardrobeItems')}
+                        </span>
+                        <span className='text-sm font-medium text-[var(--text-primary)]'>
                           {t('storeItemsCount', { n: clothing?.length || 0 })}
                         </span>
                       </div>
@@ -1853,18 +1058,20 @@ function AppContent() {
                   ) : (
                     <>
                       <div className='flex items-center justify-between py-2'>
-                        <span className='text-sm text-grayMuted'>账号状态</span>
-                        <span className='text-sm font-medium text-error'>未登录</span>
+                        <span className='text-sm text-[var(--text-muted)]'>账号状态</span>
+                        <span className='text-sm font-medium text-[var(--error)]'>未登录</span>
                       </div>
                       <div className='py-4 text-center'>
-                        <p className='mb-4 text-sm text-grayMuted'>{t('storeLoginRequired')}</p>
+                        <p className='mb-4 text-sm text-[var(--text-muted)]'>
+                          {t('storeLoginRequired')}
+                        </p>
                         <button
                           type='button'
                           onClick={() => {
                             setShowStoreModal(false)
                             setShowLoginModal(true)
                           }}
-                          className='hover:bg-champagne/90 rounded-xl bg-champagne px-6 py-2.5 text-sm font-medium text-white transition-colors'
+                          className='rounded-xl bg-[var(--text-secondary)] px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90'
                         >
                           {t('storeLoginNow')}
                         </button>
@@ -1875,7 +1082,7 @@ function AppContent() {
                 <div className='px-6 pb-4'>
                   <button
                     type='button'
-                    className='hover:bg-charcoal/90 w-full rounded-xl bg-charcoal py-2.5 text-sm font-medium text-white transition-colors'
+                    className='w-full rounded-xl bg-[var(--text-primary)] py-2.5 text-sm font-medium text-[var(--bg-secondary)] transition-opacity hover:opacity-90'
                     onClick={() => setShowStoreModal(false)}
                   >
                     {t('close')}
@@ -1942,8 +1149,6 @@ function AppContent() {
                         value={wardrobeUploadCategory}
                         onChange={e => {
                           setWardrobeUploadCategory(e.target.value)
-                          setWardrobeUploadSubcategory('')
-                          setWardrobeUploadSubcategoryCustom('')
                         }}
                         className='focus:ring-champagne/20 w-full rounded-xl border border-grayLight bg-transparent px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
                       >
@@ -1955,96 +1160,7 @@ function AppContent() {
                         <option value='accessories'>{t('catAccessories')}</option>
                       </select>
                     </div>
-                    <div>
-                      <label
-                        htmlFor='wardrobe-subcategory'
-                        className='mb-1.5 block text-xs font-medium text-charcoal'
-                      >
-                        {t('categorySecondary')}
-                      </label>
-                      <select
-                        id='wardrobe-subcategory'
-                        value={wardrobeUploadSubcategory}
-                        onChange={e => {
-                          setWardrobeUploadSubcategory(e.target.value)
-                          if (e.target.value !== 'custom') {
-                            setWardrobeUploadSubcategoryCustom('')
-                          }
-                        }}
-                        className='focus:ring-champagne/20 w-full rounded-xl border border-grayLight bg-transparent px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
-                      >
-                        <option value=''>{t('subcategoryAny')}</option>
-                        {wardrobeUploadCategory === 'tops' && (
-                          <>
-                            <option value='t-shirt'>{t('subTshirt')}</option>
-                            <option value='shirt'>{t('subShirt')}</option>
-                            <option value='sweater'>{t('subSweater')}</option>
-                            <option value='hoodie'>{t('subHoodie')}</option>
-                            <option value='blouse'>{t('subBlouse')}</option>
-                          </>
-                        )}
-                        {wardrobeUploadCategory === 'bottoms' && (
-                          <>
-                            <option value='jeans'>{t('subJeans')}</option>
-                            <option value='pants'>{t('subPants')}</option>
-                            <option value='shorts'>{t('subShorts')}</option>
-                            <option value='skirt'>{t('subSkirt')}</option>
-                          </>
-                        )}
-                        {wardrobeUploadCategory === 'dresses' && (
-                          <>
-                            <option value='mini'>{t('subMiniDress')}</option>
-                            <option value='midi'>{t('subMidiDress')}</option>
-                            <option value='maxi'>{t('subMaxiDress')}</option>
-                          </>
-                        )}
-                        {wardrobeUploadCategory === 'outerwear' && (
-                          <>
-                            <option value='jacket'>{t('subJacket')}</option>
-                            <option value='coat'>{t('subCoat')}</option>
-                            <option value='blazer'>{t('subBlazer')}</option>
-                            <option value='vest'>{t('subVest')}</option>
-                          </>
-                        )}
-                        {wardrobeUploadCategory === 'shoes' && (
-                          <>
-                            <option value='sneakers'>{t('subSneakers')}</option>
-                            <option value='heels'>{t('subHeels')}</option>
-                            <option value='boots'>{t('subBoots')}</option>
-                            <option value='flats'>{t('subFlats')}</option>
-                          </>
-                        )}
-                        {wardrobeUploadCategory === 'accessories' && (
-                          <>
-                            <option value='hat'>{t('subHat')}</option>
-                            <option value='bag'>{t('subBag')}</option>
-                            <option value='scarf'>{t('subScarf')}</option>
-                            <option value='belt'>{t('subBelt')}</option>
-                            <option value='jewelry'>{t('subJewelry')}</option>
-                          </>
-                        )}
-                        <option value='custom'>+ {t('subcategoryCustom')}</option>
-                      </select>
-                    </div>
                   </div>
-                  {wardrobeUploadSubcategory === 'custom' && (
-                    <div>
-                      <label
-                        htmlFor='wardrobe-subcategory-custom'
-                        className='mb-1.5 block text-xs font-medium text-charcoal'
-                      >
-                        {t('customSubcategoryLabel')}
-                      </label>
-                      <input
-                        id='wardrobe-subcategory-custom'
-                        type='text'
-                        value={wardrobeUploadSubcategoryCustom}
-                        onChange={e => setWardrobeUploadSubcategoryCustom(e.target.value)}
-                        className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
-                        placeholder={t('customSubcategoryPlaceholder')}
-                      />
-                    </div>
-                  )}
                   <div>
                     <label
                       htmlFor='wardrobe-name'
@@ -2074,7 +1190,7 @@ function AppContent() {
                       onChange={e => setWardrobeUploadColor(e.target.value)}
                       className='focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
                     >
-                      {FALLBACK_COLOR_TAGS.map(c => (
+                      {colorTags.map(c => (
                         <option key={c.name} value={c.name}>
                           {c.name}
                         </option>
@@ -2084,22 +1200,13 @@ function AppContent() {
                   <input
                     type='file'
                     accept='image/*'
-                    capture='environment'
                     id='wardrobe-file-input'
                     className='hidden'
                     onChange={e => {
                       const file = e.target.files[0]
                       if (file) {
-                        handleWardrobeUpload(
-                          file,
-                          wardrobeUploadCategory,
-                          wardrobeUploadSubcategory === 'custom'
-                            ? wardrobeUploadSubcategoryCustom
-                            : wardrobeUploadSubcategory,
-                          wardrobeUploadName
-                        )
+                        handleWardrobeUpload(file, wardrobeUploadCategory, wardrobeUploadName)
                         setWardrobeUploadName('')
-                        setWardrobeUploadSubcategoryCustom('')
                         setShowWardrobeModal(false)
                       }
                       e.target.value = ''
@@ -2147,14 +1254,7 @@ function AppContent() {
                             type='button'
                             className='gc-thumb-remove'
                             onClick={() => {
-                              setWardrobeClothing(prev => {
-                                const newList = prev.filter(c => c.id !== item.id)
-                                localStorage.setItem(
-                                  STORAGE_KEYS.WARDROBE_CLOTHING,
-                                  JSON.stringify(newList)
-                                )
-                                return newList
-                              })
+                              removeWardrobeClothing(item.id)
                             }}
                             aria-label={`删除 ${item.name}`}
                           >
@@ -2242,8 +1342,6 @@ function AppContent() {
                         value={customUploadCategory}
                         onChange={e => {
                           setCustomUploadCategory(e.target.value)
-                          setCustomUploadSubcategory('')
-                          setCustomUploadSubcategoryCustom('')
                         }}
                         className='focus:ring-champagne/20 w-full rounded-xl border border-grayLight bg-transparent px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
                       >
@@ -2255,96 +1353,7 @@ function AppContent() {
                         <option value='accessories'>{t('catAccessories')}</option>
                       </select>
                     </div>
-                    <div>
-                      <label
-                        htmlFor='custom-subcategory'
-                        className='mb-1.5 block text-xs font-medium text-charcoal'
-                      >
-                        {t('categorySecondary')}
-                      </label>
-                      <select
-                        id='custom-subcategory'
-                        value={customUploadSubcategory}
-                        onChange={e => {
-                          setCustomUploadSubcategory(e.target.value)
-                          if (e.target.value !== 'custom') {
-                            setCustomUploadSubcategoryCustom('')
-                          }
-                        }}
-                        className='focus:ring-champagne/20 w-full rounded-xl border border-grayLight bg-transparent px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
-                      >
-                        <option value=''>{t('subcategoryAny')}</option>
-                        {customUploadCategory === 'tops' && (
-                          <>
-                            <option value='t-shirt'>{t('subTshirt')}</option>
-                            <option value='shirt'>{t('subShirt')}</option>
-                            <option value='sweater'>{t('subSweater')}</option>
-                            <option value='hoodie'>{t('subHoodie')}</option>
-                            <option value='blouse'>{t('subBlouse')}</option>
-                          </>
-                        )}
-                        {customUploadCategory === 'bottoms' && (
-                          <>
-                            <option value='jeans'>{t('subJeans')}</option>
-                            <option value='pants'>{t('subPants')}</option>
-                            <option value='shorts'>{t('subShorts')}</option>
-                            <option value='skirt'>{t('subSkirt')}</option>
-                          </>
-                        )}
-                        {customUploadCategory === 'dresses' && (
-                          <>
-                            <option value='mini'>{t('subMiniDress')}</option>
-                            <option value='midi'>{t('subMidiDress')}</option>
-                            <option value='maxi'>{t('subMaxiDress')}</option>
-                          </>
-                        )}
-                        {customUploadCategory === 'outerwear' && (
-                          <>
-                            <option value='jacket'>{t('subJacket')}</option>
-                            <option value='coat'>{t('subCoat')}</option>
-                            <option value='blazer'>{t('subBlazer')}</option>
-                            <option value='vest'>{t('subVest')}</option>
-                          </>
-                        )}
-                        {customUploadCategory === 'shoes' && (
-                          <>
-                            <option value='sneakers'>{t('subSneakers')}</option>
-                            <option value='heels'>{t('subHeels')}</option>
-                            <option value='boots'>{t('subBoots')}</option>
-                            <option value='flats'>{t('subFlats')}</option>
-                          </>
-                        )}
-                        {customUploadCategory === 'accessories' && (
-                          <>
-                            <option value='hat'>{t('subHat')}</option>
-                            <option value='bag'>{t('subBag')}</option>
-                            <option value='scarf'>{t('subScarf')}</option>
-                            <option value='belt'>{t('subBelt')}</option>
-                            <option value='jewelry'>{t('subJewelry')}</option>
-                          </>
-                        )}
-                        <option value='custom'>+ {t('subcategoryCustom')}</option>
-                      </select>
-                    </div>
                   </div>
-                  {customUploadSubcategory === 'custom' && (
-                    <div>
-                      <label
-                        htmlFor='custom-subcategory-custom'
-                        className='mb-1.5 block text-xs font-medium text-charcoal'
-                      >
-                        {t('customSubcategoryLabel')}
-                      </label>
-                      <input
-                        id='custom-subcategory-custom'
-                        type='text'
-                        value={customUploadSubcategoryCustom}
-                        onChange={e => setCustomUploadSubcategoryCustom(e.target.value)}
-                        className='placeholder:text-grayMuted/60 focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
-                        placeholder={t('customSubcategoryPlaceholder')}
-                      />
-                    </div>
-                  )}
                   <div>
                     <label
                       htmlFor='custom-name'
@@ -2374,7 +1383,7 @@ function AppContent() {
                       onChange={e => setCustomUploadColor(e.target.value)}
                       className='focus:ring-champagne/20 w-full rounded-xl border border-grayLight px-3 py-2.5 text-sm focus:border-champagne focus:outline-none focus:ring-2'
                     >
-                      {FALLBACK_COLOR_TAGS.map(c => (
+                      {colorTags.map(c => (
                         <option key={c.name} value={c.name}>
                           {c.name}
                         </option>
@@ -2384,25 +1393,18 @@ function AppContent() {
                   <input
                     type='file'
                     accept='image/*'
-                    capture='environment'
                     id='custom-file-input-modal'
                     className='hidden'
                     onChange={e => {
                       const file = e.target.files[0]
                       if (file) {
-                        const finalSubcategory =
-                          customUploadSubcategory === 'custom'
-                            ? customUploadSubcategoryCustom
-                            : customUploadSubcategory
                         handleCustomUpload(
                           file,
                           customUploadCategory,
-                          finalSubcategory,
                           customUploadName,
                           customUploadColor
                         )
                         setCustomUploadName('')
-                        setCustomUploadSubcategoryCustom('')
                         setShowCustomUploadModal(false)
                       }
                       e.target.value = ''
@@ -2448,14 +1450,7 @@ function AppContent() {
                             type='button'
                             className='gc-thumb-remove'
                             onClick={() => {
-                              setCustomClothing(prev => {
-                                const newList = prev.filter(c => c.id !== item.id)
-                                localStorage.setItem(
-                                  STORAGE_KEYS.CUSTOM_CLOTHING,
-                                  JSON.stringify(newList)
-                                )
-                                return newList
-                              })
+                              removeCustomClothing(item.id)
                             }}
                             aria-label={`删除 ${item.name}`}
                           >
@@ -2506,7 +1501,7 @@ function AppContent() {
               />
               <div className='relative w-full max-w-sm animate-scale-in overflow-hidden rounded-2xl bg-[var(--bg-card)] shadow-2xl'>
                 <div className='px-6 pb-2 pt-6'>
-                  <div className='mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-error/10'>
+                  <div className='bg-error/10 mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full'>
                     <svg
                       className='h-6 w-6 text-error'
                       fill='none'
@@ -2566,14 +1561,9 @@ function AppContent() {
                 tabIndex={-1}
                 aria-label={t('previewCloseAria')}
               />
-              <div className='relative animate-scale-in'>
-                <CachedImage
-                  src={previewModalData.src}
-                  alt={previewModalData.name}
-                  className='max-h-[70vh] min-h-[280px] w-auto min-w-[280px] max-w-[480px] rounded-xl object-contain shadow-2xl'
-                />
-                <div
-                  className='bg-[var(--bg-card)]/95 absolute -right-2 -top-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-lg transition-colors hover:bg-[var(--bg-secondary)]'
+              <div className='relative flex animate-scale-in flex-col items-center'>
+                <button
+                  type='button'
                   onClick={closePreviewModal}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -2581,16 +1571,11 @@ function AppContent() {
                       closePreviewModal()
                     }
                   }}
-                  role='button'
                   tabIndex={0}
                   aria-label={t('previewCloseAria')}
+                  className='absolute -right-3 -top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-[#333] shadow-lg transition-colors hover:bg-white'
                 >
-                  <svg
-                    className='h-3.5 w-3.5 text-charcoal'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
+                  <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                     <path
                       strokeLinecap='round'
                       strokeLinejoin='round'
@@ -2598,10 +1583,129 @@ function AppContent() {
                       d='M6 18L18 6M6 6l12 12'
                     />
                   </svg>
+                </button>
+                <div className='rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 shadow-2xl'>
+                  <CachedImage
+                    src={previewModalData.src}
+                    alt={previewModalData.name}
+                    className='max-h-[68vh] min-h-[280px] w-auto min-w-[280px] max-w-[480px] rounded-xl object-contain'
+                    lazy={false}
+                  />
+                  <p className='mt-2 text-center text-xs font-medium text-[var(--text-secondary)]'>
+                    {previewModalData.name}
+                  </p>
+                  {/* 底部操作按钮：与「我的形象」卡操作按钮同款，常驻显示 */}
+                  {previewModalData.actions?.length > 0 && (
+                    <div className='preview-modal-actions'>
+                      {previewModalData.actions.map(action => (
+                        <button
+                          key={action.key}
+                          type='button'
+                          className='avatar-action-simple'
+                          onClick={() => {
+                            action.onClick?.()
+                            // 关闭弹窗，避免操作后弹窗遮挡结果
+                            closePreviewModal()
+                          }}
+                          title={action.title}
+                          aria-label={action.title}
+                        >
+                          <svg
+                            className='h-4 w-4'
+                            fill='none'
+                            stroke='currentColor'
+                            viewBox='0 0 24 24'
+                          >
+                            <path
+                              strokeLinecap='round'
+                              strokeLinejoin='round'
+                              strokeWidth='2'
+                              d={action.path}
+                            />
+                          </svg>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <p className='mt-2 text-center text-xs font-medium text-white/90 drop-shadow'>
-                  {previewModalData.name}
-                </p>
+                {/* 搭配展示区：直接显示该结果使用的服装 */}
+                {previewModalData.clothing?.length > 0 && (
+                  <div className='mt-3 w-full max-w-[480px]'>
+                    <p className='mb-2 text-center text-[11px] font-medium uppercase tracking-wider text-white/60'>
+                      {t('outfitTitle') || '本套搭配'}
+                    </p>
+                    <div className='flex flex-wrap justify-center gap-3'>
+                      {previewModalData.clothing.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className='group flex w-20 flex-col items-center gap-1'
+                        >
+                          <div className='relative h-20 w-20 overflow-hidden rounded-lg bg-white/10'>
+                            {item.thumb_url || item.image_url ? (
+                              <img
+                                src={item.thumb_url || item.image_url}
+                                alt={item.name}
+                                className='h-full w-full object-cover'
+                              />
+                            ) : (
+                              <div className='flex h-full w-full items-center justify-center text-white/40'>
+                                <svg
+                                  className='h-6 w-6'
+                                  fill='none'
+                                  stroke='currentColor'
+                                  viewBox='0 0 24 24'
+                                >
+                                  <path
+                                    strokeLinecap='round'
+                                    strokeLinejoin='round'
+                                    strokeWidth='1.5'
+                                    d='M12 4v16m8-8H4'
+                                  />
+                                </svg>
+                              </div>
+                            )}
+                            {/* 替换按钮：常驻显示，打开服装库并预筛到该服装类别 */}
+                            <button
+                              type='button'
+                              onClick={() => {
+                                // 必须先关闭预览弹窗：它的层级(z-modal-2)高于服装库(z-modal-1)，
+                                // 不关会导致服装库被完全遮挡、看起来"点了没反应"
+                                closePreviewModal()
+                                setReplaceRequest(item)
+                              }}
+                              title={t('replaceClothing') || '替换'}
+                              aria-label={t('replaceClothing') || '替换'}
+                              className='absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-[#333] shadow transition-colors hover:bg-white'
+                            >
+                              <svg
+                                className='h-3.5 w-3.5'
+                                fill='none'
+                                stroke='currentColor'
+                                viewBox='0 0 24 24'
+                              >
+                                <path
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                  strokeWidth='2'
+                                  d='M4 4v6h6M20 20v-6h-6'
+                                />
+                                <path
+                                  strokeLinecap='round'
+                                  strokeLinejoin='round'
+                                  strokeWidth='2'
+                                  d='M20 10a8 8 0 00-15.5-2M4 14a8 8 0 0015.5 2'
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                          <span className='line-clamp-1 w-full text-center text-[10px] text-white/80'>
+                            {item.name || t('unnamed') || '未命名'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

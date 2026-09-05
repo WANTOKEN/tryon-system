@@ -20,8 +20,10 @@ export default {
         grayLight: 'var(--border-primary)',
         grayMedium: 'var(--text-secondary)',
         grayMuted: 'var(--text-muted)',
-        success: '#4CAF50',
-        error: '#E53935',
+        success: 'var(--success)',
+        error: 'var(--error)',
+        warning: 'var(--warning)',
+        info: 'var(--info)',
       },
       borderRadius: {
         none: '0',
@@ -63,8 +65,8 @@ export default {
           '100%': { backgroundPosition: '200% 0' },
         },
         pulseGold: {
-          '0%, 100%': { boxShadow: '0 0 0 0 rgba(212, 175, 55, 0.4)' },
-          '50%': { boxShadow: '0 0 0 10px rgba(212, 175, 55, 0)' },
+          '0%, 100%': { boxShadow: '0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent)' },
+          '50%': { boxShadow: '0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent)' },
         },
         float: {
           '0%, 100%': { transform: 'translateY(0)' },

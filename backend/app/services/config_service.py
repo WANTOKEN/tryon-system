@@ -4,6 +4,7 @@ System config service - 系统配置种子与读写
 - ensure_system_configs: 首次启动写入默认配置项（对齐前端 SettingsPage 分组与 key）
 - update_configs: 批量更新配置值
 """
+import json
 from typing import List, Optional
 
 from sqlalchemy import select
@@ -66,7 +67,6 @@ def _parse_value(value: str, value_type: str):
         if value_type == "boolean":
             return str(value).lower() in ("true", "1", "yes")
         if value_type == "json":
-            import json
             return json.loads(value) if value else {}
     except (ValueError, TypeError, json.JSONDecodeError):
         return value
@@ -82,7 +82,6 @@ def _serialize(cfg: SystemConfig) -> dict:
         "value_type_text": VALUE_TYPE_TEXT.get(cfg.value_type, cfg.value_type),
         "parsed_value": _parse_value(cfg.value, cfg.value_type),
         "description": cfg.description,
-        "is_public": cfg.is_public,
         "created_at": cfg.created_at.isoformat() if cfg.created_at else "",
         "updated_at": cfg.updated_at.isoformat() if cfg.updated_at else "",
     }

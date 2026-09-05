@@ -87,3 +87,25 @@ COLOR_TAGS = [
 
 COLOR_NAME_SET = {c["name"] for c in COLOR_TAGS}
 CATEGORY_ID_SET = {c["id"] for c in CLOTHING_CATEGORIES}
+
+# 试穿任务状态：数据库 status 列存整型，对外统一暴露语义字符串，避免前后端各写一套映射
+STATUS_PENDING = 0
+STATUS_PROCESSING = 1
+STATUS_COMPLETED = 2
+STATUS_FAILED = 3
+
+# 整型 -> 语义字符串（接口 status 字段、前端状态判断用）
+STATUS_TEXT_MAP = {
+    STATUS_PENDING: "pending",
+    STATUS_PROCESSING: "processing",
+    STATUS_COMPLETED: "completed",
+    STATUS_FAILED: "failed",
+}
+
+# 整型 -> 中文文案（接口 status_text 字段、管理后台展示用）
+STATUS_LABEL_MAP = {
+    STATUS_PENDING: "等待中",
+    STATUS_PROCESSING: "处理中",
+    STATUS_COMPLETED: "已完成",
+    STATUS_FAILED: "生成失败",
+}

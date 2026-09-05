@@ -1,65 +1,53 @@
-# 长期记忆
+# 长期记忆（精简版，持续去重）
 
-## 项目开发约束（用户明确授权）
-- 当前项目处于**开发阶段**，用户允许任何必要的代码更改与重构。
-- 无需考虑向后兼容性、旧版本兼容、废弃逻辑保留或兼容性判断。
-- 可放心采用最新语法特性、API 与最佳实践重构优化代码。
-- 适用范围：整个项目（backend / frontend-react / frontend-admin / 运维配置等）。
+## 1. 项目开发约束（用户授权）
+- 开发阶段：允许任何必要改动/重构，无需兼容旧版本、无需保留废弃逻辑。可放心用新语法/API。
+- 跨整个项目（backend / frontend-react / frontend-admin / 运维）。
 
-## 存储策略（用户明确决定）
-- **不使用对象存储（OSS）**，所有资源（上传图、服装图、AI 试穿结果图）一律存服务器本地磁盘，通过 `/static/uploads/...` 暴露。
-- 已删除 `app/storage/oss.py` 及所有 OSS 配置；存储层仅保留 `LocalStorageBackend`。
-- AI 调用（火山引擎 Ark）返回的图片先下载为字节流，再经 `upload_file` 存本地，result_url 为服务器地址（Ark 的 24h 临时 URL 不直接对外）。
-- 根 `.env` 的 `STORAGE_TYPE=oss` 为未接线的遗留配置，已置为 `local` 并注释掉 OSS 凭证。
+## 2. 运行与技术栈
+- 端口：后端 8000、用户端 5173、管理端 5174、MySQL 3306。启动顺序：先 `docker compose up -d db` → 后端 → 两前端。
+- **后端必须从 `backend/` 目录启动**才能加载 `backend/.env`：`cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`（首启自动建表+超管 admin/admin123）。成功标志 `Application startup complete.`
+- venv 统一用根目录 `.venv`；DB 驱动统一 **aiomysql**；`database.py` 已关 `pool_pre_ping`（与 aiomysql 不兼容），改用 `pool_recycle=3600`。
+- 测试数据：`cd backend && ../.venv/bin/python scripts/seed_test_data.py`（商家 test_merchant/test123456 + 12 条服装图）。
+- 前端：`npm run dev`；vite proxy 已把 `/api`、`/static/uploads`、`/file` 转发 8000，无需配 `VITE_API_BASE_URL`。
+- 联调坑：路由前缀必带 `/api/v1/` 尾斜杠；上传 `category` 传 slug（`tops`）；`Access denied for user 'tryon'` → `docker compose down -v && docker compose up -d db` 重建卷。
 
-## 前端主题切换系统（2026-08-16 实现）
-- 配色参考：`/Users/apple/ai-tryon/ai-tryon-project-intro/theme-palette/theme-palette.html`。
-- 机制：`<html data-theme="luxury-gold|frost-blue|sakura-pink|forest-green">` + `<html class="dark">`，localStorage 持久化键 `aitryon-theme` / `aitryon-mode`。
-- 4 套色系 × 明/暗，每套含 primary/primary-strong + 语义背景、文字、边框变量。
-- react 端：`src/hooks/useTheme.js` + `index.css` 注入语义变量（复用既有 `--accent`/`--bg-*`/`--text-*`/`--border-*` 体系，组件无需改）；Header 加调色板按钮下拉切换色系 + 亮/暗。index.html 注入启动前同步脚本防闪烁。
-- admin 端（antd）：`src/hooks/useTheme.ts`；`AdminLayout` 用 `ConfigProvider` 接管 `colorPrimary` 与 `theme.darkAlgorithm`；Header 加 `BgColorsOutlined` 配色下拉 + `BulbOutlined/MoonOutlined` 亮暗切换。index.html 同样注入防闪烁脚本。
-- 两前端共享同名 localStorage 键，切换机制一致。
-- BrandLogo 实现教训：项目 `public/logo.png` 是 **金棕色实色图标（带少量透明边），非单色透明图标**。曾误用 CSS `mask-image: url(/logo.png)` + 主题色 background 染色，结果把整张近不透明图染成色块、logo 不可辨。最终改为**直接 `<img src="/logo.png">` 渲染原图**，干净显示，不复用主题染色。
-- 因此 logo 不跟随主题变色（用户接受，优先"干净显示真正的 logo"）。后续若想让 logo 变色，需提供单色透明版本 PNG 或 SVG。
-- 细节修复（2026-08-16）：
-  - react 端 tailwind `champagne` 改为映射到 `var(--color-primary)` 系列，原 fixed gold 不再硬编码；新增 `--header-*` 变量让 Header 渐变/品牌/头像跟随主题。
-  - react/admin 的 `index.html` 初始化脚本与 `useTheme` 均同步 `color-scheme`（亮/暗），避免原生控件/滚动条不变色。
-  - admin 端把 `#f0f0f0` 分隔线、`#333` 用户名等硬编码色改为 antd `colorBorderSecondary`/`colorText` token；Header logo 渐变用 `primaryColor`。
-  - 两 hook 增加 `storage` 事件监听，实现跨标签页主题同步。
+## 3. 存储策略（用户决定）
+- **不用 OSS**，全部资源存服务器本地磁盘经 `/static/uploads/...` 暴露。`oss.py` 已删，仅留 `LocalStorageBackend`。Ark 图先下载字节流再 `upload_file` 存本地（不直出 24h 临时 URL）。
 
-## 全量问题审查（2026-08-16 二次排查）
-项目存在大量"模型重构遗留不一致"，分两类处理：
+## 4. 后端字段/接口契约定案（2026-08-29 全量审计通过，勿再返工）
+- 裁决：**保持模型精简，调用方对齐模型，不补冗余列**。
+- `OperationLog`/`QuotaHistory` 只存 `operator_id`，用户名在接口层按页批量 join 派生 `operator_username`（空 id 兜底「系统」），不落库用户名列。
+- `QuotaHistory.reason` 是合法入参名、落库列 `note`，非缺陷。
+- 已删冗余派生字段 `subcategory/sizes/image_thumb_url/file_id/sort_order/is_active`。
+- `ModelPhoto` 无响应 schema 是有意（内联 dict 序列化）。
+- **所有字典类接口统一返回 `{"items": [...]}` 包裹**（如 `/common/colors/`、`/wardrobe/categories/`）；前端 api 层须拆包归一化数组并兜底 `[]`，页面 `setState` 再加 `Array.isArray` 兜底。注意 `/admin/merchants/` 是扁平 `{items,total}` 无 `data` 包裹。
 
-### 已修复（确定性 bug，无歧义）
-- **后端建表 registry 错配**：`app/db/database.py` 原有个独立空 `Base(DeclarativeBase)`，而模型用 `app/models/base.Base`。`main.py` 的 `create_all` 建的是空 metadata → 全新库所有表缺失。已改为 `from app.models.base import Base` 复用模型基类。（已有库因 create_all 幂等曾不报错，掩盖了问题）
-- **`config_service.py`**：`get_grouped_configs` 用已删除的 `cfg.config_group` 字段、`_serialize` 用不存在的 `cfg.parse_value()` → admin 配置接口崩。已改为从 DEFAULT_CONFIGS 推断 group、本地实现 `_parse_value`。并清理了 `oss_*` 死种子。
-- **`auth.py`**：`user.last_login_ip = ...` 模型无此字段 → 登录崩，已删。
-- **`deps.py`**：`int(payload.get("sub"))` 但 Merchant.id 是 uuid 字符串 → ValueError 致全部认证接口崩，已改为字符串。
-- **前端 `tailwind.config.js`**：`champagne` 指向 `var(--color-primary)`（index.css 从未定义该变量，实际注入的是 `--accent` 系列）→ 全站主色失效。已改为 `var(--accent*)`。
-- **前端 Header**：`var(--color-on-primary)` 未定义 → 改 `--header-on`。
-- **前端 index.css**：`bg-texture`/`glass-card`/`gold-glow`/`text-accent` 四个类无定义（整页白底、弹窗无背景、logo 无光晕、主题勾选不着色）→ 已补定义。
+## 5. 前端主题系统（react + admin 两端一致）
+- 机制：`<html data-theme="luxury-gold|frost-blue|sakura-pink|forest-green">` + `<html class="dark">`；localStorage 键 `aitryon-theme`/`aitryon-mode`；index.html 注入启动前同步脚本防闪烁，hook 监听 `storage` 事件跨标签页同步。
+- react 端：`src/hooks/useTheme.js` + `index.css` 注入语义变量（复用 `--accent/--bg-*/--text-*/--border-*`）。样式拆分 `src/styles/{tokens,themes,layout,components,animations}.css`，由 `main.jsx` 按序 import（非 @import）。
+- admin 端（antd）：`ConfigProvider` 根 provider 设 `algorithm` + `colorPrimary`（按 mode 取 primaryDark/primary），内层用 `useToken()`；`destroyOnClose`→`destroyOnHidden`。
+- **antd `cssVar:true` 作用域坑**：`--ant-color-*` 注册在 ConfigProvider 根容器 `.css-var-*` 上，**不作用 `html`/`body`**。故 `index.css` 里 body/`::-webkit-scrollbar-*` 规则写 `var(--ant-color-*)` 无效，须 `html.dark xxx{}` 单独指定；暗色 `html.dark body{background:#000}` 否则整页亮底。验证：临时 `npx vite --port 5178` + Playwright 读 `getComputedStyle`，测试元素须 append 进 `.css-var-r0` 容器。
+- **BrandLogo 教训**：`public/logo.png` 是金棕实色图（非单色透明），不能用 mask+主题色染色，直接 `<img>` 渲染原图；logo 不跟随主题变色（用户接受）。
 
-### 待用户决策（涉及业务语义，未擅自改）
-- 后端 admin/wardrobe/common 大量引用模型**已被删的字段**（`OperationLog.admin_id/admin_username`、`QuotaHistory.change_type/reason/operator_name`、`Clothing.subcategory/sizes/image_thumb_url/file_id`、`ModelPhoto.image_thumb_url/file_id/sort_order/is_active`、`ClothingResponse` 字段不匹配）。修复方向二选一：A) 模型加回这些字段；B) 路由删除相关引用。需用户定方向。
-- 前端剩余 P2/P3：react 端 ~80 处硬编码色（`#1A1A1A` 渐变、bg-white 弹窗、charcoal/grayLight 固定色）在亮色主题下不跟随；admin 端 index.css 大量 `!important` 浅色规则压过 antd darkAlgorithm、`#1677ff` 硬编码蓝、登录页内嵌 style 脱离主题体系。
+## 6. 前端验收必跑项（务必遵守）
+- **`vite build` 成功 + read_lints 零错误 ≠ 能跑**。TDZ（在 const 声明前读它）、`no-undef`（state 迁进 hook 后仍调旧 `setXxx`）能过构建却首屏/交互抛 ReferenceError（白屏）。
+- frontend-react 必跑 `npm run lint`（eslint `--max-warnings 0`）；admin 必跑 `npx tsc --noEmit` + `npm run build`。格式类用 `npm run lint:fix`。
+- **多 agent 同改同批文件极危险**（曾致 App.jsx `handleTryOn` 重复声明整文件不可解析）。动手前确认无并发写入方（看 mtime）。
 
-## 后端启动修复（2026-08-16 会话）
-- `sqlalchemy==2.0.35` + `aiomysql==0.2.0` 下 **`pool_pre_ping=True` 会触发 aiomysql `ping(reconnect)` 签名不兼容 bug**（报 `AsyncAdapt_aiomysql_connection.ping() missing 1 required positional argument: 'reconnect'`，导致 Application startup failed）。已在 `backend/app/db/database.py` 关闭 mysql/默认分支的 `pool_pre_ping`，改用 `pool_recycle=3600` 回收失效连接。
-- 模型重构（删 OSS、UUID 主键）后服务层有遗留不一致：`backend/app/services/config_service.py` 的 `ensure_system_configs` 仍向 `SystemConfig` 传入已删除的 `config_group` 字段，导致启动 `TypeError`。已去掉该传参（模型仅剩 key/value/value_type/description/is_editable）。
-- 验证方式：`cd backend && .venv/bin/python -m uvicorn app.main:app` 应打印 `Application startup complete.`
+## 7. 前端通用约定（antd / react）
+- 字典接口：`{items:[]}` 拆包兜底（见 §4）。
+- `Form` 放 `Modal` 内：禁渲染期 `form.getFieldValue`/`setFieldsValue`，用 `initialValues`+`key` 重挂载；读字段值用 `<Form.Item shouldUpdate noStyle>` 渲染函数或 Form 树内 `Form.useWatch`。
+- `Form.Item` 子节点须是控件本身，用 `<div>` 包 Switch/Input 会注入 value 到 div 致失去受控。
+- `react-router-dom@6.30` 的 `BrowserRouter` future 仅 `v7_startTransition`/`v7_relativeSplatPath` 两键有效。
 
-## Python 虚拟环境约定（用户明确决定）
-- **统一使用仓库根目录 `.venv`**（`/Users/apple/my_project/.venv`），不在 `backend/` 下另建 `.venv`（已删除 `backend/.venv`）。
-- 后端启动/依赖安装均用根目录 venv；README 快速开始已改为在根目录 `python3 -m venv .venv`。
-- 数据库异步驱动统一用 **aiomysql**（不用 asyncmy）：`asyncmy 0.2.14` 与 `sqlalchemy 2.0.35` 的 `pool_pre_ping=True` 不兼容（`do_ping` 报 `ping() missing 1 required positional argument: 'reconnect'`）。`backend/.env` 的 `DATABASE_URL` 已改为 `mysql+aiomysql://...`，`requirements.txt` 由 `asyncmy` 换为 `aiomysql==0.2.0`。
+## 8. admin 服装上传链路三处历史阻断（2026-08-30 复验通过）
+① 单张/批量上传 `formData` 字段名必须 `file`（非 `image`）；`/admin/model-photos/` 用 `image`，两接口不一致勿全局替换。② 主色 `color` 只能传系统中文色名（`COLOR_NAME_SET`），前端 hex 须最近邻匹配成色名再提交，匹配不到不传。③ 编辑走「先 `POST /admin/clothing/upload/` 传图再 `PATCH /admin/clothing/{id}/` JSON」，multipart PATCH 会 500。
 
-## 项目运行方式（标准操作，2026-08-29 写入 README「运行操作」章节）
-- **端口**：后端 8000、用户端（frontend-react）5173、管理后台（frontend-admin）5174、MySQL 3306。
-- **启动顺序**：先 `docker compose up -d db`（仅 MySQL，backend/nginx 在 compose 里已注释）→ 后端 → 两个前端。
-- **后端启动命令**（必须从 `backend/` 目录，才能加载 `backend/.env`）：
-  `cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
-  `--host 0.0.0.0` 必需（手机扫码上传要经局域网 IP 访问后端）。成功标志 `Application startup complete.`，首次启动自动建表 + 建超管 admin/admin123。
-- **前端**：`npm run dev`；两前端 vite 已配 proxy 把 `/api`、`/static/uploads`、`/file` 转发到 `http://127.0.0.1:8000`，无需配 `VITE_API_BASE_URL`。
-- **配置加载要点**：后端实际读 `backend/.env`（非根目录 `.env`），因其为相对路径 `.env` 需在 cwd=backend 时才命中。
-- **测试数据**：`cd backend && ../.venv/bin/python scripts/seed_test_data.py` → 商家 `test_merchant`/`test123456` + 12 条网络服装图数据（图片落 `backend/storage/clothes/`）。
-- **常见坑**：`Access denied for user 'tryon'` → 旧数据卷未跑 init.sql，需 `docker compose down -v && docker compose up -d db` 重建卷（会清空数据）。
+## 9. 多 Agent 协作模式（2026-08-29 确认）
+- 编制：main=PM（拆任务/派单/裁决/验收/汇报）、product-manager、fullstack-dev-1(后端)、fullstack-dev-2(react)、fullstack-dev-3(admin)、qa-engineer(独立验收打回)。
+- 机制：`team_create`→`Task` spawn→成员 `send_message` 回传→main 汇总→派 qa 验收→通过则 `shutdown_request`+`team_delete`。
+- PM 默认：确定性 bug 直接修；业务取舍自决并说明理由。
+- **重复派单根因**：本项目"模型重构遗留不一致"已大部分修完，旧 memory"待决策"会误导重派。**派单前务必先实查（AST+运行期冒烟）是否已存在**。
+- 自动化任务用 `automation_update` 创建，需用户在 IDE 面板确认才落盘。
+- 收尾：验收通过把改动与结论追加写入当日记忆 md（不覆盖）并输出结构化汇报。

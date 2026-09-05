@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, memo } from 'react'
 
 import { getFileUrl } from '../utils/request'
+import { useI18n } from '../hooks/useI18n'
 
 // 内存缓存：存储已加载的图片 URL
 const imageCache = new Map()
@@ -46,6 +47,7 @@ function CachedImage({
   onError,
   ...props
 }) {
+  const { t } = useI18n()
   const fileUrl = getFileUrl(src)
   const thumbFileUrl = thumbUrl ? getFileUrl(thumbUrl) : null
 
@@ -54,6 +56,7 @@ function CachedImage({
   const [currentSrc, setCurrentSrc] = useState(thumbFileUrl || fileUrl)
   const [hasError, setHasError] = useState(false)
   const imgRef = useRef(null)
+  const wrapperRef = useRef(null)
   const observerRef = useRef(null)
 
   useEffect(() => {
@@ -72,8 +75,8 @@ function CachedImage({
       return undefined
     }
 
-    const img = imgRef.current
-    if (!img) {
+    const wrapper = wrapperRef.current
+    if (!wrapper) {
       return undefined
     }
 
@@ -92,7 +95,7 @@ function CachedImage({
       }
     )
 
-    observerRef.current.observe(img)
+    observerRef.current.observe(wrapper)
 
     return () => {
       observerRef.current?.disconnect()
@@ -122,7 +125,7 @@ function CachedImage({
       style={{
         width: style?.width || 60,
         height: style?.height || 60,
-        background: 'linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%)',
+        background: 'linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -135,8 +138,8 @@ function CachedImage({
         style={{
           width: 20,
           height: 20,
-          border: '2px solid #ddd',
-          borderTopColor: '#999',
+          border: '2px solid var(--border-primary)',
+          borderTopColor: 'var(--accent)',
           borderRadius: '50%',
           animation: 'spin 1s linear infinite',
         }}
@@ -150,24 +153,24 @@ function CachedImage({
       style={{
         width: style?.width || 60,
         height: style?.height || 60,
-        background: '#f5f5f5',
+        background: 'var(--bg-tertiary)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 4,
-        color: '#999',
+        color: 'var(--text-muted)',
         fontSize: 12,
         ...style,
       }}
       className={className}
     >
-      加载失败
+      {t('imgLoadFailed') || 'Failed to load'}
     </div>
   )
 
-  // 不在视口中，显示占位符
+  // 不在视口中，显示占位符（仍挂稳定 wrapperRef 供 observer 观察）
   if (!inView) {
-    return <div ref={imgRef}>{placeholder || defaultPlaceholder}</div>
+    return <div ref={wrapperRef}>{placeholder || defaultPlaceholder}</div>
   }
 
   // 加载失败

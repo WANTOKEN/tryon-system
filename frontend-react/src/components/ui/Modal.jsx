@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 
 import PropTypes from 'prop-types'
 
+import { useI18n } from '../../hooks/useI18n'
+
 export default function Modal({
   isOpen,
   onClose,
@@ -13,6 +15,8 @@ export default function Modal({
   closeOnOverlayClick = true,
   zIndex = 'var(--z-modal-1)',
 }) {
+  const { t } = useI18n()
+
   useEffect(() => {
     const handleEscape = e => {
       if (e.key === 'Escape') {
@@ -59,7 +63,7 @@ export default function Modal({
         }
         role='button'
         tabIndex={closeOnOverlayClick ? -1 : undefined}
-        aria-label='关闭'
+        aria-label={t('close') || 'Close'}
       />
       <div
         className={`relative flex max-h-[90vh] w-full ${sizeClasses[size]} flex-col overflow-hidden rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)]`}
@@ -90,7 +94,7 @@ export default function Modal({
                 onMouseLeave={e => {
                   e.target.style.backgroundColor = 'transparent'
                 }}
-                aria-label='关闭'
+                aria-label={t('close') || 'Close'}
               >
                 <svg
                   className='h-5 w-5'

@@ -13,12 +13,17 @@ export const STORAGE_KEYS = {
 
   // 服装相关
   AVATAR_PREVIEW: 'tryon_avatar_preview',
+  AVATAR_FILE: 'tryon_avatar_file',
   CUSTOM_CLOTHING: 'tryon_custom_clothing',
   WARDROBE_CLOTHING: 'tryon_wardrobe_clothing',
   SELECTED_CLOTHING: 'tryon_selected_clothing',
 
   // 设置相关
   LOCALE: 'tryon_locale',
+
+  // 试衣时复用的服务端图片 key 及来源（system=模特形象 / user=用户上传）
+  REUSE_AVATAR_KEY: 'tryon_reuse_avatar_key',
+  REUSE_AVATAR_SOURCE: 'tryon_reuse_avatar_source',
 
   // 缓存版本号（修改此值会自动清除旧缓存）
   CACHE_VERSION: 'tryon_cache_version',

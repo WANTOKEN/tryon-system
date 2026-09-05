@@ -184,7 +184,7 @@ export default function LoginModal({
                   <button
                     type='submit'
                     disabled={loading || !username.trim() || !password.trim()}
-                    className='hover:bg-charcoal/90 mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+                    className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--text-primary)] py-3 text-sm font-semibold text-[var(--bg-secondary)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50'
                   >
                     {loading ? (
                       <>
@@ -262,7 +262,7 @@ export default function LoginModal({
                   <button
                     type='submit'
                     disabled={loading || !phone.trim() || !smsCode.trim()}
-                    className='hover:bg-charcoal/90 mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-charcoal py-3 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+                    className='mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--text-primary)] py-3 text-sm font-semibold text-[var(--bg-secondary)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50'
                   >
                     {loading ? (
                       <>

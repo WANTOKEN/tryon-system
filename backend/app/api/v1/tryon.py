@@ -16,13 +16,81 @@ from app.db import get_db
 from app.models.merchant import Merchant
 from app.models.tryon_record import TryOnRecord
 from app.models.file_record import FileRecord
+from app.models.clothing import Clothing
 from app.api.deps import get_current_user
+from app.schemas.tryon import TryOnSaveRequest
 from app.services import tryon_service
 from app.storage.service import read_upload_file, upload_file
 from app.core.config import get_settings
+from app.constants import STATUS_TEXT_MAP, STATUS_LABEL_MAP
 
 settings = get_settings()
 router = APIRouter()
+
+
+def _parse_clothing_ids(raw) -> list:
+    """selected_clothing 以 JSON 字符串存库，对外还原为 list"""
+    if not raw:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return list(raw)
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+async def _resolve_clothing(db, clothing_uuids: list) -> list:
+    """把 selected_clothing 里的 FileRecord.uuid 列表解析为带名称/缩略图的服装对象。
+
+    存储的是 FileRecord.uuid；Clothing.image_key 即对应 FileRecord.uuid，
+    由此取回名称/分类/缩略图。未在 Clothing 表匹配到的 uuid 用 FileRecord 兜底取图片。
+    """
+    if not clothing_uuids:
+        return []
+
+    rows = (
+        await db.execute(select(Clothing).where(Clothing.image_key.in_(clothing_uuids)))
+    ).scalars().all()
+    by_key = {c.image_key: c for c in rows}
+
+    # 未在 Clothing 表中匹配到的 uuid，用 FileRecord 兜底取图片
+    missing = [uid for uid in clothing_uuids if uid not in by_key]
+    file_map = {}
+    if missing:
+        files = (
+            await db.execute(select(FileRecord).where(FileRecord.uuid.in_(missing)))
+        ).scalars().all()
+        file_map = {f.uuid: f for f in files}
+
+    result = []
+    for uid in clothing_uuids:
+        c = by_key.get(uid)
+        if c is not None:
+            result.append(
+                {
+                    "id": c.id,
+                    "name": c.name,
+                    "category": c.category,
+                    "color": c.color,
+                    "image_url": c.image_url,
+                    "thumb_url": c.thumb_url,
+                }
+            )
+        else:
+            f = file_map.get(uid)
+            result.append(
+                {
+                    "id": uid,
+                    "name": f.original_name if f else "",
+                    "category": "",
+                    "color": "",
+                    "image_url": f.access_url if f else "",
+                    "thumb_url": f.access_url if f else "",
+                }
+            )
+    return result
 
 
 async def _serialize_record(db, record) -> dict:
@@ -44,11 +112,13 @@ async def _serialize_record(db, record) -> dict:
         "avatar_key": avatar_key,
         "result_url": record.result_url,
         "result_thumb_url": record.result_thumb_url,
-        "status": record.status,
-        "status_text": record.status_text,
+        # 对外统一输出语义字符串（pending/processing/completed/failed），
+        # 前端据此判断轮询是否结束；status_text 为展示用中文文案
+        "status": STATUS_TEXT_MAP.get(record.status, "pending"),
+        "status_text": STATUS_LABEL_MAP.get(record.status, record.status_text),
         "engine": record.engine,
         "is_saved": record.is_saved,
-        "clothing": record.selected_clothing or [],
+        "clothing": await _resolve_clothing(db, _parse_clothing_ids(record.selected_clothing)),
         "error_message": record.error_message,
         "processing_time": record.duration_ms,
         "created_at": record.created_at.isoformat() if record.created_at else None,
@@ -147,9 +217,9 @@ async def generate_tryon(
     await db.commit()
 
     return {
-        "record_uuid": record.id,
-        "status": record.status,
-        "status_text": record.status_text,
+        "id": record.id,
+        "status": STATUS_TEXT_MAP.get(record.status, "pending"),
+        "status_text": STATUS_LABEL_MAP.get(record.status, record.status_text),
         "estimated_time": settings.mock_tryon_seconds,
         "avatar_key": form.avatar_key or form.model_key,
         "avatar_url": record.avatar_url,
@@ -177,9 +247,12 @@ async def list_records(
     current_user: Merchant = Depends(get_current_user),
     page: int = 1,
     page_size: int = 20,
+    session_id: str = None,
 ):
-    """试穿记录列表"""
-    items, total = await tryon_service.list_records(db, current_user.id, page, page_size)
+    """试穿记录列表（可按 session_id 隔离，避免多标签页/多会话互相看到记录）"""
+    items, total = await tryon_service.list_records(
+        db, current_user.id, page, page_size, session_id=session_id
+    )
     return {
         "items": [await _serialize_record(db, r) for r in items],
         "total": total,
@@ -191,18 +264,23 @@ async def list_records(
 @router.post("/records/{uuid}/save/")
 async def save_record(
     uuid: str,
-    save: bool = True,
+    payload: TryOnSaveRequest,
     db: AsyncSession = Depends(get_db),
     current_user: Merchant = Depends(get_current_user),
 ):
+    """收藏 / 取消收藏
+
+    save 走 body（TryOnSaveRequest），此前挂在 query 上导致前端按 JSON body
+    传参时取不到值，取消收藏永远写回 True。
+    """
     record = (
         await db.execute(select(TryOnRecord).where(TryOnRecord.id == uuid, TryOnRecord.merchant_id == current_user.id))
     ).scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
-    record.is_saved = save
+    record.is_saved = payload.save
     await db.commit()
-    return {"success": True, "is_saved": save}
+    return {"success": True, "is_saved": record.is_saved}
 
 
 @router.delete("/records/{uuid}/")
@@ -225,8 +303,15 @@ async def delete_record(
 async def clear_records(
     db: AsyncSession = Depends(get_db),
     current_user: Merchant = Depends(get_current_user),
+    session_id: str = None,
 ):
-    stmt = select(TryOnRecord).where(TryOnRecord.merchant_id == current_user.id, TryOnRecord.is_saved == False)  # noqa: E712
+    """清空记录（按 session 隔离，且只删未收藏的）"""
+    stmt = select(TryOnRecord).where(
+        TryOnRecord.merchant_id == current_user.id,
+        TryOnRecord.is_saved == False,  # noqa: E712 收藏记录不参与清空
+    )
+    if session_id:
+        stmt = stmt.where(TryOnRecord.session_id == session_id)
     records = (await db.execute(stmt)).scalars().all()
     for r in records:
         await db.delete(r)
