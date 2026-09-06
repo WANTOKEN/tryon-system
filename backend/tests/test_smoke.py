@@ -51,11 +51,12 @@ def test_wardrobe_upload_and_list(client):
         "/api/v1/wardrobe/clothing/upload/",
         headers=h,
         files={"file": ("a.png", PNG, "image/png")},
-        data={"name": "测试上衣", "category": "upper", "subcategory": "t-shirt"},
+        data={"name": "测试上衣", "category": "tops", "subcategory": "t-shirt", "color": "红色"},
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["uuid"] and body["image_url"] and body["image_key"]
+    # 契约对齐：上传接口返回 id + image_key（FileRecord.uuid），无冗余 uuid 字段
+    assert body["id"] and body["image_url"] and body["image_key"]
 
     lst = client.get("/api/v1/wardrobe/clothing/", headers=h)
     assert lst.status_code == 200
@@ -65,6 +66,15 @@ def test_wardrobe_upload_and_list(client):
 def test_tryon_full_loop(client):
     token = _login(client, "admin", "admin123")
     h = {"Authorization": f"Bearer {token}"}
+
+    # 自备配额状态：持久化 SQLite 可能被先前运行耗尽，用超管接口给自身充值，保证试穿闭环可跑
+    me = client.get("/api/v1/auth/me/", headers=h).json()
+    q = client.patch(
+        f"/api/v1/admin/merchants/{me['id']}/quota/",
+        headers=h,
+        json={"quota_total": 100, "reason": "smoke"},
+    )
+    assert q.status_code == 200, q.text
 
     # 上传人像
     av = client.post(
@@ -80,9 +90,10 @@ def test_tryon_full_loop(client):
         "/api/v1/wardrobe/clothing/upload/",
         headers=h,
         files={"file": ("b.png", PNG, "image/png")},
-        data={"name": "上衣B", "category": "upper"},
-    )
-    clothing_uuid = cl.json()["uuid"]
+        data={"name": "上衣B", "category": "tops", "color": "蓝色"},
+        )
+    # clothing_ids 按契约传 image_key（FileRecord.uuid），试穿服务据此解析服装图
+    clothing_uuid = cl.json()["image_key"]
 
     # 提交试穿
     gen = client.post(
@@ -96,7 +107,8 @@ def test_tryon_full_loop(client):
         },
     )
     assert gen.status_code == 200, gen.text
-    record_uuid = gen.json()["record_uuid"]
+    # generate 接口返回 id（即前端轮询用的 uuid），无 record_uuid 字段
+    record_uuid = gen.json()["id"]
     assert gen.json()["estimated_time"] > 0
 
     # 轮询直到完成（mock 引擎约 4s）
@@ -136,14 +148,15 @@ def test_create_merchant_typed(client):
         "/api/v1/admin/merchants/",
         headers=h,
         json={
-            "username": "shop1",
-            "phone": "13900000001",
+            "username": f"shop_{int(time.time())}",
+            "phone": f"139{int(time.time()) % 100000000:08d}",
             "password": "secret1",
             "store_name": "门店一",
         },
     )
     assert r.status_code == 200, r.text
-    assert r.json()["uuid"]
+    # create_merchant 返回 {"id": ...}，无 uuid 字段
+    assert r.json()["id"]
 
 
 def test_create_merchant_invalid_phone(client):
