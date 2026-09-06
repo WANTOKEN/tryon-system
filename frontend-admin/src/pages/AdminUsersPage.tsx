@@ -1,6 +1,6 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, Form, Input, message, Tag, Switch, Popconfirm } from 'antd';
+import { Button, App, Modal, Form, Input, Tag, Switch, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useState, useRef } from 'react';
 import type { AdminUserItem } from '../types';
@@ -15,6 +15,7 @@ interface AdminUserFormData {
 }
 
 export default function AdminUsersPage() {
+  const { message } = App.useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUserItem | null>(null);
   const [form] = Form.useForm<AdminUserFormData>();

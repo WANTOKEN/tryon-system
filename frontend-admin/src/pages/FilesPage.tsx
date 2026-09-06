@@ -1,6 +1,6 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, message, Tag, Space, Popconfirm, Statistic, Card, Row, Col, Dropdown, theme } from 'antd';
+import { Button, Tag, Space, Popconfirm, Statistic, Card, Row, Col, Dropdown, App, theme } from 'antd';
 import { DeleteOutlined, UndoOutlined, ReloadOutlined, MoreOutlined } from '@ant-design/icons';
 import { useRef, useState, useEffect } from 'react';
 import type { FileRecord } from '../types';
@@ -9,6 +9,7 @@ import type { MenuProps } from 'antd';
 
 export default function FilesPage() {
   const { token } = theme.useToken();
+  const { message, modal } = App.useApp();
   const actionRef = useRef<ActionType>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [stats, setStats] = useState<{
@@ -171,7 +172,7 @@ export default function FilesPage() {
       hard_delete: `确定要永久删除 ${ids.length} 个文件吗？此操作不可恢复，将同时删除存储文件！`,
     };
 
-    Modal.confirm({
+    modal.confirm({
       title: `确认${actionText[action]}`,
       content: confirmContent[action],
       okText: '确定',
@@ -194,7 +195,7 @@ export default function FilesPage() {
 
   // 清理软删除文件
   const handleCleanup = () => {
-    Modal.confirm({
+    modal.confirm({
       title: '清理软删除文件',
       content: '确定要清理所有 7 天前软删除的文件吗？此操作将永久删除这些文件和存储数据。',
       okText: '确定清理',

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, message, Tooltip } from 'antd';
+import { Layout, Menu, Dropdown, Avatar, Button, theme, Badge, Tag, App, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -20,13 +20,12 @@ import {
   CloudUploadOutlined,
   HistoryOutlined,
   MonitorOutlined,
-  BgColorsOutlined,
   BulbOutlined,
   MoonOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
 import { PERMISSIONS } from '../types';
-import { useTheme } from '../hooks/useTheme';
+import { useTheme, BRAND_PRIMARY, BRAND_PRIMARY_DARK } from '../hooks/useTheme';
 import BrandLogo from '../components/BrandLogo';
 
 const { Header, Sider, Content } = Layout;
@@ -173,10 +172,12 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, isSuperAdmin, hasAnyPermission } = useAuthStore();
-  const { theme: currentTheme, mode, setTheme, toggleMode, themes, current } = useTheme();
+  const { message } = App.useApp();
+  const { mode, toggleMode } = useTheme();
   const { token: { colorBgContainer, colorPrimary, colorBorderSecondary, colorText } } = theme.useToken();
 
-  const primaryColor = mode === 'dark' ? current.primaryDark : current.primary;
+  // 管理端固定品牌金单色系（与 logo 统一），亮/暗取对应主色
+  const primaryColor = mode === 'dark' ? BRAND_PRIMARY_DARK : BRAND_PRIMARY;
 
   // 根据用户角色和权限过滤菜单
   const menuItems = useMemo(() => {
@@ -217,24 +218,6 @@ export default function AdminLayout() {
       onClick: handleLogout,
     },
   ];
-
-  const themeSwitcherMenu: MenuProps['items'] = themes.map(t => ({
-    key: t.key,
-    label: (
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: '50%',
-            background: mode === 'dark' ? t.primaryDark : t.primary,
-            display: 'inline-block',
-          }}
-        />
-        {t.name}
-      </span>
-    ),
-  }));
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -332,24 +315,6 @@ export default function AdminLayout() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* 主题配色切换 */}
-            <Dropdown
-              menu={{
-                items: themeSwitcherMenu,
-                selectable: true,
-                selectedKeys: [currentTheme],
-                onClick: ({ key }) => setTheme(key),
-              }}
-              placement="bottomRight"
-              trigger={['click']}
-            >
-              <Button
-                type="text"
-                icon={<BgColorsOutlined style={{ fontSize: 16 }} />}
-                style={{ width: 40, height: 40, borderRadius: 8 }}
-                aria-label="主题配色"
-              />
-            </Dropdown>
             {/* 明暗模式切换 */}
             <Tooltip title={mode === 'dark' ? '切换到亮色' : '切换到暗色'}>
               <Button

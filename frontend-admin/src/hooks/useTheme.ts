@@ -1,20 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
 
-export interface ThemeOption {
-  key: string
-  name: string
-  primary: string
-  primaryDark: string
-}
+/**
+ * 管理端主题：固定使用「品牌金」单一色系，仅保留明暗模式切换。
+ *
+ * 变更说明（2026-09-06）：此前管理端提供 4 套色系（香槟金/冰川蓝/樱花粉/森林绿）切换，
+ * 但顶部与登录页的品牌 logo 是固定金棕实色图（不跟随主题变色），
+ * 切换到蓝/粉/绿时 logo 金色与界面主色冲突，整体观感不协调。
+ * 故收敛为单一品牌金，与 logo 保持统一。
+ *
+ * 注意：不再读写 'aitryon-theme'（该 key 由用户端 react 使用），
+ * 避免管理端与用户端互相覆盖主题。
+ */
 
-export const THEMES: ThemeOption[] = [
-  { key: 'luxury-gold', name: '香槟金', primary: '#c8a45c', primaryDark: '#d4af37' },
-  { key: 'frost-blue', name: '冰川蓝', primary: '#4a90d9', primaryDark: '#5b9be0' },
-  { key: 'sakura-pink', name: '樱花粉', primary: '#e89ab0', primaryDark: '#f0a7bd' },
-  { key: 'forest-green', name: '森林绿', primary: '#5a9e7a', primaryDark: '#6cb090' },
-]
+/** 品牌主色（亮色模式） */
+export const BRAND_PRIMARY = '#c8a45c'
+/** 品牌主色（暗色模式） */
+export const BRAND_PRIMARY_DARK = '#d4af37'
 
-const THEME_STORAGE_KEY = 'aitryon-theme'
 const MODE_STORAGE_KEY = 'aitryon-mode'
 
 function readStored(key: string, fallback: string): string {
@@ -25,48 +27,30 @@ function readStored(key: string, fallback: string): string {
   }
 }
 
-function applyTheme(theme: string, mode: string) {
+function applyMode(mode: string) {
   const root = document.documentElement
-  root.setAttribute('data-theme', theme)
   root.classList.toggle('dark', mode === 'dark')
   root.style.colorScheme = mode === 'dark' ? 'dark' : 'light'
 }
 
 /**
- * 主题配色系统（与前端 react 端共享 localStorage key 与机制）
- * data-theme 控制色系，dark 类控制明暗；antd 的 colorPrimary 在 AdminLayout 中接管。
+ * 明暗模式管理（管理端固定品牌金单色系，antd 的 colorPrimary 在 App.tsx 中接管）
  */
 export function useTheme() {
-  const [theme, setThemeState] = useState<string>(() =>
-    readStored(THEME_STORAGE_KEY, 'luxury-gold')
-  )
-  const [mode, setModeState] = useState<string>(() =>
-    readStored(MODE_STORAGE_KEY, 'light')
-  )
+  const [mode, setModeState] = useState<string>(() => readStored(MODE_STORAGE_KEY, 'light'))
 
   useEffect(() => {
-    applyTheme(theme, mode)
-  }, [theme, mode])
+    applyMode(mode)
+  }, [mode])
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === THEME_STORAGE_KEY && e.newValue) {
-        setThemeState(e.newValue)
-      } else if (e.key === MODE_STORAGE_KEY && e.newValue) {
+      if (e.key === MODE_STORAGE_KEY && e.newValue) {
         setModeState(e.newValue)
       }
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [])
-
-  const setTheme = useCallback((themeKey: string) => {
-    setThemeState(themeKey)
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, themeKey)
-    } catch {
-      /* ignore */
-    }
   }, [])
 
   const setMode = useCallback((modeValue: string) => {
@@ -90,16 +74,9 @@ export function useTheme() {
     })
   }, [])
 
-  const current =
-    THEMES.find(t => t.key === theme) || THEMES[0]
-
   return {
-    theme,
     mode,
-    setTheme,
     setMode,
     toggleMode,
-    themes: THEMES,
-    current,
   }
 }

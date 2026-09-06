@@ -1,6 +1,6 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, Form, Input, message, Tag, Progress, Space, InputNumber, Popconfirm, Drawer, Descriptions, List, Typography, Switch, Tooltip } from 'antd';
+import { Button, App, Modal, Form, Input, Tag, Progress, Space, InputNumber, Popconfirm, Drawer, Descriptions, List, Typography, Switch, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined, HistoryOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useState, useRef } from 'react';
 import type { Merchant, QuotaHistoryItem } from '../types';
@@ -20,6 +20,7 @@ interface QuotaFormData {
 }
 
 export default function MerchantsPage() {
+  const { message } = App.useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [quotaModalVisible, setQuotaModalVisible] = useState(false);
   const [historyDrawerVisible, setHistoryDrawerVisible] = useState(false);

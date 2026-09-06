@@ -1,12 +1,13 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, Image, Tag, Space, message, Switch, Tooltip } from 'antd';
+import { Button, Modal, Image, Tag, Space, App, Switch, Tooltip } from 'antd';
 import { EyeOutlined, DeleteOutlined, EyeInvisibleOutlined, PictureOutlined } from '@ant-design/icons';
 import { useState, useRef } from 'react';
 import type { TryOnRecord } from '../types';
 import { tryonApi } from '../api';
 
 export default function TryOnRecordsPage() {
+  const { message, modal } = App.useApp();
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentRecord, setCurrentRecord] = useState<TryOnRecord | null>(null);
   const [showImages, setShowImages] = useState(false); // 默认隐藏图片
@@ -132,7 +133,7 @@ export default function TryOnRecordsPage() {
   };
 
   const handleDelete = (record: TryOnRecord) => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       content: '确定要删除该试穿记录吗？',
       okText: '确定',

@@ -1,6 +1,6 @@
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
-import { Button, Modal, Form, Input, InputNumber, message, Tag, Image, Switch, Select, Upload, Radio, Space, Tooltip, Progress } from 'antd';
+import { Button, Modal, Form, Input, InputNumber, App, Tag, Image, Switch, Select, Upload, Radio, Space, Tooltip, Progress } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, LinkOutlined, EyeInvisibleOutlined, PictureOutlined, CloudUploadOutlined, CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined } from '@ant-design/icons';
 import { useState, useRef, useEffect } from 'react';
@@ -206,6 +206,7 @@ const hexToColorName = async (hex: string): Promise<string | null> => {
 };
 
 export default function ClothingPage() {
+  const { message, modal } = App.useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingClothing, setEditingClothing] = useState<Clothing | null>(null);
   const [form] = Form.useForm<ClothingFormData>();
@@ -477,7 +478,7 @@ export default function ClothingPage() {
   };
 
   const handleDelete = (clothing: Clothing) => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       content: `确定要删除服装 "${clothing.name}" 吗？此操作不可恢复。`,
       okText: '确定删除',

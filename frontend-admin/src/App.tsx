@@ -4,7 +4,7 @@ import { ConfigProvider, App as AntApp, theme as antdTheme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useAuthStore, initAuth } from './stores/authStore';
 import { MENU_PERMISSIONS, PERMISSIONS } from './types';
-import { useTheme } from './hooks/useTheme';
+import { useTheme, BRAND_PRIMARY, BRAND_PRIMARY_DARK } from './hooks/useTheme';
 
 import AdminLayout from './layouts/AdminLayout';
 import LoginPage from './pages/LoginPage';
@@ -57,7 +57,7 @@ function PermissionRoute({
 }
 
 function App() {
-  const { mode, current } = useTheme();
+  const { mode } = useTheme();
   const isDark = mode === 'dark';
 
   return (
@@ -66,9 +66,9 @@ function App() {
       theme={{
         cssVar: true,
         token: {
-          // 主色调跟随主题色系（亮/暗分别取主色与暗色主色）
-          colorPrimary: isDark ? current.primaryDark : current.primary,
-          colorInfo: isDark ? current.primaryDark : current.primary,
+          // 管理端固定品牌金单色系（亮/暗分别取主色与暗色主色）
+          colorPrimary: isDark ? BRAND_PRIMARY_DARK : BRAND_PRIMARY,
+          colorInfo: isDark ? BRAND_PRIMARY_DARK : BRAND_PRIMARY,
           // 成功色
           colorSuccess: '#52c41a',
           // 警告色
@@ -106,7 +106,7 @@ function App() {
           Menu: {
             itemBg: 'transparent',
             itemSelectedBg: 'var(--ant-color-primary-bg)',
-            itemSelectedColor: isDark ? current.primaryDark : current.primary,
+            itemSelectedColor: isDark ? BRAND_PRIMARY_DARK : BRAND_PRIMARY,
             itemHoverBg: 'var(--ant-color-primary-bg-hover)',
             subMenuItemBg: 'transparent',
             itemBorderRadius: 8,
@@ -130,8 +130,8 @@ function App() {
           },
           // Input 组件样式
           Input: {
-            hoverBorderColor: isDark ? current.primaryDark : current.primary,
-            activeBorderColor: isDark ? current.primaryDark : current.primary,
+            hoverBorderColor: isDark ? BRAND_PRIMARY_DARK : BRAND_PRIMARY,
+            activeBorderColor: isDark ? BRAND_PRIMARY_DARK : BRAND_PRIMARY,
           },
           // Select 组件样式
           Select: {

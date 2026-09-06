@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Space, Upload, message, Popconfirm, Modal, Form, Input, Switch, Checkbox, Image, Tooltip, theme } from 'antd';
+import { Button, Space, Upload, Popconfirm, Modal, Form, Input, Switch, Checkbox, Image, Tooltip, App, theme } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined, EyeOutlined } from '@ant-design/icons';
 
 import { ProTable } from '@ant-design/pro-components';
@@ -11,6 +11,7 @@ import { usePermission } from '../hooks/usePermission';
 
 const ModelPhotosPage: React.FC = () => {
   const { token } = theme.useToken();
+  const { message } = App.useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [form] = Form.useForm();
