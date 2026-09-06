@@ -1,84 +1,92 @@
 name: tryon
 
+# ============================================================
+# 开发模式：默认只跑 db；backend 与 nginx 平时本地直接启动。
+# 上线 / 协作时取消下方注释后执行：docker compose up --build -d
+# ============================================================
+
 services:
   db:
     image: mysql:8.4.6
     container_name: tryon-mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: tryon
-    # MySQL 8.4 默认不加载 mysql_native_password 插件；aiomysql 不兼容 caching_sha2_password，
-    # 故显式重新启用该插件（8.4 专用参数），使 init.sql 的 IDENTIFIED WITH mysql_native_password 生效。
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-tryon}
     command:
       - --mysql-native-password=ON
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./db/init:/docker-entrypoint-initdb.d:ro
     networks:
       - tryon-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
       interval: 5s
       timeout: 5s
       retries: 15
       start_period: 30s
+
+  # ----- 后端 + 网关（按需启用） -----
+  # 启用前请先在 .env 写好 JWT_SECRET_KEY、ADMIN_PASSWORD、LAS_API_KEY 等
+  backend:
+    build: ./backend
+    container_name: tryon-backend
+    init: true
     restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+aiomysql://${MYSQL_USER:-tryon}:${MYSQL_PASSWORD:-tryon}@db:3306/${MYSQL_DATABASE:-tryon}?charset=utf8mb4
+      STORAGE_LOCAL_DIR: /app/data/storage
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      AI_ENGINE: ${AI_ENGINE:-mock}
+      ENV: ${ENV:-development}
+      DEBUG: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-[]}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      DEV_SMS_ENABLED: "false"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY required in production}
+      LAS_API_KEY: ${LAS_API_KEY:-}
+      LAS_BASE_URL: ${LAS_BASE_URL:-https://operator.las.cn-beijing.volces.com}
+      ENGINE_MODEL: ${ENGINE_MODEL:-doubao-seedream-4.5}
+      LAS_SIZE: ${LAS_SIZE:-1024x1024}
+      LAS_WATERMARK: "false"
+      LAS_MAX_REF_IMAGES: "10"
+      UPLOAD_MAX_SIZE_MB: "20"
+      MOCK_TRYON_SECONDS: "3"
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
+    volumes:
+      - backend-data:/app/data
+    networks:
+      - tryon-net
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  # backend / nginx 不通过 compose 默认启动，仅本地直接运行即可。
-  # 需要一起编排时，去掉下方注释并 `docker compose up -d backend nginx`。
-  # backend:
-  #   build: ./backend
-  #   container_name: tryon-backend
-  #   init: true
-  #   # 源码卷 + --reload：改 Python 代码免重建（改依赖/Dockerfile 才需 --build backend）
-  #   command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     # Docker 网络内用服务名 db 互访；本地直接跑时由 backend/.env 的 localhost 生效
-  #     DATABASE_URL: mysql+asyncmy://tryon:tryon@db:3306/tryon?charset=utf8mb4
-  #     STORAGE_LOCAL_DIR: /app/data/storage
-  #     STORAGE_BACKEND: local
-  #     AI_ENGINE: mock
-  #     DEBUG: "false"
-  #     CORS_ORIGINS: http://localhost:8080,http://localhost:8081
-  #     ADMIN_USERNAME: admin
-  #     ADMIN_PASSWORD: admin123
-  #     DEV_SMS_ENABLED: "true"
-  #   volumes:
-  #     - ./backend/app:/app/app
-  #     - backend-data:/app/data
-  #   networks:
-  #     - tryon-net
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200 else 1)"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 30s
-  #   restart: unless-stopped
-
-  # nginx:
-  #   build:
-  #     context: .
-  #     dockerfile: nginx/Dockerfile
-  #   container_name: tryon-nginx
-  #   ports:
-  #     - "8080:8080"
-  #     - "8081:8081"
-  #   networks:
-  #     - tryon-net
-  #   depends_on:
-  #     backend:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: tryon-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT_USER:-8080}:8080"
+      - "${NGINX_PORT_ADMIN:-8081}:8081"
+    networks:
+      - tryon-net
+    depends_on:
+      backend:
+        condition: service_healthy
 
 networks:
   tryon-net:

@@ -151,22 +151,61 @@ cd /Users/apple/my_project/backend
 
 脚本带去重（同名同商家自动跳过），可重复运行。功能测试完成后可删除该脚本。
 
-## Docker 编排
+### 8. 存储清理脚本（部署成本控制）
 
-`docker-compose.yml` 当前**默认只拉起 MySQL**（`backend` 与 `nginx` 两个服务已注释，日常开发直接本地运行后端，见上文运行步骤）：
+`backend/scripts/cleanup_storage.py` 清理两类冷数据，避免本地存储无限增长：
+
+- 软删除标记的孤儿文件（FileRecord.is_deleted=True）
+- `results/` 中超过指定天数且未被任何 TryOnRecord 引用的老结果图
 
 ```bash
+# 仅预览，不真删
+cd /Users/apple/my_project/backend
+../.venv/bin/python scripts/cleanup_storage.py --dry-run --results-older-than-days 30
+
+# 真删：仅删孤儿（不按时间）
+../.venv/bin/python scripts/cleanup_storage.py --orphan-files-only
+
+# 部署到服务器后建议每天凌晨跑一次（crontab）：
+# 0 3 * * * cd /opt/tryon && docker exec tryon-backend python scripts/cleanup_storage.py --results-older-than-days 30
+```
+
+## 部署与成本
+
+`docker-compose.yml` 已重写：所有敏感配置（密钥、密码、域名）改为读环境变量，并默认只拉起 MySQL（开发模式直接本地跑后端，详见上文运行步骤）：
+
+```bash
+# 1) 拷贝并修改部署模板（生产环境必填 JWT_SECRET_KEY、ADMIN_PASSWORD、LAS_API_KEY 等）
+cp .env.example .env
+
+# 2) 仅拉数据库
 docker compose up -d db
 ```
 
-需要整组编排（后端 + Nginx 网关容器化）时，先取消 `docker-compose.yml` 中 `backend:` 与 `nginx:` 两段的注释，再执行：
+需要整组编排（后端 + Nginx 网关容器化）时，将 `docker-compose.yml` 中 `backend:` 与 `nginx:` 两段取消注释，再执行：
 
 ```bash
-docker compose up --build -d
-# 用户端:   http://localhost:8080
-# 管理后台: http://localhost:8081
-# 后端 API: http://localhost:8000/docs
+docker compose --env-file .env up --build -d
+# 用户端:   http://<host>:8080
+# 管理后台: http://<host>:8081
+# 后端 API: http://<host>:8000/docs
 ```
+
+### 真实引擎成本（豆包 Seedream 4.5）
+
+| 项 | 现状（默认） | 优化 |
+|---|---|---|
+| 生成尺寸 | `2048×2048` | `1024×1024`（约省 50% token） |
+| 生成张数 `n` | 未指定，可能默认多张 | 显式 `n=1`（防按倍数计费） |
+| 参考图上限 | 14 | 10（适配 Seedream 5.0 Pro 上限，避免超限报错） |
+| 超限处理 | 抛错 | 自动截断多余服装图（保留前 N 张） |
+
+**示例：3 店 × 30 次/天 = 2700 次/月**
+- 单价 ¥0.25/张（Seedream 4.5 1024×1024）
+- AI 成本 = 2700 × ¥0.25 = **¥675/月**
+- 加 Cloudflare R2 存结果（零出口费）+ Hetzner CX32（€7.59/月）+ 域名 ≈ **总成本约 ¥760/月**
+
+如使用 mock 引擎，月成本仅约 ¥35-60（仅 VPS + 域名）。
 
 > Nginx 网关在镜像内构建并托管两个前端静态资源，同时将 `/api/`、`/static/uploads/`、`/file/` 反向代理到 `backend`，浏览器全程同源访问，无需额外配置 CORS。
 > `backend` 提供 `/health` 健康检查，`nginx` 通过 `depends_on: service_healthy` 在其就绪后启动；共享反向代理片段位于 `nginx/proxy.conf`。

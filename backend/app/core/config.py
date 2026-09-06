@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
     # 真实引擎（火山引擎 Ark 图生图 / 多图融合）参数
     ark_model: str = "doubao-seedream-4.5"  # 默认模型，支持多图融合（4.5 最多 14 张参考图）
-    ark_size: str = "2048x2048"             # 生成尺寸（需落在模型允许的总像素/宽高比区间）
+    ark_size: str = "1024x1024"             # 生成尺寸（默认 1024×1024 够用且更省 token）
     ark_response_format: str = "url"        # url | b64_json
     ark_watermark: bool = False             # 是否在图片右下角添加「AI 生成」水印
     ark_output_format: str = ""             # 仅 5.0 系列支持（png/jpeg）；留空则不传
@@ -128,12 +128,12 @@ class Settings(BaseSettings):
     engine_model: str = "doubao-seedream-4.5"               # LAS 多图融合模型名
     engine_timeout: int = 60                                # 引擎单次请求超时（秒）
     task_overall_timeout: int = 180                         # 试穿任务总耗时上限（秒）
-    las_size: str = "2048x2048"                             # 生成尺寸
+    las_size: str = "1024x1024"                             # 生成尺寸（默认 1024×1024 够用且更省 token）
     las_response_format: str = "url"                        # url | b64_json
     las_watermark: bool = False                             # 是否添加「AI 生成」水印
     las_result_allowed_host: str = "operator.las.cn-beijing.volces.com"  # 结果 URL 允许的主机（含 .volces.com 后缀）
     las_result_download_timeout: int = 30                   # 结果图下载超时（秒）
-    las_max_ref_images: int = 14                            # 参考图数量上限（人像 + 服装）
+    las_max_ref_images: int = 10                            # 参考图数量上限（人像 + 服装；Seedream 5.0 Pro 上限 10）
 
     # 演示用：mock 引擎模拟处理耗时（秒）
     mock_tryon_seconds: int = 4
