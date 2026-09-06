@@ -23,6 +23,7 @@ from app.models.merchant import Merchant
 from app.storage import storage
 from app.storage.service import upload_file
 from app.services.tryon_engine import get_engine
+from app.services.config_service import resolve_engine_config
 from app.constants import (
     STATUS_PENDING,
     STATUS_PROCESSING,
@@ -192,7 +193,13 @@ async def _process(*, record_uuid: str, avatar_data: Optional[bytes], avatar_key
 
             avatar_bytes = await _read_avatar_bytes(avatar_key, avatar_data)
             clothing_items = await _read_clothing_items(clothing_uuids)
-            engine = get_engine()
+            cfg = await resolve_engine_config(db)
+            engine = get_engine(
+                ai_engine=cfg["ai_engine"],
+                model=cfg["ai_model"],
+                api_key=cfg["ai_api_key"],
+            )
+            record.engine = cfg["ai_engine"]
             result_bytes = await engine.generate(avatar_bytes, clothing_items, prompt)
 
             # 落库结果图

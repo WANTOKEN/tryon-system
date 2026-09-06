@@ -1,10 +1,11 @@
-import { Card, Form, Input, Button, message, Divider, Spin, Tabs, InputNumber, Select, Space } from 'antd';
+import { Card, Form, Input, Button, App, Divider, Spin, Tabs, InputNumber, Select, Space } from 'antd';
 import { useState, useEffect } from 'react';
 import { configApi } from '../api';
 import type { SystemConfigItem } from '../types';
 import { useConfigGrouped } from '../hooks/queries';
 
 export default function SettingsPage() {
+  const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
   const { data: groupedConfig, isPending: loading, refetch: loadConfig } = useConfigGrouped();
 
@@ -137,6 +138,15 @@ function AIConfigPanel({ configs, onSave, loading, onRefresh }: {
           onChange={(v) => handleChange('ai_engine', v)}
           options={[{ value: 'seeddance', label: 'SeedDance (字节跳动)' }]}
           style={{ width: 200 }}
+        />
+      </Form.Item>
+      <Form.Item label="模型名称" tooltip="豆包 Seedream 模型 ID，例如 doubao-seedream-3.0-t2i；留空则使用服务端默认值。">
+        <Input
+          value={getConfig('ai_model')?.value || ''}
+          onChange={(e) => handleChange('ai_model', e.target.value)}
+          placeholder="例如 doubao-seedream-3.0-t2i"
+          allowClear
+          style={{ width: 400 }}
         />
       </Form.Item>
       <Form.Item label="超时时间(秒)">

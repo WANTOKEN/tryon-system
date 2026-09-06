@@ -11,6 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.system_config import SystemConfig
+from app.core.config import get_settings
+
+settings = get_settings()
 
 # 默认配置种子：[config_group, key, value, value_type, description]
 DEFAULT_CONFIGS: List[tuple] = [
@@ -20,6 +23,7 @@ DEFAULT_CONFIGS: List[tuple] = [
     ("ai", "ai_timeout", "120", "integer", "超时时间(秒)"),
     ("ai", "ai_retry_count", "3", "integer", "重试次数"),
     ("ai", "ai_api_key", "", "string", "API 密钥"),
+    ("ai", "ai_model", settings.engine_model, "string", "模型名称"),
     ("storage", "storage_max_size_mb", "1024", "integer", "最大存储空间(MB)"),
     ("storage", "storage_cleanup_days", "30", "integer", "自动清理天数"),
     ("quota", "default_quota", "100", "integer", "默认配额"),
@@ -102,6 +106,21 @@ async def get_grouped_configs(db: AsyncSession) -> dict:
     for cfg in rows:
         grouped.setdefault(group_of.get(cfg.key, "other"), []).append(_serialize(cfg))
     return grouped
+
+
+async def resolve_engine_config(db: AsyncSession) -> dict:
+    """解析试穿引擎运行配置：优先取 DB SystemConfig，缺失回退环境变量。
+
+    供 tryon_engine 在每次请求时动态生效（无需重启服务），使「系统设置」
+    中的 AI 引擎 / 模型名称 / API 密钥 即时生效。
+    """
+    rows = (await db.execute(select(SystemConfig))).scalars().all()
+    cfg = {c.key: c.value for c in rows}
+    return {
+        "ai_engine": cfg.get("ai_engine") or settings.ai_engine,
+        "ai_model": cfg.get("ai_model") or settings.engine_model,
+        "ai_api_key": cfg.get("ai_api_key") or settings.las_api_key,
+    }
 
 
 async def update_configs(

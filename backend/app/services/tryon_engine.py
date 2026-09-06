@@ -90,12 +90,12 @@ class RealEngine(TryOnEngine):
         "真实摄影风格，高清细节，自然光照。"
     )
 
-    def __init__(self) -> None:
-        if not settings.las_api_key:
-            raise RuntimeError("未配置 las_api_key，无法使用真实试穿引擎（豆包 Seedream）")
+    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None) -> None:
+        self.api_key = api_key or settings.las_api_key
+        if not self.api_key:
+            raise RuntimeError("未配置 API 密钥（las_api_key / 系统设置 ai_api_key），无法使用真实试穿引擎（豆包 Seedream）")
         self.endpoint = f"{settings.las_base_url.rstrip('/')}/api/v1/images/generations"
-        self.api_key = settings.las_api_key
-        self.model = settings.engine_model
+        self.model = model or settings.engine_model
         self.size = settings.las_size
         self.response_format = settings.las_response_format
         self.watermark = settings.las_watermark
@@ -107,17 +107,30 @@ class RealEngine(TryOnEngine):
         self.max_bytes = settings.upload_max_size_mb * 1024 * 1024
 
     def _build_images(self, avatar_bytes: bytes, clothing_items: List[dict]) -> List[str]:
-        """组装参考图列表（人像 + 服装），均以 base64 data URI 上传"""
+        """组装参考图列表（人像 + 服装），均以 base64 data URI 上传。
+
+        成本控制：Seedream 计费按「生成张数 × 单价」，与参考图数量无关。
+        但 base64 上传量随服装图数量线性增长，单请求 payload 过大易触发超时。
+        此处限制服装参考图 ≤ max_ref_images-1（预留人像），超出按上传顺序截断并记录。
+        """
         images: List[str] = [_to_data_uri(avatar_bytes)]
+        cap = max(1, self.max_ref_images - 1)  # 至少留 1 张给人像
+        kept = 0
         for item in clothing_items or []:
+            if kept >= cap:
+                break
             if item.get("image_bytes"):
                 images.append(_to_data_uri(item["image_bytes"]))
+                kept += 1
             elif item.get("image_url"):
                 images.append(item["image_url"])
-        if len(images) > self.max_ref_images:
-            raise ValueError(
-                f"参考图数量（{len(images)}）超过模型上限 {self.max_ref_images}，"
-                f"请减少服装参考图数量。"
+                kept += 1
+        if len(clothing_items or []) > cap:
+            import logging
+
+            logging.getLogger(__name__).info(
+                "服装参考图 %d 张截断到 %d（max_ref_images=%d）",
+                len(clothing_items or []), cap, self.max_ref_images,
             )
         return images
 
@@ -146,6 +159,8 @@ class RealEngine(TryOnEngine):
             "size": self.size,
             "response_format": self.response_format,
             "watermark": self.watermark,
+            # 4.5/5.0 系列：明确只生成 1 张，避免默认生成多张按 N 倍计费
+            "n": 1,
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -200,7 +215,13 @@ class RealEngine(TryOnEngine):
             raise RuntimeError(f"下载结果图失败: {e}") from e
 
 
-def get_engine() -> TryOnEngine:
-    if settings.ai_engine == "real":
-        return RealEngine()
+def get_engine(ai_engine: Optional[str] = None, model: Optional[str] = None, api_key: Optional[str] = None) -> TryOnEngine:
+    engine = ai_engine or settings.ai_engine
+    if engine in ("real", "seeddance"):
+        try:
+            return RealEngine(model=model, api_key=api_key)
+        except RuntimeError:
+            # 未配置密钥时优雅降级到演示引擎，避免试穿整体不可用
+            return MockEngine()
     return MockEngine()
+

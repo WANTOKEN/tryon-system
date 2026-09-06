@@ -366,10 +366,8 @@ function AppContent() {
         // 加载服装缓存（已登录时加载自定义和衣橱）
         await loadFromCache({ includeCustomAndWardrobe: isAuthenticated })
 
-        // 获取模特照片（仅在已登录时）
-        if (isAuthenticated) {
-          await fetchModelPhotos()
-        }
+        // 获取模特照片（公开素材，登录与否均加载，供「使用模特」选用）
+        await fetchModelPhotos()
 
         const elapsed = Date.now() - startTime
         const waitTime = MIN_LOADING_TIME - elapsed
